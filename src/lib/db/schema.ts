@@ -1,7 +1,8 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -178,6 +179,21 @@ export const notificationsLog = pgTable(
   }),
 );
 
+/** Modèle de check-list réutilisable, éditable depuis le tableau de bord. */
+export const checklistTemplates = pgTable("checklist_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** Liste de tâches : { title, leadTimeDays, description? }. */
+  tasks: jsonb("tasks")
+    .$type<{ title: string; leadTimeDays: number; description?: string }[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ---------------------------------------------------------------------------
 // Relations (pour les requêtes db.query.*)
 // ---------------------------------------------------------------------------
@@ -252,6 +268,8 @@ export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type VolunteerSlot = typeof volunteerSlots.$inferSelect;
 export type VolunteerSignup = typeof volunteerSignups.$inferSelect;
+export type ChecklistTemplate = typeof checklistTemplates.$inferSelect;
+export type TemplateTask = ChecklistTemplate["tasks"][number];
 export type Role = (typeof roleEnum.enumValues)[number];
 export type EventStatus = (typeof eventStatusEnum.enumValues)[number];
 export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];

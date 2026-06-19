@@ -64,47 +64,45 @@ export default async function HomePage() {
                 const remaining = capacity - taken;
 
                 return (
-                  <Card
+                  <Link
                     key={event.id}
-                    className="flex flex-col p-5 transition-shadow hover:shadow-md"
+                    href={`/inscription/${event.shareToken}`}
+                    className="group"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-lg font-semibold text-slate-900">
-                        {event.title}
-                      </h3>
-                      {remaining > 0 && (
-                        <Badge color="amber" icon={PartyPopper}>
-                          {remaining} bénévole{remaining > 1 ? "s" : ""}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-brand-700">
-                      <CalendarDays className="h-4 w-4" />
-                      {formatDateTime(event.startAt)}
-                    </p>
-                    {event.location && (
-                      <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
-                        <MapPin className="h-4 w-4" />
-                        {event.location}
-                      </p>
-                    )}
-                    {event.description && (
-                      <p className="mt-3 line-clamp-3 text-sm text-slate-600">
-                        {event.description}
-                      </p>
-                    )}
-                    {event.volunteerSlots.length > 0 && (
-                      <div className="mt-4 pt-1">
-                        <Link
-                          href={`/inscription/${event.shareToken}`}
-                          className={buttonClasses("primary", "sm")}
-                        >
-                          S'inscrire comme bénévole
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
+                    <Card className="flex h-full flex-col p-5 transition-shadow hover:shadow-md">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-lg font-semibold text-slate-900">
+                          {event.title}
+                        </h3>
+                        {remaining > 0 && (
+                          <Badge color="amber" icon={PartyPopper}>
+                            {remaining} bénévole{remaining > 1 ? "s" : ""}
+                          </Badge>
+                        )}
                       </div>
-                    )}
-                  </Card>
+                      <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-brand-700">
+                        <CalendarDays className="h-4 w-4" />
+                        {formatDateTime(event.startAt)}
+                      </p>
+                      {event.location && (
+                        <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                          <MapPin className="h-4 w-4" />
+                          {event.location}
+                        </p>
+                      )}
+                      {event.description && (
+                        <p className="mt-3 line-clamp-3 text-sm text-slate-600">
+                          {event.description}
+                        </p>
+                      )}
+                      <div className="mt-4 flex items-center gap-1 pt-1 text-sm font-medium text-brand-600 transition-all group-hover:gap-2">
+                        {remaining > 0
+                          ? "Voir l'événement & se proposer"
+                          : "Voir l'événement"}
+                        <ArrowRight className="h-4 w-4" />
+                      </div>
+                    </Card>
+                  </Link>
                 );
               })}
             </div>

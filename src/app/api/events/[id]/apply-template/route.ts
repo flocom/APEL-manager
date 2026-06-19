@@ -5,21 +5,27 @@ import { z } from "zod";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { events, tasks } from "@/lib/db/schema";
-import { getTemplate } from "@/lib/templates";
+import { checklistTemplates, events, tasks } from "@/lib/db/schema";
 
 type Params = { params: Promise<{ id: string }> };
 
-const schema = z.object({ templateKey: z.string().min(1) });
+const schema = z.object({ templateId: z.string().uuid("Modèle invalide") });
 
 export async function POST(req: Request, { params }: Params) {
   try {
     await requireApiRole("manager");
     const { id: eventId } = await params;
-    const { templateKey } = schema.parse(await req.json());
+    const { templateId } = schema.parse(await req.json());
 
-    const template = getTemplate(templateKey);
-    if (!template) throw new HttpError(400, "Modèle de check-list inconnu.");
+    const [template] = await db
+      .select()
+      .from(checklistTemplates)
+      .where(eq(checklistTemplates.id, templateId))
+      .limit(1);
+    if (!template) throw new HttpError(400, "Modèle de check-list introuvable.");
+    if (template.tasks.length === 0) {
+      throw new HttpError(400, "Ce modèle ne contient aucune tâche.");
+    }
 
     const [event] = await db
       .select({ startAt: events.startAt })
@@ -28,8 +34,7 @@ export async function POST(req: Request, { params }: Params) {
       .limit(1);
     if (!event) throw new HttpError(404, "Événement introuvable.");
 
-    // Idempotence : on n'applique un modèle que sur une check-list vide, pour
-    // éviter de dupliquer les tâches (un POST direct ou rejoué est ainsi rejeté).
+    // Idempotence : on n'applique un modèle que sur une check-list vide.
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(tasks)

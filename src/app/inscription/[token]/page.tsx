@@ -1,3 +1,4 @@
+import { CalendarDays, MapPin } from "lucide-react";
 import Link from "next/link";
 
 import { SiteHeader } from "@/components/site-header";
@@ -62,11 +63,15 @@ export default async function InscriptionPage({
           Appel aux bénévoles
         </p>
         <h1 className="mt-1 text-2xl font-bold text-slate-900">{event.title}</h1>
-        <p className="mt-1 font-medium text-brand-700">
+        <p className="mt-1 flex items-center gap-1.5 font-medium text-brand-700">
+          <CalendarDays className="h-4 w-4" />
           {formatDateTime(event.startAt)}
         </p>
         {event.location && (
-          <p className="text-sm text-slate-500">📍 {event.location}</p>
+          <p className="flex items-center gap-1.5 text-sm text-slate-500">
+            <MapPin className="h-4 w-4" />
+            {event.location}
+          </p>
         )}
         {event.description && (
           <p className="mt-3 whitespace-pre-line text-sm text-slate-600">
@@ -76,7 +81,7 @@ export default async function InscriptionPage({
 
         <Card className="mt-6 p-6">
           <h2 className="mb-1 text-lg font-semibold text-slate-900">
-            Je donne un coup de main
+            Se proposer comme bénévole
           </h2>
           <p className="mb-5 text-sm text-slate-500">
             Choisissez un créneau et laissez vos coordonnées. Merci pour votre
@@ -84,7 +89,8 @@ export default async function InscriptionPage({
           </p>
           {event.volunteerSlots.length === 0 ? (
             <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">
-              Aucun créneau de bénévolat n'est ouvert pour cet événement.
+              Aucun créneau de bénévolat n'est ouvert pour le moment. Revenez
+              bientôt, les besoins seront précisés ici.
             </p>
           ) : (
             <VolunteerSignupForm
