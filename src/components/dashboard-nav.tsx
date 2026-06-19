@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  ClipboardList,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/calendar", label: "Calendrier", icon: CalendarDays },
   { href: "/dashboard/events", label: "Événements", icon: PartyPopper },
+  { href: "/dashboard/templates", label: "Modèles", icon: ClipboardList, minRole: "manager" },
   { href: "/dashboard/tasks", label: "Mes tâches", icon: ListChecks },
   { href: "/dashboard/members", label: "Membres", icon: Users, minRole: "admin" },
   { href: "/dashboard/account", label: "Mon compte", icon: Settings },

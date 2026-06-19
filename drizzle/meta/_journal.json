@@ -15,6 +15,13 @@
       "when": 1781859266406,
       "tag": "0001_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781870518745,
+      "tag": "0002_templates",
+      "breakpoints": true
     }
   ]
 }

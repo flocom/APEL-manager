@@ -1,6 +1,7 @@
 "use client";
 
 import { ListPlus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -13,23 +14,34 @@ export function ApplyTemplate({
   templates,
 }: {
   eventId: string;
-  templates: { key: string; label: string; count: number }[];
+  templates: { id: string; name: string; count: number }[];
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [key, setKey] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const [loading, setLoading] = useState(false);
 
+  if (templates.length === 0) {
+    return (
+      <p className="text-sm text-slate-500">
+        Aucun modèle disponible.{" "}
+        <Link href="/dashboard/templates" className="text-brand-600 hover:underline">
+          Créer un modèle
+        </Link>
+      </p>
+    );
+  }
+
   async function apply() {
-    if (!key) return;
+    if (!templateId) return;
     setLoading(true);
     try {
       const res = await api<{ created: number }>(
         `/api/events/${eventId}/apply-template`,
-        { body: { templateKey: key } },
+        { body: { templateId } },
       );
       toast(`${res.created} tâche(s) ajoutée(s) depuis le modèle.`);
-      setKey("");
+      setTemplateId("");
       router.refresh();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -41,20 +53,20 @@ export function ApplyTemplate({
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
       <Select
-        value={key}
-        onChange={(e) => setKey(e.target.value)}
+        value={templateId}
+        onChange={(e) => setTemplateId(e.target.value)}
         className="sm:max-w-xs"
       >
         <option value="">Partir d'un modèle…</option>
         {templates.map((t) => (
-          <option key={t.key} value={t.key}>
-            {t.label} ({t.count} tâches)
+          <option key={t.id} value={t.id}>
+            {t.name} ({t.count} tâches)
           </option>
         ))}
       </Select>
       <Button
         onClick={apply}
-        disabled={!key}
+        disabled={!templateId}
         loading={loading}
         icon={ListPlus}
         variant="outline"

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
+  checklistTemplates,
   events,
   taskAssignees,
   tasks,
@@ -103,6 +104,14 @@ export async function getOpenTasks() {
       assignees: { with: { user: true } },
     },
   });
+}
+
+/** Modèles de check-list (éditables). */
+export async function getChecklistTemplates() {
+  return db
+    .select()
+    .from(checklistTemplates)
+    .orderBy(asc(checklistTemplates.name));
 }
 
 /** Liste des membres (sans le hash de mot de passe). */

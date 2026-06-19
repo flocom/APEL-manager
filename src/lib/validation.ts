@@ -80,6 +80,21 @@ export const signupSchema = z.object({
   phone: z.string().trim().max(40).optional(),
 });
 
+export const templateTaskSchema = z.object({
+  title: z.string().trim().min(1, "Intitulé requis").max(200),
+  leadTimeDays: z.coerce.number().int().min(0, "Doit être positif").max(365),
+  description: z.string().max(2000).optional(),
+});
+
+export const templateSchema = z.object({
+  name: z.string().trim().min(2, "Nom trop court").max(120),
+  description: z.string().max(1000).optional(),
+  tasks: z
+    .array(templateTaskSchema)
+    .min(1, "Au moins une tâche")
+    .max(100, "Trop de tâches (100 max)"),
+});
+
 export const memberUpdateSchema = z.object({
   role: z.enum(["admin", "manager", "member"]).optional(),
   telegramChatId: z.string().trim().max(60).nullable().optional(),

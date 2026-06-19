@@ -1,8 +1,11 @@
 /**
- * Modèles de check-list prêts à l'emploi pour les événements récurrents d'une
- * APEL. Appliquer un modèle crée d'un coup toutes ses tâches (avec leur délai
- * « X jours avant l'événement »).
+ * Modèles de check-list par défaut, utilisés pour amorcer la base la première
+ * fois (bouton « Importer les modèles par défaut »). Une fois importés, les
+ * modèles sont stockés en base et entièrement modifiables depuis le tableau de
+ * bord (Modèles).
  */
+
+import { emptyToNull } from "@/lib/utils";
 
 export interface TemplateTask {
   title: string;
@@ -10,17 +13,27 @@ export interface TemplateTask {
   description?: string;
 }
 
-export interface ChecklistTemplate {
-  key: string;
-  label: string;
+/** Normalise les tâches d'un modèle (retire les descriptions vides). */
+export function normalizeTemplateTasks(
+  tasks: { title: string; leadTimeDays: number; description?: string }[],
+): TemplateTask[] {
+  return tasks.map((t) => {
+    const description = emptyToNull(t.description ?? null);
+    return description
+      ? { title: t.title, leadTimeDays: t.leadTimeDays, description }
+      : { title: t.title, leadTimeDays: t.leadTimeDays };
+  });
+}
+
+export interface DefaultTemplate {
+  name: string;
   description: string;
   tasks: TemplateTask[];
 }
 
-export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
+export const DEFAULT_TEMPLATES: DefaultTemplate[] = [
   {
-    key: "vide-grenier",
-    label: "Vide-grenier",
+    name: "Vide-grenier",
     description: "Organisation d'un vide-grenier / brocante.",
     tasks: [
       { title: "Déclarer la manifestation en mairie", leadTimeDays: 45 },
@@ -35,8 +48,7 @@ export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
     ],
   },
   {
-    key: "kermesse",
-    label: "Kermesse",
+    name: "Kermesse",
     description: "Kermesse de fin d'année avec stands et spectacle.",
     tasks: [
       { title: "Définir le thème et les stands", leadTimeDays: 60 },
@@ -51,8 +63,7 @@ export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
     ],
   },
   {
-    key: "pere-noel",
-    label: "Journée du Père Noël",
+    name: "Journée du Père Noël",
     description: "Venue du Père Noël, goûter et photos.",
     tasks: [
       { title: "Réserver le Père Noël (costume / intervenant)", leadTimeDays: 40 },
@@ -65,8 +76,7 @@ export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
     ],
   },
   {
-    key: "vente",
-    label: "Vente (pizzas, gâteaux…)",
+    name: "Vente (pizzas, gâteaux…)",
     description: "Vente de produits au profit de l'école.",
     tasks: [
       { title: "Choisir le fournisseur et les produits", leadTimeDays: 30 },
@@ -79,8 +89,7 @@ export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
     ],
   },
   {
-    key: "loto",
-    label: "Loto",
+    name: "Loto",
     description: "Soirée loto avec lots et restauration.",
     tasks: [
       { title: "Réserver la salle", leadTimeDays: 60 },
@@ -93,7 +102,3 @@ export const CHECKLIST_TEMPLATES: ChecklistTemplate[] = [
     ],
   },
 ];
-
-export function getTemplate(key: string): ChecklistTemplate | undefined {
-  return CHECKLIST_TEMPLATES.find((t) => t.key === key);
-}

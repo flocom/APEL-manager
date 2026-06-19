@@ -16,10 +16,13 @@ import { SlotManager } from "@/components/slot-manager";
 import { TaskManager } from "@/components/task-manager";
 import { Badge, buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
-import { getAllMembers, getEventWithDetails } from "@/lib/data";
+import {
+  getAllMembers,
+  getChecklistTemplates,
+  getEventWithDetails,
+} from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
-import { CHECKLIST_TEMPLATES } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +45,10 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const canManage = canManageEvents(user);
-  const members = await getAllMembers();
+  const [members, templates] = await Promise.all([
+    getAllMembers(),
+    canManage ? getChecklistTemplates() : Promise.resolve([]),
+  ]);
   const memberOptions = members.map((m) => ({ id: m.id, name: m.name }));
   const baseUrl = await getBaseUrl();
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
@@ -145,9 +151,9 @@ export default async function EventDetailPage({
           </p>
           <ApplyTemplate
             eventId={event.id}
-            templates={CHECKLIST_TEMPLATES.map((t) => ({
-              key: t.key,
-              label: t.label,
+            templates={templates.map((t) => ({
+              id: t.id,
+              name: t.name,
               count: t.tasks.length,
             }))}
           />
