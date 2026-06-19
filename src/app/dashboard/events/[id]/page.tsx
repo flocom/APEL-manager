@@ -1,7 +1,15 @@
+import {
+  ArrowLeft,
+  CalendarPlus,
+  Download,
+  MapPin,
+  Pencil,
+} from "lucide-react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
+import { ApplyTemplate } from "@/components/apply-template";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { ShareLink } from "@/components/share-link";
 import { SlotManager } from "@/components/slot-manager";
@@ -11,6 +19,7 @@ import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getAllMembers, getEventWithDetails } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
+import { CHECKLIST_TEMPLATES } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +46,10 @@ export default async function EventDetailPage({
   const memberOptions = members.map((m) => ({ id: m.id, name: m.name }));
   const baseUrl = await getBaseUrl();
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
+  const totalSignups = event.volunteerSlots.reduce(
+    (sum, s) => sum + s.signups.length,
+    0,
+  );
 
   const tasks = event.tasks.map((t) => ({
     id: t.id,
@@ -66,9 +79,10 @@ export default async function EventDetailPage({
     <div className="space-y-6">
       <Link
         href="/dashboard/events"
-        className="text-sm text-brand-600 hover:underline"
+        className="inline-flex items-center gap-1 text-sm text-brand-600 hover:underline"
       >
-        ← Retour aux événements
+        <ArrowLeft className="h-4 w-4" />
+        Retour aux événements
       </Link>
 
       <Card className="p-6">
@@ -85,20 +99,33 @@ export default async function EventDetailPage({
               {event.endAt ? ` → ${formatDateTime(event.endAt)}` : ""}
             </p>
             {event.location && (
-              <p className="text-sm text-slate-500">📍 {event.location}</p>
+              <p className="flex items-center gap-1.5 text-sm text-slate-500">
+                <MapPin className="h-4 w-4" />
+                {event.location}
+              </p>
             )}
           </div>
-          {canManage && (
-            <div className="flex gap-2">
-              <Link
-                href={`/dashboard/events/${event.id}/edit`}
-                className={buttonClasses("outline", "sm")}
-              >
-                Modifier
-              </Link>
-              <EventDeleteButton eventId={event.id} />
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/api/events/${event.id}/ics`}
+              className={buttonClasses("outline", "sm")}
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Agenda (.ics)
+            </a>
+            {canManage && (
+              <>
+                <Link
+                  href={`/dashboard/events/${event.id}/edit`}
+                  className={buttonClasses("outline", "sm")}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Modifier
+                </Link>
+                <EventDeleteButton eventId={event.id} />
+              </>
+            )}
+          </div>
         </div>
         {event.description && (
           <p className="mt-4 whitespace-pre-line text-sm text-slate-600">
@@ -106,6 +133,26 @@ export default async function EventDetailPage({
           </p>
         )}
       </Card>
+
+      {canManage && event.tasks.length === 0 && (
+        <Card className="p-6">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Démarrer avec un modèle de check-list
+          </h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Générez automatiquement les tâches habituelles pour ce type
+            d'événement (vous pourrez les ajuster ensuite).
+          </p>
+          <ApplyTemplate
+            eventId={event.id}
+            templates={CHECKLIST_TEMPLATES.map((t) => ({
+              key: t.key,
+              label: t.label,
+              count: t.tasks.length,
+            }))}
+          />
+        </Card>
+      )}
 
       <Card className="p-6">
         <h2 className="text-sm font-semibold text-slate-900">
@@ -129,6 +176,17 @@ export default async function EventDetailPage({
       </Card>
 
       <Card className="p-6">
+        {canManage && totalSignups > 0 && (
+          <div className="mb-4 flex justify-end">
+            <a
+              href={`/api/events/${event.id}/signups`}
+              className={buttonClasses("outline", "sm")}
+            >
+              <Download className="h-4 w-4" />
+              Exporter les bénévoles (CSV)
+            </a>
+          </div>
+        )}
         <SlotManager eventId={event.id} slots={slots} canManage={canManage} />
       </Card>
     </div>

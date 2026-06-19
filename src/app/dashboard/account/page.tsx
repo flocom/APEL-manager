@@ -1,5 +1,7 @@
+import { Settings } from "lucide-react";
+
 import { AccountForm } from "@/components/account-form";
-import { Card } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireUser } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +11,11 @@ export default async function AccountPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Mon compte</h1>
-        <p className="text-slate-500">Vos informations et préférences de notification.</p>
-      </div>
+      <PageHeader
+        title="Mon compte"
+        description="Vos informations et préférences de notification."
+        icon={Settings}
+      />
 
       <Card className="p-6">
         <dl className="mb-6 grid grid-cols-2 gap-4 border-b border-slate-100 pb-6 text-sm">

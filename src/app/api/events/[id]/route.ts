@@ -1,10 +1,9 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
-import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { events, tasks } from "@/lib/db/schema";
+import { events } from "@/lib/db/schema";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
 
@@ -38,20 +37,15 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (!updated) throw new HttpError(404, "Événement introuvable.");
 
-    // Si la date de début change, on recalcule l'échéance des tâches liées, avec
-    // la même arithmétique (24h fixes) que la création/édition d'une tâche.
+    // Si la date de début change, on recalcule l'échéance des tâches liées en
+    // une seule requête. `interval '24 hours'` (et non '1 day') donne 24h fixes,
+    // indépendantes du changement d'heure — cohérent avec computeDueAt() en JS.
     if (data.startAt !== undefined) {
-      const start = data.startAt;
-      const eventTasks = await db
-        .select({ id: tasks.id, leadTimeDays: tasks.leadTimeDays })
-        .from(tasks)
-        .where(eq(tasks.eventId, id));
-      for (const t of eventTasks) {
-        await db
-          .update(tasks)
-          .set({ dueAt: computeDueAt(start, t.leadTimeDays) })
-          .where(eq(tasks.id, t.id));
-      }
+      await db.execute(
+        sql`update tasks
+            set due_at = ${data.startAt}::timestamptz - (lead_time_days * interval '24 hours')
+            where event_id = ${id}`,
+      );
     }
 
     return NextResponse.json({ ok: true });

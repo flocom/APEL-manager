@@ -1,3 +1,4 @@
+import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 
 import { buttonClasses } from "@/components/ui";
@@ -7,10 +8,10 @@ export async function SiteHeader() {
   const user = await getCurrentUser();
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 font-bold text-white shadow-sm">
             A
           </span>
           APEL Manager
@@ -18,11 +19,15 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-3 text-sm">
           {user ? (
             <Link href="/dashboard" className={buttonClasses("primary", "sm")}>
+              <LayoutDashboard className="h-4 w-4" />
               Mon espace
             </Link>
           ) : (
             <>
-              <Link href="/login" className="font-medium text-slate-600 hover:text-slate-900">
+              <Link
+                href="/login"
+                className="font-medium text-slate-600 transition-colors hover:text-slate-900"
+              >
                 Connexion
               </Link>
               <Link href="/register" className={buttonClasses("primary", "sm")}>

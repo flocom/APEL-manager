@@ -1,4 +1,7 @@
+import { Users } from "lucide-react";
+
 import { MembersTable } from "@/components/members-table";
+import { PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireRole } from "@/lib/auth/rbac";
 import { getAllMembers } from "@/lib/data";
 
@@ -18,12 +21,11 @@ export default async function MembersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Membres</h1>
-        <p className="text-slate-500">
-          Gérez les comptes et leurs niveaux de droits.
-        </p>
-      </div>
+      <PageHeader
+        title="Membres"
+        description="Gérez les comptes et leurs niveaux de droits."
+        icon={Users}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
         <p className="font-medium text-slate-700">Niveaux de droits</p>

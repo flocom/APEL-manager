@@ -1,7 +1,8 @@
+import { ListChecks } from "lucide-react";
 import Link from "next/link";
 
 import { TaskStatusSelect } from "@/components/task-status-select";
-import { Card } from "@/components/ui";
+import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth/rbac";
 import { getTasksForUser, type UserTask } from "@/lib/data";
 import { formatDateTime, isOverdue } from "@/lib/dates";
@@ -45,17 +46,18 @@ export default async function TasksPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Mes tâches</h1>
-        <p className="text-slate-500">
-          Les tâches qui vous ont été attribuées, par échéance.
-        </p>
-      </div>
+      <PageHeader
+        title="Mes tâches"
+        description="Les tâches qui vous ont été attribuées, par échéance."
+        icon={ListChecks}
+      />
 
       {tasks.length === 0 && (
-        <Card className="p-6 text-sm text-slate-500">
-          Aucune tâche ne vous est assignée pour le moment.
-        </Card>
+        <EmptyState
+          icon={ListChecks}
+          title="Aucune tâche assignée"
+          description="Les tâches qui vous seront attribuées apparaîtront ici."
+        />
       )}
 
       {overdue.length > 0 && (

@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Button, Input, Label } from "@/components/ui";
+import { useToast } from "@/components/toast";
+import { Button, Field, Input } from "@/components/ui";
 import { api } from "@/lib/client";
 
 export function AccountForm({
@@ -14,15 +15,12 @@ export function AccountForm({
   telegramChatId: string | null;
 }) {
   const router = useRouter();
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
-    "idle",
-  );
-  const [message, setMessage] = useState<string | null>(null);
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setStatus("saving");
-    setMessage(null);
+    setLoading(true);
     const form = new FormData(e.currentTarget);
     try {
       await api("/api/me", {
@@ -32,48 +30,35 @@ export function AccountForm({
           telegramChatId: form.get("telegramChatId"),
         },
       });
-      setStatus("saved");
+      toast("Modifications enregistrées.");
       router.refresh();
-      setTimeout(() => setStatus("idle"), 2000);
     } catch (err) {
-      setStatus("error");
-      setMessage((err as Error).message);
+      toast((err as Error).message, "error");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      {status === "error" && message && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {message}
-        </p>
-      )}
-      <div>
-        <Label htmlFor="name">Nom complet</Label>
+      <Field label="Nom complet" htmlFor="name">
         <Input id="name" name="name" defaultValue={name} required minLength={2} />
-      </div>
-      <div>
-        <Label htmlFor="telegramChatId">Chat ID Telegram (facultatif)</Label>
+      </Field>
+      <Field
+        label="Chat ID Telegram (facultatif)"
+        htmlFor="telegramChatId"
+        hint="Pour recevoir les rappels par Telegram : ouvrez une conversation avec le bot de l'association, puis indiquez votre Chat ID (obtenu via le bot @userinfobot)."
+      >
         <Input
           id="telegramChatId"
           name="telegramChatId"
           defaultValue={telegramChatId ?? ""}
           placeholder="Ex. 123456789"
         />
-        <p className="mt-1 text-xs text-slate-400">
-          Pour recevoir les rappels par Telegram : ouvrez une conversation avec
-          le bot de l'association, puis indiquez votre Chat ID (obtenu via le bot
-          @userinfobot).
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={status === "saving"}>
-          {status === "saving" ? "Enregistrement…" : "Enregistrer"}
-        </Button>
-        {status === "saved" && (
-          <span className="text-sm text-green-600">Enregistré ✓</span>
-        )}
-      </div>
+      </Field>
+      <Button type="submit" loading={loading}>
+        Enregistrer
+      </Button>
     </form>
   );
 }
