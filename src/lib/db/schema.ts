@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -62,25 +63,34 @@ export const events = pgTable("events", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => ({
+  statusStartIdx: index("events_status_start_idx").on(t.status, t.startAt),
+}));
 
-export const tasks = pgTable("tasks", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  eventId: uuid("event_id")
-    .notNull()
-    .references(() => events.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  /** Délai : la tâche doit être gérée X jours avant le début de l'événement. */
-  leadTimeDays: integer("lead_time_days").notNull().default(7),
-  /** Échéance calculée = start_at - lead_time_days. Stockée pour les requêtes. */
-  dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-  status: taskStatusEnum("status").notNull().default("todo"),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    /** Délai : la tâche doit être gérée X jours avant le début de l'événement. */
+    leadTimeDays: integer("lead_time_days").notNull().default(7),
+    /** Échéance calculée = start_at - lead_time_days. Stockée pour les requêtes. */
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    status: taskStatusEnum("status").notNull().default("todo"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    eventIdx: index("tasks_event_idx").on(t.eventId),
+    statusDueIdx: index("tasks_status_due_idx").on(t.status, t.dueAt),
+  }),
+);
 
 export const taskAssignees = pgTable(
   "task_assignees",
@@ -94,39 +104,53 @@ export const taskAssignees = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.taskId, t.userId] }),
+    userIdx: index("task_assignees_user_idx").on(t.userId),
   }),
 );
 
-export const volunteerSlots = pgTable("volunteer_slots", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  eventId: uuid("event_id")
-    .notNull()
-    .references(() => events.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  startAt: timestamp("start_at", { withTimezone: true }),
-  endAt: timestamp("end_at", { withTimezone: true }),
-  /** Nombre de bénévoles recherchés pour ce créneau. */
-  capacity: integer("capacity").notNull().default(1),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const volunteerSlots = pgTable(
+  "volunteer_slots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    startAt: timestamp("start_at", { withTimezone: true }),
+    endAt: timestamp("end_at", { withTimezone: true }),
+    /** Nombre de bénévoles recherchés pour ce créneau. */
+    capacity: integer("capacity").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    eventIdx: index("volunteer_slots_event_idx").on(t.eventId),
+  }),
+);
 
-export const volunteerSignups = pgTable("volunteer_signups", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  slotId: uuid("slot_id")
-    .notNull()
-    .references(() => volunteerSlots.id, { onDelete: "cascade" }),
-  /** Renseigné si le bénévole est un membre connecté, sinon null (inscription publique). */
-  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-  name: text("name").notNull(),
-  email: text("email"),
-  phone: text("phone"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const volunteerSignups = pgTable(
+  "volunteer_signups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slotId: uuid("slot_id")
+      .notNull()
+      .references(() => volunteerSlots.id, { onDelete: "cascade" }),
+    /** Renseigné si le bénévole est un membre connecté, sinon null (inscription publique). */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    slotIdx: index("volunteer_signups_slot_idx").on(t.slotId),
+    userIdx: index("volunteer_signups_user_idx").on(t.userId),
+  }),
+);
 
 /** Journal des notifications envoyées : évite les doublons (un rappel par tâche/membre/type). */
 export const notificationsLog = pgTable(

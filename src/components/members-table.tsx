@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useToast } from "@/components/toast";
 import { Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -27,17 +28,17 @@ export function MembersTable({
   currentUserId: string;
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function changeRole(id: string, role: Role) {
-    setError(null);
     setBusyId(id);
     try {
       await api(`/api/members/${id}`, { method: "PATCH", body: { role } });
+      toast(`Rôle mis à jour : ${ROLE_LABELS[role]}.`);
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      toast((err as Error).message, "error");
     } finally {
       setBusyId(null);
     }
@@ -45,13 +46,13 @@ export function MembersTable({
 
   async function remove(id: string, name: string) {
     if (!confirm(`Supprimer le compte de ${name} ?`)) return;
-    setError(null);
     setBusyId(id);
     try {
       await api(`/api/members/${id}`, { method: "DELETE" });
+      toast(`Compte de ${name} supprimé.`);
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      toast((err as Error).message, "error");
     } finally {
       setBusyId(null);
     }
@@ -59,11 +60,6 @@ export function MembersTable({
 
   return (
     <div className="space-y-3">
-      {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">

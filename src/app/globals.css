@@ -6,8 +6,22 @@
   color-scheme: light;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
   padding: 0;
   margin: 0;
+}
+
+::selection {
+  background-color: theme("colors.brand.200");
+}
+
+/* Champs date/heure plus discrets */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
 }

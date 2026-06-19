@@ -1,6 +1,13 @@
+import { CalendarDays, MapPin, PartyPopper, Plus } from "lucide-react";
 import Link from "next/link";
 
-import { Badge, buttonClasses, Card } from "@/components/ui";
+import {
+  Badge,
+  buttonClasses,
+  Card,
+  EmptyState,
+  PageHeader,
+} from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getAllEvents } from "@/lib/data";
 import { formatDateTime, isOverdue } from "@/lib/dates";
@@ -23,27 +30,33 @@ export default async function EventsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Événements</h1>
-          <p className="text-slate-500">Gérez l'agenda de l'APEL.</p>
-        </div>
+      <PageHeader
+        title="Événements"
+        description="Gérez l'agenda de l'APEL."
+        icon={PartyPopper}
+      >
         {canManage && (
           <Link href="/dashboard/events/new" className={buttonClasses()}>
-            + Nouvel événement
+            <Plus className="h-4 w-4" />
+            Nouvel événement
           </Link>
         )}
-      </div>
+      </PageHeader>
 
       {events.length === 0 ? (
-        <Card className="p-8 text-center text-slate-500">
-          Aucun événement.{" "}
-          {canManage && (
-            <Link href="/dashboard/events/new" className="text-brand-600 hover:underline">
-              Créer le premier
-            </Link>
-          )}
-        </Card>
+        <EmptyState
+          icon={PartyPopper}
+          title="Aucun événement"
+          description="Créez votre premier événement pour commencer à l'organiser."
+          action={
+            canManage ? (
+              <Link href="/dashboard/events/new" className={buttonClasses("primary", "sm")}>
+                <Plus className="h-4 w-4" />
+                Nouvel événement
+              </Link>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           <Section title="À venir" events={upcoming} emptyLabel="Aucun événement à venir." />
@@ -89,11 +102,15 @@ function Section({
                       {EVENT_STATUS_LABELS[event.status]}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-sm text-brand-700">
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-brand-700">
+                    <CalendarDays className="h-4 w-4" />
                     {formatDateTime(event.startAt)}
                   </p>
                   {event.location && (
-                    <p className="text-sm text-slate-500">📍 {event.location}</p>
+                    <p className="flex items-center gap-1.5 text-sm text-slate-500">
+                      <MapPin className="h-4 w-4" />
+                      {event.location}
+                    </p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <Badge color="slate">

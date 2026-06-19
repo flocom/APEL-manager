@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq, lte, ne } from "drizzle-orm";
+import { and, inArray, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
@@ -50,67 +50,81 @@ export async function GET(req: Request) {
     },
   });
 
-  let sent = 0;
-  let skipped = 0;
-  let failed = 0;
-
+  // 1) Construire la liste des notifications candidates (tâche × membre).
+  type Candidate = {
+    task: (typeof dueTasks)[number];
+    user: NonNullable<(typeof dueTasks)[number]["assignees"][number]["user"]>;
+    kind: NotifyKind;
+  };
+  const candidates: Candidate[] = [];
   for (const task of dueTasks) {
     const kind: NotifyKind = task.dueAt < now ? "overdue" : "reminder";
-
     for (const { user } of task.assignees) {
-      if (!user) continue;
+      if (user) candidates.push({ task, user, kind });
+    }
+  }
 
-      // Déjà notifié pour cette tâche / ce membre / ce type ? On saute.
-      const [already] = await db
-        .select({ id: notificationsLog.id })
+  // 2) Récupérer en UNE requête les notifications déjà envoyées (anti-doublon).
+  const taskIds = [...new Set(dueTasks.map((t) => t.id))];
+  const existing = taskIds.length
+    ? await db
+        .select({
+          taskId: notificationsLog.taskId,
+          userId: notificationsLog.userId,
+          kind: notificationsLog.kind,
+        })
         .from(notificationsLog)
-        .where(
-          and(
-            eq(notificationsLog.taskId, task.id),
-            eq(notificationsLog.userId, user.id),
-            eq(notificationsLog.kind, kind),
-          ),
-        )
-        .limit(1);
+        .where(inArray(notificationsLog.taskId, taskIds))
+    : [];
+  const alreadySent = new Set(
+    existing.map((e) => `${e.taskId}:${e.userId}:${e.kind}`),
+  );
 
-      if (already) {
-        skipped++;
-        continue;
-      }
+  const todo = candidates.filter(
+    (c) => !alreadySent.has(`${c.task.id}:${c.user.id}:${c.kind}`),
+  );
+  const skipped = candidates.length - todo.length;
 
+  // 3) Envoyer tous les rappels en parallèle.
+  const results = await Promise.all(
+    todo.map(async (c) => {
       const ok = await notifyTaskDue({
         user: {
-          name: user.name,
-          email: user.email,
-          telegramChatId: user.telegramChatId,
+          name: c.user.name,
+          email: c.user.email,
+          telegramChatId: c.user.telegramChatId,
         },
-        taskTitle: task.title,
-        eventTitle: task.event.title,
-        dueAt: task.dueAt,
-        kind,
+        taskTitle: c.task.title,
+        eventTitle: c.task.event.title,
+        dueAt: c.task.dueAt,
+        kind: c.kind,
         appUrl,
       });
+      return { c, ok };
+    }),
+  );
 
-      // On ne journalise (et donc ne « consomme » le rappel) qu'en cas de
-      // succès : si aucun canal n'est configuré ou en cas d'échec transitoire,
-      // la tâche sera retentée à la prochaine exécution.
-      if (ok) {
-        await db
-          .insert(notificationsLog)
-          .values({ taskId: task.id, userId: user.id, kind })
-          .onConflictDoNothing();
-        sent++;
-      } else {
-        failed++;
-      }
-    }
+  // 4) Journaliser en un seul insert ceux qui ont réussi (les échecs seront
+  //    réessayés au prochain passage).
+  const succeeded = results.filter((r) => r.ok).map((r) => r.c);
+  if (succeeded.length > 0) {
+    await db
+      .insert(notificationsLog)
+      .values(
+        succeeded.map((c) => ({
+          taskId: c.task.id,
+          userId: c.user.id,
+          kind: c.kind,
+        })),
+      )
+      .onConflictDoNothing();
   }
 
   return NextResponse.json({
     ok: true,
     checkedTasks: dueTasks.length,
-    sent,
+    sent: succeeded.length,
     skipped,
-    failed,
+    failed: results.length - succeeded.length,
   });
 }

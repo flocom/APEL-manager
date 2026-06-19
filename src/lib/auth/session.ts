@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { db } from "@/lib/db";
 import { users, type User } from "@/lib/db/schema";
@@ -47,8 +48,11 @@ export async function destroySession(): Promise<void> {
 /**
  * Lit le cookie de session, vérifie le JWT, puis recharge l'utilisateur depuis
  * la base (pour que les changements de rôle prennent effet immédiatement).
+ *
+ * Mémoïsé par `cache()` : plusieurs appels pendant le rendu d'une même requête
+ * (layout + page, gardes…) ne déclenchent qu'une seule requête SQL.
  */
-export async function getCurrentUser(): Promise<SafeUser | null> {
+export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
@@ -73,4 +77,4 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
 
   const { passwordHash: _passwordHash, ...safe } = user;
   return safe;
-}
+});

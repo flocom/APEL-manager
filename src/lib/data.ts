@@ -6,6 +6,7 @@ import {
   taskAssignees,
   tasks,
   users,
+  volunteerSignups,
   volunteerSlots,
 } from "@/lib/db/schema";
 
@@ -83,6 +84,15 @@ export async function getTasksForUser(userId: string) {
     .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
 }
 
+/** Inscriptions bénévoles d'un membre, avec le créneau et l'événement. */
+export async function getSignupsForUser(userId: string) {
+  return db.query.volunteerSignups.findMany({
+    where: eq(volunteerSignups.userId, userId),
+    orderBy: [desc(volunteerSignups.createdAt)],
+    with: { slot: { with: { event: true } } },
+  });
+}
+
 /** Toutes les tâches non terminées (vue organisateur). */
 export async function getOpenTasks() {
   return db.query.tasks.findMany({
@@ -118,3 +128,4 @@ export type EventPublic = NonNullable<
 >;
 export type UserTask = Awaited<ReturnType<typeof getTasksForUser>>[number];
 export type MemberRow = Awaited<ReturnType<typeof getAllMembers>>[number];
+export type UserSignup = Awaited<ReturnType<typeof getSignupsForUser>>[number];
