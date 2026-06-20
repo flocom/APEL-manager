@@ -36,6 +36,13 @@
       "when": 1781956333880,
       "tag": "0004_session_epoch_dedup",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781972330753,
+      "tag": "0005_task_position",
+      "breakpoints": true
     }
   ]
 }

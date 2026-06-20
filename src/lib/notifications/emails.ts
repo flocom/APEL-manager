@@ -76,6 +76,25 @@ export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   };
 }
 
+export function broadcastEmail(ctx: {
+  subject: string;
+  message: string;
+  senderName?: string;
+}): EmailContent {
+  const paragraphs = ctx.message
+    .split(/\n{2,}/)
+    .map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return {
+    subject: ctx.subject,
+    html: layout(
+      esc(ctx.subject),
+      `${paragraphs}${ctx.senderName ? `<p style="color:#64748b;">— ${esc(ctx.senderName)}</p>` : ""}`,
+    ),
+    text: `${ctx.message}${ctx.senderName ? `\n\n— ${ctx.senderName}` : ""}`,
+  };
+}
+
 export function passwordResetEmail(ctx: {
   name: string;
   resetUrl: string;

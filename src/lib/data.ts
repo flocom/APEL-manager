@@ -50,7 +50,7 @@ export async function getEventWithDetails(id: string) {
     with: {
       creator: true,
       tasks: {
-        orderBy: [asc(tasks.dueAt)],
+        orderBy: [asc(tasks.position), asc(tasks.dueAt)],
         with: { assignees: { with: { user: true } } },
       },
       volunteerSlots: {

@@ -8,11 +8,18 @@ import { api } from "@/lib/client";
 import { toDatetimeLocal } from "@/lib/dates";
 import type { Event } from "@/lib/db/schema";
 
-export function EventForm({ event }: { event?: Event }) {
+export function EventForm({
+  event,
+  templates = [],
+}: {
+  event?: Event;
+  templates?: { id: string; name: string; count: number }[];
+}) {
   const router = useRouter();
   const editing = Boolean(event);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [templateId, setTemplateId] = useState("");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,6 +42,16 @@ export function EventForm({ event }: { event?: Event }) {
         router.push(`/dashboard/events/${event.id}`);
       } else {
         const res = await api<{ id: string }>("/api/events", { body });
+        // Modèle de check-list optionnel appliqué dès la création.
+        if (templateId) {
+          try {
+            await api(`/api/events/${res.id}/apply-template`, {
+              body: { templateId },
+            });
+          } catch {
+            // L'événement est créé ; l'échec du modèle ne doit pas bloquer.
+          }
+        }
         router.push(`/dashboard/events/${res.id}`);
       }
       router.refresh();
@@ -109,9 +126,29 @@ export function EventForm({ event }: { event?: Event }) {
           <option value="archived">Archivé</option>
         </Select>
       </div>
+      {!editing && templates.length > 0 && (
+        <div>
+          <Label htmlFor="templateId">Check-list de départ (facultatif)</Label>
+          <Select
+            id="templateId"
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value)}
+          >
+            <option value="">Aucune (je la créerai moi-même)</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.count} tâches)
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-slate-500">
+            Les tâches du modèle seront créées automatiquement.
+          </p>
+        </div>
+      )}
       <div className="flex gap-3 pt-2">
-        <Button type="submit" disabled={loading}>
-          {loading ? "Enregistrement…" : editing ? "Enregistrer" : "Créer l'événement"}
+        <Button type="submit" loading={loading}>
+          {editing ? "Enregistrer" : "Créer l'événement"}
         </Button>
         <Button
           type="button"

@@ -1,7 +1,8 @@
 import { Users } from "lucide-react";
 
+import { BroadcastForm } from "@/components/broadcast-form";
 import { MembersTable } from "@/components/members-table";
-import { PageHeader } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireRole } from "@/lib/auth/rbac";
 import { getAllMembers } from "@/lib/data";
 
@@ -44,6 +45,20 @@ export default async function MembersPage() {
           </li>
         </ul>
       </div>
+
+      <Card className="p-4">
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">
+          Contacter les membres
+        </h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Envoyer un e-mail à tous les membres de l'association.
+        </p>
+        <BroadcastForm
+          endpoint="/api/members/message"
+          title="Écrire à tous les membres"
+          hint="Cet e-mail sera envoyé à l'ensemble des comptes."
+        />
+      </Card>
 
       <MembersTable members={serialized} currentUserId={admin.id} />
     </div>
