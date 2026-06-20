@@ -85,6 +85,14 @@ export async function getTasksForUser(userId: string) {
     .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
 }
 
+/** Une inscription bénévole via son jeton d'annulation (lien public). */
+export async function getSignupByCancelToken(token: string) {
+  return db.query.volunteerSignups.findFirst({
+    where: eq(volunteerSignups.cancelToken, token),
+    with: { slot: { with: { event: true } } },
+  });
+}
+
 /** Inscriptions bénévoles d'un membre, avec le créneau et l'événement. */
 export async function getSignupsForUser(userId: string) {
   return db.query.volunteerSignups.findMany({

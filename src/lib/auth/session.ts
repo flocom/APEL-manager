@@ -23,8 +23,11 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export async function createSession(userId: string): Promise<void> {
-  const token = await new SignJWT({ sub: userId })
+export async function createSession(
+  userId: string,
+  sessionEpoch: number,
+): Promise<void> {
+  const token = await new SignJWT({ sub: userId, epoch: sessionEpoch })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -58,10 +61,12 @@ export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
   if (!token) return null;
 
   let userId: string;
+  let tokenEpoch = 0;
   try {
     const { payload } = await jwtVerify(token, getSecret());
     if (typeof payload.sub !== "string") return null;
     userId = payload.sub;
+    tokenEpoch = typeof payload.epoch === "number" ? payload.epoch : 0;
   } catch {
     return null;
   }
@@ -74,6 +79,9 @@ export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
 
   const user = rows[0];
   if (!user) return null;
+
+  // Session émise avant un changement de mot de passe → invalide.
+  if (tokenEpoch !== user.sessionEpoch) return null;
 
   const { passwordHash: _passwordHash, ...safe } = user;
   return safe;

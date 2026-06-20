@@ -78,6 +78,29 @@ export const signupSchema = z.object({
     .optional()
     .or(z.literal("")),
   phone: z.string().trim().max(40).optional(),
+  consent: z.boolean().refine((v) => v === true, {
+    message: "Vous devez accepter la politique de confidentialité.",
+  }),
+});
+
+export const forgotSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10, "Lien invalide"),
+  password: z
+    .string()
+    .min(8, "Le mot de passe doit faire au moins 8 caractères")
+    .max(200),
+});
+
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Mot de passe actuel requis"),
+  newPassword: z
+    .string()
+    .min(8, "Le nouveau mot de passe doit faire au moins 8 caractères")
+    .max(200),
 });
 
 export const templateTaskSchema = z.object({

@@ -1,6 +1,7 @@
 import { Settings } from "lucide-react";
 
 import { AccountForm } from "@/components/account-form";
+import { PasswordChangeForm } from "@/components/password-change-form";
 import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireUser } from "@/lib/auth/rbac";
 
@@ -29,6 +30,11 @@ export default async function AccountPage() {
           </div>
         </dl>
         <AccountForm name={user.name} telegramChatId={user.telegramChatId} />
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
+        <PasswordChangeForm />
       </Card>
     </div>
   );

@@ -43,6 +43,8 @@ export const users = pgTable("users", {
   role: roleEnum("role").notNull().default("member"),
   /** Identifiant de chat Telegram, pour recevoir les notifications. */
   telegramChatId: text("telegram_chat_id"),
+  /** Incrémenté à chaque changement de mot de passe pour invalider les sessions émises avant. */
+  sessionEpoch: integer("session_epoch").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -143,6 +145,10 @@ export const volunteerSignups = pgTable(
     name: text("name").notNull(),
     email: text("email"),
     phone: text("phone"),
+    /** Jeton de désinscription autonome (lien public dans l'e-mail de confirmation). */
+    cancelToken: text("cancel_token"),
+    /** Horodatage du rappel J-1 envoyé au bénévole (anti-doublon). */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -150,8 +156,29 @@ export const volunteerSignups = pgTable(
   (t) => ({
     slotIdx: index("volunteer_signups_slot_idx").on(t.slotId),
     userIdx: index("volunteer_signups_user_idx").on(t.userId),
+    cancelTokenIdx: uniqueIndex("volunteer_signups_cancel_token_idx").on(
+      t.cancelToken,
+    ),
+    // Anti-doublon : un même e-mail ne peut s'inscrire qu'une fois par créneau.
+    slotEmailIdx: uniqueIndex("volunteer_signups_slot_email_idx")
+      .on(t.slotId, sql`lower(${t.email})`)
+      .where(sql`${t.email} is not null`),
   }),
 );
+
+/** Jetons de réinitialisation de mot de passe (à usage unique, expirables). */
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 /** Journal des notifications envoyées : évite les doublons (un rappel par tâche/membre/type). */
 export const notificationsLog = pgTable(

@@ -74,7 +74,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
+        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
         className,
       )}
       {...props}
@@ -89,7 +89,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
+        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
         className,
       )}
       {...props}
@@ -104,7 +104,7 @@ export function Select({
   return (
     <select
       className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
+        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
         className,
       )}
       {...props}
@@ -147,7 +147,7 @@ export function Field({
       {error ? (
         <p className="mt-1 text-xs text-red-600">{error}</p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-slate-400">{hint}</p>
+        <p className="mt-1 text-xs text-slate-500">{hint}</p>
       ) : null}
     </div>
   );

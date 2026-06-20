@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
-import { RegisterForm } from "@/components/auth-forms";
+import { ForgotForm } from "@/components/auth-forms";
 import { Card } from "@/components/ui";
 import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
-import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function RegisterPage() {
-  const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
+export const metadata = { title: "Mot de passe oublié" };
 
+export default function ForgotPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
@@ -26,12 +23,13 @@ export default async function RegisterPage() {
         </Link>
         <Card className="p-6">
           <h1 className="mb-1 text-xl font-semibold text-slate-900">
-            Créer un compte
+            Mot de passe oublié
           </h1>
           <p className="mb-5 text-sm text-slate-500">
-            Le premier compte créé devient administrateur.
+            Entrez votre e-mail : nous vous enverrons un lien pour choisir un
+            nouveau mot de passe.
           </p>
-          <RegisterForm />
+          <ForgotForm />
         </Card>
       </div>
     </div>

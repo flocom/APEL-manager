@@ -1,11 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, inArray, lte, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
+import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { notificationsLog, tasks } from "@/lib/db/schema";
+import { notificationsLog, tasks, volunteerSignups } from "@/lib/db/schema";
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
+import { sendEmail } from "@/lib/notifications/email";
+import { volunteerReminderEmail } from "@/lib/notifications/emails";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,7 +40,7 @@ export async function GET(req: Request) {
 
   const windowDaysRaw = Number(process.env.REMINDER_WINDOW_DAYS ?? "3");
   const windowDays = Number.isFinite(windowDaysRaw) ? windowDaysRaw : 3;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
 
   const now = new Date();
   const horizon = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
@@ -120,11 +123,51 @@ export async function GET(req: Request) {
       .onConflictDoNothing();
   }
 
+  // --- Rappels aux bénévoles : événement publié dans <= 2 jours, e-mail fourni,
+  //     pas encore rappelé. ----------------------------------------------------
+  const volunteerHorizon = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+  // Sans URL publique configurée, les liens des e-mails seraient cassés : on saute.
+  const signups = appUrl
+    ? await db.query.volunteerSignups.findMany({
+        where: and(
+          isNull(volunteerSignups.remindedAt),
+          isNotNull(volunteerSignups.email),
+        ),
+        with: { slot: { with: { event: true } } },
+      })
+    : [];
+
+  let volunteerReminders = 0;
+  for (const s of signups) {
+    const ev = s.slot.event;
+    if (ev.status !== "published") continue;
+    if (ev.startAt <= now || ev.startAt > volunteerHorizon) continue;
+    if (!s.email) continue;
+
+    const mail = volunteerReminderEmail({
+      name: s.name,
+      eventTitle: ev.title,
+      eventDate: formatDateTime(ev.startAt),
+      slotTitle: s.slot.title,
+      location: ev.location,
+      cancelUrl: s.cancelToken ? `${appUrl}/annulation/${s.cancelToken}` : appUrl,
+    });
+    const ok = await sendEmail({ to: s.email, ...mail });
+    if (ok) {
+      await db
+        .update(volunteerSignups)
+        .set({ remindedAt: new Date() })
+        .where(eq(volunteerSignups.id, s.id));
+      volunteerReminders++;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     checkedTasks: dueTasks.length,
     sent: succeeded.length,
     skipped,
     failed: results.length - succeeded.length,
+    volunteerReminders,
   });
 }

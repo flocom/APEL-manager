@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 import { ToastProvider } from "@/components/toast";
+import { APP_NAME } from "@/lib/app-config";
 
 import "./globals.css";
 
@@ -11,13 +12,26 @@ const inter = Inter({
   display: "swap",
 });
 
+const description =
+  "Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'association de parents d'élèves.";
+
 export const metadata: Metadata = {
+  metadataBase: process.env.NEXT_PUBLIC_APP_URL
+    ? new URL(process.env.NEXT_PUBLIC_APP_URL)
+    : undefined,
   title: {
-    default: "APEL Manager",
-    template: "%s · APEL Manager",
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
   },
-  description:
-    "Gestion des événements, des tâches et des bénévoles de l'APEL.",
+  description,
+  openGraph: {
+    title: APP_NAME,
+    description,
+    siteName: APP_NAME,
+    type: "website",
+    locale: "fr_FR",
+  },
+  twitter: { card: "summary" },
 };
 
 export default function RootLayout({
