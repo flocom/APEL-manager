@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronUp, Hand } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -8,6 +9,7 @@ import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
 import { api } from "@/lib/client";
 import type { TaskStatus } from "@/lib/db/schema";
 import { formatShortDate, isOverdue } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 
 export interface TaskItemData {
   id: string;
@@ -148,6 +150,20 @@ export function TaskManager({
     router.refresh();
   }
 
+  async function move(index: number, dir: "up" | "down") {
+    const j = dir === "up" ? index - 1 : index + 1;
+    if (j < 0 || j >= tasks.length) return;
+    const ids = tasks.map((t) => t.id);
+    [ids[index], ids[j]] = [ids[j], ids[index]];
+    await api(`/api/events/${eventId}/tasks/reorder`, { body: { orderedIds: ids } });
+    router.refresh();
+  }
+
+  async function toggleSelf(taskId: string) {
+    await api(`/api/tasks/${taskId}/assign-me`);
+    router.refresh();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -234,14 +250,36 @@ export function TaskManager({
         </p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-          {tasks.map((task) => {
+          {tasks.map((task, index) => {
             const overdue = task.status !== "done" && isOverdue(task.dueAt);
             const isAssignee = task.assigneeIds.includes(currentUserId);
             const editing = editingId === task.id;
             return (
               <li key={task.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex items-start gap-3">
+                  {canManage && (
+                    <div className="flex shrink-0 flex-col text-slate-400">
+                      <button
+                        type="button"
+                        onClick={() => move(index, "up")}
+                        disabled={index === 0}
+                        aria-label="Monter la tâche"
+                        className="rounded p-0.5 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => move(index, "down")}
+                        disabled={index === tasks.length - 1}
+                        aria-label="Descendre la tâche"
+                        className="rounded p-0.5 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900">{task.title}</p>
                     {task.description && (
                       <p className="mt-0.5 text-sm text-slate-500">
@@ -256,7 +294,7 @@ export function TaskManager({
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {task.assigneeIds.length === 0 ? (
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-slate-500">
                           Personne assigné·e
                         </span>
                       ) : (
@@ -274,6 +312,19 @@ export function TaskManager({
                       status={task.status}
                       disabled={!canManage && !isAssignee}
                     />
+                    <button
+                      type="button"
+                      onClick={() => toggleSelf(task.id)}
+                      className={cn(
+                        "inline-flex items-center gap-1 text-xs font-medium",
+                        isAssignee
+                          ? "text-slate-500 hover:text-red-600"
+                          : "text-brand-600 hover:text-brand-700",
+                      )}
+                    >
+                      <Hand className="h-3 w-3" />
+                      {isAssignee ? "Me retirer" : "Je m'en charge"}
+                    </button>
                     {canManage && (
                       <div className="flex gap-2 text-xs">
                         <button
@@ -288,7 +339,7 @@ export function TaskManager({
                         <button
                           type="button"
                           onClick={() => deleteTask(task.id)}
-                          className="font-medium text-slate-400 hover:text-red-600"
+                          className="font-medium text-slate-500 hover:text-red-600"
                         >
                           Supprimer
                         </button>

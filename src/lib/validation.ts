@@ -118,6 +118,11 @@ export const templateSchema = z.object({
     .max(100, "Trop de tâches (100 max)"),
 });
 
+export const messageSchema = z.object({
+  subject: z.string().trim().min(2, "Objet requis").max(160),
+  message: z.string().trim().min(2, "Message requis").max(5000),
+});
+
 export const memberUpdateSchema = z.object({
   role: z.enum(["admin", "manager", "member"]).optional(),
   telegramChatId: z.string().trim().max(60).nullable().optional(),

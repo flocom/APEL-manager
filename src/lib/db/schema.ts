@@ -84,6 +84,8 @@ export const tasks = pgTable(
     /** Échéance calculée = start_at - lead_time_days. Stockée pour les requêtes. */
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     status: taskStatusEnum("status").notNull().default("todo"),
+    /** Ordre d'affichage dans la check-list (réordonnable). */
+    position: integer("position").notNull().default(0),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

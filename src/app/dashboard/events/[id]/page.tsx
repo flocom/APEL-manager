@@ -10,6 +10,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { ApplyTemplate } from "@/components/apply-template";
+import { BroadcastForm } from "@/components/broadcast-form";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { ShareLink } from "@/components/share-link";
 import { SlotManager } from "@/components/slot-manager";
@@ -183,14 +184,21 @@ export default async function EventDetailPage({
 
       <Card className="p-6">
         {canManage && totalSignups > 0 && (
-          <div className="mb-4 flex justify-end">
-            <a
-              href={`/api/events/${event.id}/signups`}
-              className={buttonClasses("outline", "sm")}
-            >
-              <Download className="h-4 w-4" />
-              Exporter les bénévoles (CSV)
-            </a>
+          <div className="mb-4 space-y-3">
+            <div className="flex justify-end">
+              <a
+                href={`/api/events/${event.id}/signups`}
+                className={buttonClasses("outline", "sm")}
+              >
+                <Download className="h-4 w-4" />
+                Exporter les bénévoles (CSV)
+              </a>
+            </div>
+            <BroadcastForm
+              endpoint={`/api/events/${event.id}/message`}
+              title="Écrire aux bénévoles"
+              hint="Envoyer un e-mail à tous les bénévoles inscrits (ayant laissé une adresse)."
+            />
           </div>
         )}
         <SlotManager eventId={event.id} slots={slots} canManage={canManage} />

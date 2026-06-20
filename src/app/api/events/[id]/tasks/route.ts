@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
@@ -25,6 +25,12 @@ export async function POST(req: Request, { params }: Params) {
     const data = taskSchema.parse(await req.json());
     const dueAt = computeDueAt(event.startAt, data.leadTimeDays);
 
+    // Nouvelle tâche ajoutée en fin de check-list.
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(eq(tasks.eventId, eventId));
+
     const [task] = await db
       .insert(tasks)
       .values({
@@ -33,6 +39,7 @@ export async function POST(req: Request, { params }: Params) {
         description: emptyToNull(data.description),
         leadTimeDays: data.leadTimeDays,
         dueAt,
+        position: count,
       })
       .returning({ id: tasks.id });
 
