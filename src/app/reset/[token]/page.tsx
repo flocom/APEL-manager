@@ -1,21 +1,19 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
-import { LoginForm } from "@/components/auth-forms";
+import { ResetForm } from "@/components/auth-forms";
 import { Card } from "@/components/ui";
 import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
-import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({
-  searchParams,
+export const metadata = { title: "Réinitialiser le mot de passe" };
+
+export default async function ResetPage({
+  params,
 }: {
-  searchParams: Promise<{ reset?: string }>;
+  params: Promise<{ token: string }>;
 }) {
-  const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
-  const { reset } = await searchParams;
+  const { token } = await params;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
@@ -30,17 +28,13 @@ export default async function LoginPage({
           {APP_NAME}
         </Link>
         <Card className="p-6">
-          <h1 className="mb-1 text-xl font-semibold text-slate-900">Connexion</h1>
+          <h1 className="mb-1 text-xl font-semibold text-slate-900">
+            Nouveau mot de passe
+          </h1>
           <p className="mb-5 text-sm text-slate-500">
-            Accédez à votre espace de gestion.
+            Choisissez un nouveau mot de passe pour votre compte.
           </p>
-          {reset === "1" && (
-            <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
-              Mot de passe réinitialisé. Connectez-vous avec votre nouveau mot de
-              passe.
-            </p>
-          )}
-          <LoginForm />
+          <ResetForm token={token} />
         </Card>
       </div>
     </div>

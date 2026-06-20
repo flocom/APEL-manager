@@ -49,7 +49,14 @@ export function LoginForm() {
         <Input id="email" name="email" type="email" required autoComplete="email" />
       </div>
       <div>
-        <Label htmlFor="password">Mot de passe</Label>
+        <div className="mb-1 flex items-center justify-between">
+          <Label htmlFor="password" className="mb-0">
+            Mot de passe
+          </Label>
+          <Link href="/forgot" className="text-xs font-medium text-brand-600 hover:underline">
+            Mot de passe oublié ?
+          </Link>
+        </div>
         <Input
           id="password"
           name="password"
@@ -58,8 +65,8 @@ export function LoginForm() {
           autoComplete="current-password"
         />
       </div>
-      <Button type="submit" disabled={loading} className="w-full">
-        {loading ? "Connexion…" : "Se connecter"}
+      <Button type="submit" loading={loading} className="w-full">
+        Se connecter
       </Button>
       <p className="text-center text-sm text-slate-500">
         Pas encore de compte ?{" "}
@@ -129,6 +136,98 @@ export function RegisterForm() {
           Se connecter
         </Link>
       </p>
+    </form>
+  );
+}
+
+export function ForgotForm() {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await api("/api/auth/forgot", { body: { email: form.get("email") } });
+      setSent(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+        Si un compte existe avec cette adresse, un e-mail de réinitialisation
+        vient d'être envoyé. Pensez à vérifier vos spams.
+      </p>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <ErrorMessage message={error} />
+      <div>
+        <Label htmlFor="email">Adresse e-mail</Label>
+        <Input id="email" name="email" type="email" required autoComplete="email" />
+      </div>
+      <Button type="submit" loading={loading} className="w-full">
+        Envoyer le lien
+      </Button>
+      <p className="text-center text-sm text-slate-500">
+        <Link href="/login" className="font-medium text-brand-600 hover:underline">
+          Retour à la connexion
+        </Link>
+      </p>
+    </form>
+  );
+}
+
+export function ResetForm({ token }: { token: string }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    try {
+      await api("/api/auth/reset", {
+        body: { token, password: form.get("password") },
+      });
+      router.push("/login?reset=1");
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <ErrorMessage message={error} />
+      <div>
+        <Label htmlFor="password">Nouveau mot de passe</Label>
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
+        <p className="mt-1 text-xs text-slate-500">8 caractères minimum.</p>
+      </div>
+      <Button type="submit" loading={loading} className="w-full">
+        Réinitialiser le mot de passe
+      </Button>
     </form>
   );
 }

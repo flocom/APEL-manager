@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       throw new HttpError(401, "Adresse e-mail ou mot de passe incorrect.");
     }
 
-    await createSession(user.id);
+    await createSession(user.id, user.sessionEpoch);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

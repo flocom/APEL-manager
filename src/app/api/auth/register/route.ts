@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       .values({ name, email, passwordHash, role })
       .returning({ id: users.id, role: users.role });
 
-    await createSession(created.id);
+    await createSession(created.id, 0);
     return NextResponse.json({ ok: true, role: created.role });
   } catch (error) {
     return handleApiError(error);

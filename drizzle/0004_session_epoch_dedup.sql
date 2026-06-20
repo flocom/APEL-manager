@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "session_epoch" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "volunteer_signups_slot_email_idx" ON "volunteer_signups" USING btree ("slot_id",lower("email")) WHERE "volunteer_signups"."email" is not null;

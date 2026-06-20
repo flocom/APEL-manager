@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CalendarDays, MapPin } from "lucide-react";
 import Link from "next/link";
 
@@ -12,6 +13,24 @@ import { getEventByShareToken } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const event = await getEventByShareToken(token);
+  if (!event) return { title: "Inscription bénévole" };
+  const desc = `${formatDateTime(event.startAt)}${
+    event.location ? ` · ${event.location}` : ""
+  } — proposez-vous comme bénévole.`;
+  return {
+    title: event.title,
+    description: desc,
+    openGraph: { title: event.title, description: desc, type: "website" },
+  };
+}
 
 export default async function InscriptionPage({
   params,

@@ -2,6 +2,7 @@ import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 
 import { buttonClasses } from "@/components/ui";
+import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 
 export async function SiteHeader() {
@@ -12,9 +13,9 @@ export async function SiteHeader() {
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 font-bold text-white shadow-sm">
-            A
+            {APP_INITIAL}
           </span>
-          APEL Manager
+          {APP_NAME}
         </Link>
         <nav className="flex items-center gap-3 text-sm">
           {user ? (

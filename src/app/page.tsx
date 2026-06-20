@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { SiteHeader } from "@/components/site-header";
 import { Badge, buttonClasses, Card, EmptyState } from "@/components/ui";
+import { APP_NAME } from "@/lib/app-config";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 
@@ -110,8 +111,11 @@ export default async function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-400">
-        APEL Manager — espace de gestion de l'association des parents d'élèves.
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
+        <p>{APP_NAME} — association de parents d'élèves.</p>
+        <Link href="/confidentialite" className="mt-1 inline-block hover:underline">
+          Politique de confidentialité
+        </Link>
       </footer>
     </div>
   );

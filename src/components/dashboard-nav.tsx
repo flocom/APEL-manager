@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
+import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { api } from "@/lib/client";
 import type { Role } from "@/lib/db/schema";
@@ -73,9 +74,9 @@ export function DashboardNav({
     <aside className="flex flex-col border-b border-slate-200 bg-white lg:h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
       <div className="flex items-center gap-2 px-5 py-4">
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 font-bold text-white shadow-sm">
-          A
+          {APP_INITIAL}
         </span>
-        <span className="text-lg font-semibold text-slate-900">APEL Manager</span>
+        <span className="text-lg font-semibold text-slate-900">{APP_NAME}</span>
       </div>
 
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-y-auto">

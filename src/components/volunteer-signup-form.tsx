@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Button, Input, Label, Select } from "@/components/ui";
@@ -63,6 +64,8 @@ export function VolunteerSignupForm({
           name: form.get("name"),
           email: form.get("email"),
           phone: form.get("phone"),
+          consent: form.get("consent") === "on",
+          website: form.get("website"), // honeypot
         },
       });
       setDone(true);
@@ -76,7 +79,7 @@ export function VolunteerSignupForm({
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       )}
@@ -95,20 +98,70 @@ export function VolunteerSignupForm({
       </div>
       <div>
         <Label htmlFor="name">Votre nom</Label>
-        <Input id="name" name="name" required defaultValue={defaultName} />
+        <Input
+          id="name"
+          name="name"
+          required
+          autoComplete="name"
+          defaultValue={defaultName}
+        />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor="email">E-mail (facultatif)</Label>
-          <Input id="email" name="email" type="email" defaultValue={defaultEmail} />
+          <Label htmlFor="email">E-mail</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            defaultValue={defaultEmail}
+          />
         </div>
         <div>
-          <Label htmlFor="phone">Téléphone (facultatif)</Label>
-          <Input id="phone" name="phone" type="tel" />
+          <Label htmlFor="phone">Téléphone</Label>
+          <Input
+            id="phone"
+            name="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+          />
         </div>
       </div>
-      <Button type="submit" disabled={loading} className="w-full">
-        {loading ? "Enregistrement…" : "Je m'inscris"}
+      <p className="text-xs text-slate-500">
+        Indiquez au moins un e-mail ou un téléphone. L'e-mail permet de recevoir
+        une confirmation et un rappel.
+      </p>
+
+      {/* Honeypot anti-bot : invisible pour les humains. */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="hidden"
+      />
+
+      <label className="flex items-start gap-2 text-xs text-slate-600">
+        <input
+          type="checkbox"
+          name="consent"
+          required
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        />
+        <span>
+          J'accepte que mes coordonnées soient utilisées par l'association pour
+          organiser cet événement.{" "}
+          <Link href="/confidentialite" className="text-brand-600 hover:underline" target="_blank">
+            En savoir plus
+          </Link>
+        </span>
+      </label>
+
+      <Button type="submit" loading={loading} className="w-full">
+        Je m'inscris
       </Button>
     </form>
   );
