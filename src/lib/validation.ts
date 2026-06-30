@@ -19,13 +19,17 @@ const localDateTime = z.string().min(1, "Date requise").transform((value, ctx) =
 /** Numéro de version pour le verrou optimiste (envoyé par le client à l'édition). */
 const optimisticVersion = z.coerce.number().int().nonnegative().optional();
 
+/** Règle commune de mot de passe (≥ 8 caractères). */
+const passwordField = (label = "Le mot de passe") =>
+  z
+    .string()
+    .min(8, `${label} doit faire au moins 8 caractères`)
+    .max(200);
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2, "Nom trop court").max(120),
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
-  password: z
-    .string()
-    .min(8, "Le mot de passe doit faire au moins 8 caractères")
-    .max(200),
+  password: passwordField(),
 });
 
 export const loginSchema = z.object({
@@ -94,18 +98,12 @@ export const forgotSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(10, "Lien invalide"),
-  password: z
-    .string()
-    .min(8, "Le mot de passe doit faire au moins 8 caractères")
-    .max(200),
+  password: passwordField(),
 });
 
 export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1, "Mot de passe actuel requis"),
-  newPassword: z
-    .string()
-    .min(8, "Le nouveau mot de passe doit faire au moins 8 caractères")
-    .max(200),
+  newPassword: passwordField("Le nouveau mot de passe"),
 });
 
 export const templateTaskSchema = z.object({

@@ -18,7 +18,7 @@ export async function PATCH(req: Request) {
     const user = await requireApiUser();
     const data = selfUpdateSchema.parse(await req.json());
 
-    const updates: Record<string, unknown> = {};
+    const updates: Partial<typeof users.$inferInsert> = {};
     if (data.name !== undefined) updates.name = data.name;
     if (data.telegramChatId !== undefined) {
       updates.telegramChatId = emptyToNull(data.telegramChatId);

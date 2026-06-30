@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
+import { NavigationProgress } from "@/components/navigation-progress";
 import { ToastProvider } from "@/components/toast";
-import { APP_NAME } from "@/lib/app-config";
+import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
 
 import "./globals.css";
 
@@ -12,8 +13,7 @@ const inter = Inter({
   display: "swap",
 });
 
-const description =
-  "Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'association de parents d'élèves.";
+const description = `Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'APEL de l'${SCHOOL_NAME}.`;
 
 export const metadata: Metadata = {
   metadataBase: process.env.NEXT_PUBLIC_APP_URL
@@ -41,7 +41,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={inter.variable}>
-      <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+      <body className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-sea-50/40 font-sans text-slate-900 antialiased">
+        <NavigationProgress />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

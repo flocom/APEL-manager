@@ -11,7 +11,17 @@ import type {
 
 import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "outline" | "danger" | "ghost";
+/** Style commun aux champs de saisie (input, textarea, select). */
+const fieldClasses =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500";
+
+type Variant =
+  | "primary"
+  | "accent"
+  | "secondary"
+  | "outline"
+  | "danger"
+  | "ghost";
 type Size = "sm" | "md";
 
 export function buttonClasses(
@@ -19,15 +29,19 @@ export function buttonClasses(
   size: Size = "md",
 ): string {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
   const sizes: Record<Size, string> = {
     sm: "px-3 py-1.5 text-sm",
     md: "px-4 py-2 text-sm",
   };
   const variants: Record<Variant, string> = {
-    primary: "bg-brand-600 text-white shadow-sm hover:bg-brand-700",
+    primary:
+      "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm hover:shadow-buoy hover:-translate-y-0.5",
+    accent:
+      "bg-gradient-to-b from-coral-400 to-coral-500 text-white shadow-sm hover:shadow-buoy hover:-translate-y-0.5",
     secondary: "bg-slate-800 text-white shadow-sm hover:bg-slate-900",
-    outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+    outline:
+      "border border-slate-300 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/60",
     danger: "bg-red-600 text-white shadow-sm hover:bg-red-700",
     ghost: "text-slate-600 hover:bg-slate-100",
   };
@@ -72,13 +86,7 @@ export function Input({
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <input
-      className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
-        className,
-      )}
-      {...props}
-    />
+    <input className={cn(fieldClasses, className)} {...props} />
   );
 }
 
@@ -87,13 +95,7 @@ export function Textarea({
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <textarea
-      className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
-        className,
-      )}
-      {...props}
-    />
+    <textarea className={cn(fieldClasses, className)} {...props} />
   );
 }
 
@@ -102,13 +104,7 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className={cn(
-        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500",
-        className,
-      )}
-      {...props}
-    />
+    <select className={cn(fieldClasses, className)} {...props} />
   );
 }
 
@@ -160,7 +156,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-slate-200 bg-white shadow-sm",
+        "rounded-2xl border border-slate-200/80 bg-white shadow-sm",
         className,
       )}
       {...props}
@@ -170,10 +166,12 @@ export function Card({
 
 const badgeColors = {
   slate: "bg-slate-100 text-slate-700",
-  green: "bg-green-100 text-green-700",
-  amber: "bg-amber-100 text-amber-800",
-  red: "bg-red-100 text-red-700",
+  green: "bg-emerald-100 text-emerald-700",
+  amber: "bg-sand-100 text-sand-800",
+  red: "bg-coral-100 text-coral-700",
   blue: "bg-brand-100 text-brand-700",
+  sea: "bg-sea-100 text-sea-700",
+  coral: "bg-coral-100 text-coral-700",
 } as const;
 
 export function Badge({
@@ -217,7 +215,7 @@ export function PageHeader({
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-start gap-3">
         {Icon && (
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-sea-500 text-white shadow-buoy">
             <Icon className="h-5 w-5" />
           </span>
         )}
@@ -247,11 +245,11 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-400">
-        <Icon className="h-6 w-6" />
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-200 bg-gradient-to-b from-brand-50/50 to-sea-50/40 px-6 py-12 text-center">
+      <span className="grid h-14 w-14 animate-float place-items-center rounded-2xl bg-gradient-to-br from-brand-100 to-sea-100 text-brand-600 shadow-sm">
+        <Icon className="h-7 w-7" />
       </span>
-      <p className="mt-3 font-medium text-slate-900">{title}</p>
+      <p className="mt-4 font-semibold text-slate-900">{title}</p>
       {description && (
         <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>
       )}
@@ -261,10 +259,11 @@ export function EmptyState({
 }
 
 const statTones = {
-  brand: "text-brand-600 bg-brand-50",
+  brand: "text-white bg-gradient-to-br from-brand-500 to-sea-500",
   slate: "text-slate-700 bg-slate-100",
-  red: "text-red-600 bg-red-50",
-  green: "text-green-600 bg-green-50",
+  red: "text-white bg-gradient-to-br from-coral-400 to-coral-500",
+  green: "text-white bg-gradient-to-br from-emerald-400 to-sea-500",
+  sand: "text-white bg-gradient-to-br from-sand-300 to-sand-500",
 } as const;
 
 export function Stat({
@@ -283,7 +282,7 @@ export function Stat({
       {Icon && (
         <span
           className={cn(
-            "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
+            "grid h-11 w-11 shrink-0 place-items-center rounded-2xl shadow-sm",
             statTones[tone],
           )}
         >
@@ -300,6 +299,11 @@ export function Stat({
 
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("animate-pulse rounded-lg bg-slate-200/70", className)} />
+    <div
+      className={cn(
+        "animate-pulse rounded-xl bg-gradient-to-r from-brand-100/60 via-slate-200/70 to-sea-100/60",
+        className,
+      )}
+    />
   );
 }

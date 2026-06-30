@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
@@ -123,18 +123,6 @@ export async function getSignupsForUser(userId: string) {
   });
 }
 
-/** Toutes les tâches non terminées (vue organisateur). */
-export async function getOpenTasks() {
-  return db.query.tasks.findMany({
-    where: ne(tasks.status, "done"),
-    orderBy: [asc(tasks.dueAt)],
-    with: {
-      event: true,
-      assignees: { with: { user: true } },
-    },
-  });
-}
-
 /**
  * Modèles de check-list (éditables). Mis en cache (données quasi statiques) ;
  * invalidé par revalidateTag("templates") à chaque écriture sur les modèles.
@@ -176,12 +164,4 @@ export async function getAllMembers() {
     .orderBy(asc(users.name));
 }
 
-export type EventWithDetails = NonNullable<
-  Awaited<ReturnType<typeof getEventWithDetails>>
->;
-export type EventPublic = NonNullable<
-  Awaited<ReturnType<typeof getEventByShareToken>>
->;
 export type UserTask = Awaited<ReturnType<typeof getTasksForUser>>[number];
-export type MemberRow = Awaited<ReturnType<typeof getAllMembers>>[number];
-export type UserSignup = Awaited<ReturnType<typeof getSignupsForUser>>[number];

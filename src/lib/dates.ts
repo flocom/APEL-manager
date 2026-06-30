@@ -20,10 +20,6 @@ export function formatDateTime(d: Date | string): string {
   });
 }
 
-export function formatDate(d: Date | string): string {
-  return formatInTimeZone(new Date(d), APP_TIMEZONE, "d MMMM yyyy", { locale: fr });
-}
-
 export function formatShortDate(d: Date | string): string {
   return formatInTimeZone(new Date(d), APP_TIMEZONE, "dd/MM/yyyy", { locale: fr });
 }

@@ -137,30 +137,44 @@ export async function GET(req: Request) {
       })
     : [];
 
-  let volunteerReminders = 0;
-  for (const s of signups) {
+  const eligibleSignups = signups.filter((s) => {
     const ev = s.slot.event;
-    if (ev.status !== "published") continue;
-    if (ev.startAt <= now || ev.startAt > volunteerHorizon) continue;
-    if (!s.email) continue;
+    return (
+      ev.status === "published" &&
+      ev.startAt > now &&
+      ev.startAt <= volunteerHorizon &&
+      !!s.email
+    );
+  });
 
-    const mail = volunteerReminderEmail({
-      name: s.name,
-      eventTitle: ev.title,
-      eventDate: formatDateTime(ev.startAt),
-      slotTitle: s.slot.title,
-      location: ev.location,
-      cancelUrl: s.cancelToken ? `${appUrl}/annulation/${s.cancelToken}` : appUrl,
-    });
-    const ok = await sendEmail({ to: s.email, ...mail });
-    if (ok) {
-      await db
-        .update(volunteerSignups)
-        .set({ remindedAt: new Date() })
-        .where(eq(volunteerSignups.id, s.id));
-      volunteerReminders++;
-    }
+  // Envois en parallèle puis un seul UPDATE groupé (au lieu de N en série).
+  const remindedIds = (
+    await Promise.all(
+      eligibleSignups.map(async (s) => {
+        const ev = s.slot.event;
+        const mail = volunteerReminderEmail({
+          name: s.name,
+          eventTitle: ev.title,
+          eventDate: formatDateTime(ev.startAt),
+          slotTitle: s.slot.title,
+          location: ev.location,
+          cancelUrl: s.cancelToken
+            ? `${appUrl}/annulation/${s.cancelToken}`
+            : appUrl,
+        });
+        const ok = await sendEmail({ to: s.email as string, ...mail });
+        return ok ? s.id : null;
+      }),
+    )
+  ).filter((id): id is string => id !== null);
+
+  if (remindedIds.length > 0) {
+    await db
+      .update(volunteerSignups)
+      .set({ remindedAt: new Date() })
+      .where(inArray(volunteerSignups.id, remindedIds));
   }
+  const volunteerReminders = remindedIds.length;
 
   return NextResponse.json({
     ok: true,
