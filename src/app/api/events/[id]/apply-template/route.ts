@@ -17,28 +17,31 @@ export async function POST(req: Request, { params }: Params) {
     const { id: eventId } = await params;
     const { templateId } = schema.parse(await req.json());
 
-    const [template] = await db
-      .select()
-      .from(checklistTemplates)
-      .where(eq(checklistTemplates.id, templateId))
-      .limit(1);
+    // Les trois lectures sont indépendantes → en parallèle (1 RTT au lieu de 3).
+    const [[template], [event], [{ count }]] = await Promise.all([
+      db
+        .select()
+        .from(checklistTemplates)
+        .where(eq(checklistTemplates.id, templateId))
+        .limit(1),
+      db
+        .select({ startAt: events.startAt })
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tasks)
+        .where(eq(tasks.eventId, eventId)),
+    ]);
+
     if (!template) throw new HttpError(400, "Modèle de check-list introuvable.");
     if (template.tasks.length === 0) {
       throw new HttpError(400, "Ce modèle ne contient aucune tâche.");
     }
-
-    const [event] = await db
-      .select({ startAt: events.startAt })
-      .from(events)
-      .where(eq(events.id, eventId))
-      .limit(1);
     if (!event) throw new HttpError(404, "Événement introuvable.");
 
     // Idempotence : on n'applique un modèle que sur une check-list vide.
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(tasks)
-      .where(eq(tasks.eventId, eventId));
     if (count > 0) {
       throw new HttpError(
         409,

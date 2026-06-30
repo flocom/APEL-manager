@@ -58,7 +58,7 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: Partial<typeof tasks.$inferInsert> = {};
     if (data.title !== undefined) updates.title = data.title;
     if (data.description !== undefined) updates.description = data.description;
     if (data.leadTimeDays !== undefined) {

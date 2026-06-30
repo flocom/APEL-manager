@@ -16,7 +16,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const { id } = await params;
     const data = memberUpdateSchema.parse(await req.json());
 
-    const updates: Record<string, unknown> = {};
+    const updates: Partial<typeof users.$inferInsert> = {};
     if (data.role !== undefined) {
       // Un admin ne peut pas se retirer lui-même ses droits (anti-verrouillage).
       if (id === admin.id && data.role !== "admin") {

@@ -1,9 +1,13 @@
 /**
- * Identité de l'association. Personnalisable sans toucher au code via la variable
- * d'environnement NEXT_PUBLIC_ASSO_NAME (ex. "APEL École Jean Moulin").
+ * Identité de l'association. Personnalisable sans toucher au code via les
+ * variables d'environnement NEXT_PUBLIC_ASSO_NAME / NEXT_PUBLIC_SCHOOL_NAME.
  */
 export const APP_NAME =
-  process.env.NEXT_PUBLIC_ASSO_NAME?.trim() || "APEL Manager";
+  process.env.NEXT_PUBLIC_ASSO_NAME?.trim() || "APEL Notre Dame des Flots";
+
+/** Nom de l'école rattachée à l'APEL. */
+export const SCHOOL_NAME =
+  process.env.NEXT_PUBLIC_SCHOOL_NAME?.trim() || "École Notre Dame des Flots";
 
 /** Initiale affichée dans le logo. */
 export const APP_INITIAL = APP_NAME.charAt(0).toUpperCase() || "A";

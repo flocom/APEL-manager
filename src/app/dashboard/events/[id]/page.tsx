@@ -6,7 +6,6 @@ import {
   Pencil,
 } from "lucide-react";
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { ApplyTemplate } from "@/components/apply-template";
@@ -18,6 +17,7 @@ import { SlotManager } from "@/components/slot-manager";
 import { TaskManager } from "@/components/task-manager";
 import { Badge, buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
+import { getBaseUrl } from "@/lib/base-url";
 import {
   getMemberOptions,
   getChecklistTemplates,
@@ -28,22 +28,18 @@ import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
-async function getBaseUrl(): Promise<string> {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  const h = await headers();
-  const host = h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  return host ? `${proto}://${host}` : "";
-}
-
 export default async function EventDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await requireUser();
-  const event = await getEventWithDetails(id);
+  // Lectures indépendantes en parallèle (1 RTT au lieu de 3 en série).
+  const [user, event, baseUrl] = await Promise.all([
+    requireUser(),
+    getEventWithDetails(id),
+    getBaseUrl(),
+  ]);
   if (!event) notFound();
 
   const canManage = canManageEvents(user);
@@ -51,7 +47,6 @@ export default async function EventDetailPage({
     getMemberOptions(),
     canManage ? getChecklistTemplates() : Promise.resolve([]),
   ]);
-  const baseUrl = await getBaseUrl();
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
   const totalSignups = event.volunteerSlots.reduce(
     (sum, s) => sum + s.signups.length,

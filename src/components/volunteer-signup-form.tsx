@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Button, Input, Label, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { celebrate } from "@/lib/confetti";
 
 export interface SignupSlotOption {
   id: string;
@@ -38,12 +39,18 @@ export function VolunteerSignupForm({
 
   if (done) {
     return (
-      <div className="rounded-lg bg-green-50 px-4 py-4 text-sm text-green-800">
-        <p className="font-medium">Merci, votre inscription est enregistrée ! 🎉</p>
+      <div className="animate-pop rounded-2xl border border-sea-200 bg-gradient-to-b from-sea-50 to-white px-5 py-6 text-center">
+        <div className="mx-auto mb-2 text-4xl">🎉</div>
+        <p className="text-base font-semibold text-sea-800">
+          Merci, votre inscription est bien enregistrée !
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          À très bientôt pour donner un coup de main. ⚓
+        </p>
         <button
           type="button"
           onClick={() => setDone(false)}
-          className="mt-2 font-medium text-green-700 underline"
+          className="mt-3 text-sm font-semibold text-brand-600 underline-offset-2 hover:underline"
         >
           Inscrire une autre personne
         </button>
@@ -69,6 +76,7 @@ export function VolunteerSignupForm({
         },
       });
       setDone(true);
+      void celebrate();
     } catch (err) {
       setError((err as Error).message);
     } finally {

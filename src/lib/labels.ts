@@ -19,9 +19,3 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   in_progress: "En cours",
   done: "Terminé",
 };
-
-export const TASK_STATUS_COLORS: Record<TaskStatus, BadgeColor> = {
-  todo: "slate",
-  in_progress: "blue",
-  done: "green",
-};

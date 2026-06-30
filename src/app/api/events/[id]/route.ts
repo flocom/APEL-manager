@@ -18,7 +18,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const { id } = await params;
     const data = eventSchema.partial().parse(await req.json());
 
-    const updates: Record<string, unknown> = {};
+    const updates: Partial<typeof events.$inferInsert> = {};
     if (data.title !== undefined) updates.title = data.title;
     if (data.description !== undefined)
       updates.description = emptyToNull(data.description);

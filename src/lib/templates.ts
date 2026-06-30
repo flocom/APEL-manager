@@ -14,11 +14,9 @@ export interface TemplateTask {
 }
 
 /** Normalise les tâches d'un modèle (retire les descriptions vides). */
-export function normalizeTemplateTasks(
-  tasks: { title: string; leadTimeDays: number; description?: string }[],
-): TemplateTask[] {
+export function normalizeTemplateTasks(tasks: TemplateTask[]): TemplateTask[] {
   return tasks.map((t) => {
-    const description = emptyToNull(t.description ?? null);
+    const description = emptyToNull(t.description);
     return description
       ? { title: t.title, leadTimeDays: t.leadTimeDays, description }
       : { title: t.title, leadTimeDays: t.leadTimeDays };

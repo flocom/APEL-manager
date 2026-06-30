@@ -44,7 +44,7 @@ const roleRank: Record<Role, number> = { member: 1, manager: 2, admin: 3 };
 function Logo() {
   return (
     <Link href="/dashboard" className="flex items-center gap-2">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 font-bold text-white shadow-sm">
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-sea-500 font-bold text-white shadow-buoy">
         {APP_INITIAL}
       </span>
       <span className="text-lg font-semibold text-slate-900">{APP_NAME}</span>
