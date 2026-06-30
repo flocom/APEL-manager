@@ -11,7 +11,7 @@ export default async function AccountPage() {
   const user = await requireUser();
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader
         title="Mon compte"
         description="Vos informations et préférences de notification."
