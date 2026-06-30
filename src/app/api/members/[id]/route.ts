@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
@@ -32,6 +33,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (Object.keys(updates).length > 0) {
       await db.update(users).set(updates).where(eq(users.id, id));
+      revalidateTag("members");
     }
 
     return NextResponse.json({ ok: true });
@@ -48,6 +50,7 @@ export async function DELETE(_req: Request, { params }: Params) {
       throw new HttpError(400, "Vous ne pouvez pas supprimer votre propre compte.");
     }
     await db.delete(users).where(eq(users.id, id));
+    revalidateTag("members");
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

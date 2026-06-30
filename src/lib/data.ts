@@ -1,4 +1,6 @@
 import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 import { db } from "@/lib/db";
 import {
@@ -22,47 +24,66 @@ export async function getUpcomingPublishedEvents() {
   });
 }
 
-/** Tous les événements — pour le dashboard (toutes statuts confondus). */
+/**
+ * Tous les événements — pour le dashboard (toutes statuts confondus).
+ * On ne récupère que les colonnes des relations réellement utilisées (compteurs
+ * de tâches/créneaux + statut/échéance pour les « en retard »).
+ */
 export async function getAllEvents() {
   return db.query.events.findMany({
     orderBy: [desc(events.startAt)],
     with: {
-      tasks: true,
-      volunteerSlots: true,
+      tasks: { columns: { status: true, dueAt: true } },
+      volunteerSlots: { columns: { id: true } },
     },
   });
 }
 
 /** Un événement seul (sans relations) — pour l'édition. */
-export async function getEventById(id: string) {
+export const getEventById = cache(async (id: string) => {
   const [event] = await db
     .select()
     .from(events)
     .where(eq(events.id, id))
     .limit(1);
   return event ?? null;
-}
+});
 
-/** Un événement avec ses tâches (et leurs membres) + créneaux bénévoles. */
-export async function getEventWithDetails(id: string) {
+/**
+ * Un événement avec ses tâches (et leurs assigné·es) + créneaux bénévoles.
+ * `cache()` déduplique l'appel au sein d'une même requête (page + helpers).
+ */
+export const getEventWithDetails = cache(async (id: string) => {
   return db.query.events.findFirst({
     where: eq(events.id, id),
     with: {
-      creator: true,
       tasks: {
         orderBy: [asc(tasks.position), asc(tasks.dueAt)],
-        with: { assignees: { with: { user: true } } },
+        with: { assignees: { columns: { userId: true } } },
       },
       volunteerSlots: {
         orderBy: [asc(volunteerSlots.createdAt)],
-        with: { signups: true },
+        with: {
+          signups: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              createdAt: true,
+            },
+          },
+        },
       },
     },
   });
-}
+});
 
-/** Un événement via son jeton public — pour l'inscription des bénévoles. */
-export async function getEventByShareToken(token: string) {
+/**
+ * Un événement via son jeton public — pour l'inscription des bénévoles.
+ * `cache()` évite le double appel (generateMetadata + corps de la page).
+ */
+export const getEventByShareToken = cache(async (token: string) => {
   return db.query.events.findFirst({
     where: eq(events.shareToken, token),
     with: {
@@ -72,7 +93,7 @@ export async function getEventByShareToken(token: string) {
       },
     },
   });
-}
+});
 
 /** Tâches assignées à un membre, avec leur événement. */
 export async function getTasksForUser(userId: string) {
@@ -114,15 +135,33 @@ export async function getOpenTasks() {
   });
 }
 
-/** Modèles de check-list (éditables). */
-export async function getChecklistTemplates() {
-  return db
-    .select()
-    .from(checklistTemplates)
-    .orderBy(asc(checklistTemplates.name));
-}
+/**
+ * Modèles de check-list (éditables). Mis en cache (données quasi statiques) ;
+ * invalidé par revalidateTag("templates") à chaque écriture sur les modèles.
+ */
+export const getChecklistTemplates = unstable_cache(
+  async () =>
+    db.select().from(checklistTemplates).orderBy(asc(checklistTemplates.name)),
+  ["checklist-templates"],
+  { tags: ["templates"] },
+);
 
-/** Liste des membres (sans le hash de mot de passe). */
+/**
+ * Options légères {id, name} des membres pour les sélecteurs (assignation de
+ * tâches…). Mis en cache et invalidé par revalidateTag("members"). Ne contient
+ * aucune Date (sûr pour la sérialisation JSON du cache de données).
+ */
+export const getMemberOptions = unstable_cache(
+  async () =>
+    db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .orderBy(asc(users.name)),
+  ["member-options"],
+  { tags: ["members"] },
+);
+
+/** Liste complète des membres (sans le hash) — page d'administration. */
 export async function getAllMembers() {
   return db
     .select({

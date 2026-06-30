@@ -10,6 +10,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { ApplyTemplate } from "@/components/apply-template";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { BroadcastForm } from "@/components/broadcast-form";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { ShareLink } from "@/components/share-link";
@@ -18,7 +19,7 @@ import { TaskManager } from "@/components/task-manager";
 import { Badge, buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import {
-  getAllMembers,
+  getMemberOptions,
   getChecklistTemplates,
   getEventWithDetails,
 } from "@/lib/data";
@@ -46,11 +47,10 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const canManage = canManageEvents(user);
-  const [members, templates] = await Promise.all([
-    getAllMembers(),
+  const [memberOptions, templates] = await Promise.all([
+    getMemberOptions(),
     canManage ? getChecklistTemplates() : Promise.resolve([]),
   ]);
-  const memberOptions = members.map((m) => ({ id: m.id, name: m.name }));
   const baseUrl = await getBaseUrl();
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
   const totalSignups = event.volunteerSlots.reduce(
@@ -66,6 +66,7 @@ export default async function EventDetailPage({
     dueAt: t.dueAt.toISOString(),
     status: t.status,
     assigneeIds: t.assignees.map((a) => a.userId),
+    version: t.version,
   }));
 
   const slots = event.volunteerSlots.map((s) => ({
@@ -84,6 +85,7 @@ export default async function EventDetailPage({
 
   return (
     <div className="space-y-6">
+      <AutoRefresh />
       <Link
         href="/dashboard/events"
         className="inline-flex items-center gap-1 text-sm text-brand-600 hover:underline"

@@ -43,6 +43,13 @@
       "when": 1781972330753,
       "tag": "0005_task_position",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782807038862,
+      "tag": "0006_optimistic_version",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -25,6 +26,7 @@ export async function PATCH(req: Request) {
 
     if (Object.keys(updates).length > 0) {
       await db.update(users).set(updates).where(eq(users.id, user.id));
+      revalidateTag("members"); // nom/telegram visibles dans la liste des membres
     }
 
     return NextResponse.json({ ok: true });

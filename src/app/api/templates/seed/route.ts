@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
@@ -25,6 +26,7 @@ export async function POST() {
       })),
     );
 
+    revalidateTag("templates");
     return NextResponse.json({ ok: true, created: DEFAULT_TEMPLATES.length });
   } catch (error) {
     return handleApiError(error);

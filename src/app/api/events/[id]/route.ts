@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
@@ -6,6 +6,9 @@ import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
+
+const CONFLICT =
+  "Cet événement a été modifié entre-temps. Rechargez la page pour repartir de la dernière version.";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -29,17 +32,65 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: true });
     }
 
+    // Verrou optimiste : si le client a fourni la version qu'il a chargée, on
+    // n'écrit que si elle correspond encore (sinon 409, l'autre a édité avant).
+    if (data.version !== undefined) {
+      // SET dynamique (seuls les champs réellement fournis).
+      const setFragments: SQL[] = [];
+      if (data.title !== undefined) setFragments.push(sql`title = ${data.title}`);
+      if (data.description !== undefined)
+        setFragments.push(sql`description = ${emptyToNull(data.description)}`);
+      if (data.location !== undefined)
+        setFragments.push(sql`location = ${emptyToNull(data.location)}`);
+      if (data.startAt !== undefined)
+        setFragments.push(sql`start_at = ${data.startAt}::timestamptz`);
+      if (data.endAt !== undefined)
+        setFragments.push(sql`end_at = ${data.endAt ?? null}`);
+      if (data.status !== undefined)
+        setFragments.push(sql`status = ${data.status}`);
+
+      // Un SEUL statement (CTE) : la mise à jour de l'événement (verrouillée par
+      // la version) ET le recalcul des échéances des tâches sont atomiques — le
+      // driver neon-http ne supporte pas les transactions multi-requêtes. Le
+      // recalcul est idempotent (due_at dérivé de start_at), il auto-corrige
+      // donc toute dérive. `interval '24 hours'` = 24h fixes (cf. computeDueAt).
+      const res = await db.execute(sql`
+        WITH bumped AS (
+          UPDATE events
+          SET ${sql.join(setFragments, sql`, `)}, version = version + 1
+          WHERE id = ${id} AND version = ${data.version}
+          RETURNING id, start_at
+        ), recompute AS (
+          UPDATE tasks
+          SET due_at = b.start_at - (lead_time_days * interval '24 hours')
+          FROM bumped b
+          WHERE tasks.event_id = b.id
+          RETURNING tasks.id
+        )
+        SELECT (SELECT count(*) FROM bumped)::int AS matched
+      `);
+      const matched = Number(
+        (res.rows[0] as { matched?: number } | undefined)?.matched ?? 0,
+      );
+      if (matched === 0) {
+        const [exists] = await db
+          .select({ v: events.version })
+          .from(events)
+          .where(eq(events.id, id))
+          .limit(1);
+        if (!exists) throw new HttpError(404, "Événement introuvable.");
+        throw new HttpError(409, CONFLICT);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Chemin sans version (compatibilité) — inutilisé par le formulaire d'édition.
     const [updated] = await db
       .update(events)
       .set(updates)
       .where(eq(events.id, id))
       .returning({ id: events.id });
-
     if (!updated) throw new HttpError(404, "Événement introuvable.");
-
-    // Si la date de début change, on recalcule l'échéance des tâches liées en
-    // une seule requête. `interval '24 hours'` (et non '1 day') donne 24h fixes,
-    // indépendantes du changement d'heure — cohérent avec computeDueAt() en JS.
     if (data.startAt !== undefined) {
       await db.execute(
         sql`update tasks
