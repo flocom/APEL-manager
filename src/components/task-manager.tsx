@@ -9,6 +9,7 @@ import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
 import { api } from "@/lib/client";
 import type { TaskStatus } from "@/lib/db/schema";
 import { formatShortDate, isOverdue } from "@/lib/dates";
+import { useMutationError } from "@/lib/use-mutation-error";
 import { cn } from "@/lib/utils";
 
 export interface TaskItemData {
@@ -19,6 +20,7 @@ export interface TaskItemData {
   dueAt: string;
   status: TaskStatus;
   assigneeIds: string[];
+  version: number;
 }
 
 export interface MemberOption {
@@ -77,6 +79,7 @@ export function TaskManager({
   currentUserId: string;
 }) {
   const router = useRouter();
+  const onError = useMutationError();
   const memberName = (id: string) =>
     members.find((m) => m.id === id)?.name ?? "Membre";
 
@@ -123,11 +126,13 @@ export function TaskManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAssignees, setEditAssignees] = useState<string[]>([]);
   const [editLead, setEditLead] = useState(7);
+  const [editVersion, setEditVersion] = useState(0);
 
   function startEdit(task: TaskItemData) {
     setEditingId(task.id);
     setEditAssignees(task.assigneeIds);
     setEditLead(task.leadTimeDays);
+    setEditVersion(task.version);
   }
 
   async function saveEdit(taskId: string) {
@@ -135,10 +140,16 @@ export function TaskManager({
     try {
       await api(`/api/tasks/${taskId}`, {
         method: "PATCH",
-        body: { assigneeIds: editAssignees, leadTimeDays: editLead },
+        body: {
+          assigneeIds: editAssignees,
+          leadTimeDays: editLead,
+          version: editVersion,
+        },
       });
       setEditingId(null);
       router.refresh();
+    } catch (err) {
+      onError(err);
     } finally {
       setSaving(false);
     }
@@ -146,8 +157,12 @@ export function TaskManager({
 
   async function deleteTask(taskId: string) {
     if (!confirm("Supprimer cette tâche ?")) return;
-    await api(`/api/tasks/${taskId}`, { method: "DELETE" });
-    router.refresh();
+    try {
+      await api(`/api/tasks/${taskId}`, { method: "DELETE" });
+      router.refresh();
+    } catch (err) {
+      onError(err);
+    }
   }
 
   async function move(index: number, dir: "up" | "down") {
@@ -155,13 +170,21 @@ export function TaskManager({
     if (j < 0 || j >= tasks.length) return;
     const ids = tasks.map((t) => t.id);
     [ids[index], ids[j]] = [ids[j], ids[index]];
-    await api(`/api/events/${eventId}/tasks/reorder`, { body: { orderedIds: ids } });
-    router.refresh();
+    try {
+      await api(`/api/events/${eventId}/tasks/reorder`, { body: { orderedIds: ids } });
+      router.refresh();
+    } catch (err) {
+      onError(err);
+    }
   }
 
   async function toggleSelf(taskId: string) {
-    await api(`/api/tasks/${taskId}/assign-me`);
-    router.refresh();
+    try {
+      await api(`/api/tasks/${taskId}/assign-me`);
+      router.refresh();
+    } catch (err) {
+      onError(err);
+    }
   }
 
   return (

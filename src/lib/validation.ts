@@ -16,6 +16,9 @@ const localDateTime = z.string().min(1, "Date requise").transform((value, ctx) =
   return date;
 });
 
+/** Numéro de version pour le verrou optimiste (envoyé par le client à l'édition). */
+const optimisticVersion = z.coerce.number().int().nonnegative().optional();
+
 export const registerSchema = z.object({
   name: z.string().trim().min(2, "Nom trop court").max(120),
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
@@ -37,6 +40,7 @@ export const eventSchema = z.object({
   startAt: localDateTime,
   endAt: localDateTime.nullable().optional(),
   status: z.enum(["draft", "published", "archived"]).default("draft"),
+  version: optimisticVersion,
 });
 
 export const taskSchema = z.object({
@@ -57,6 +61,7 @@ export const taskUpdateSchema = z.object({
   leadTimeDays: z.coerce.number().int().min(0).max(365).optional(),
   status: z.enum(["todo", "in_progress", "done"]).optional(),
   assigneeIds: z.array(z.string().uuid()).optional(),
+  version: optimisticVersion,
 });
 
 export const slotSchema = z.object({
@@ -116,6 +121,7 @@ export const templateSchema = z.object({
     .array(templateTaskSchema)
     .min(1, "Au moins une tâche")
     .max(100, "Trop de tâches (100 max)"),
+  version: optimisticVersion,
 });
 
 export const messageSchema = z.object({

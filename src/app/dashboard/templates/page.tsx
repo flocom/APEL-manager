@@ -16,6 +16,7 @@ export default async function TemplatesPage() {
     name: t.name,
     description: t.description,
     tasks: t.tasks,
+    version: t.version,
   }));
 
   return (

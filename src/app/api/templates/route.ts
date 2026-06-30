@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       })
       .returning({ id: checklistTemplates.id });
 
+    revalidateTag("templates");
     return NextResponse.json({ ok: true, id: created.id });
   } catch (error) {
     return handleApiError(error);

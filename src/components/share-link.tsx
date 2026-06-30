@@ -1,10 +1,16 @@
 "use client";
 
 import { QrCode, Share2 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { Button, Input } from "@/components/ui";
+
+// Chargé seulement quand l'utilisateur affiche le QR code (allège le bundle).
+const QRCodeSVG = dynamic(
+  () => import("qrcode.react").then((m) => m.QRCodeSVG),
+  { ssr: false },
+);
 
 export function ShareLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);

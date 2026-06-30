@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { hashPassword } from "@/lib/auth/password";
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
       .values({ name, email, passwordHash, role })
       .returning({ id: users.id, role: users.role });
 
+    revalidateTag("members"); // nouveau membre visible dans les sélecteurs
     await createSession(created.id, 0);
     return NextResponse.json({ ok: true, role: created.role });
   } catch (error) {

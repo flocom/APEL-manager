@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import {
@@ -7,6 +7,9 @@ import {
   requireApiRole,
   requireApiUser,
 } from "@/lib/auth/guards";
+
+const CONFLICT =
+  "Cette tâche a été modifiée entre-temps. Rechargez la page pour repartir de la dernière version.";
 import { hasRole } from "@/lib/auth/rbac";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
@@ -72,11 +75,27 @@ export async function PATCH(req: Request, { params }: Params) {
       updates.completedAt = data.status === "done" ? new Date() : null;
     }
 
-    if (Object.keys(updates).length > 0) {
+    // Verrou optimiste pour l'édition complète (le client envoie sa version).
+    // Les actions ciblées (changer l'avancement) n'envoient pas de version et
+    // restent donc sans friction ; elles touchent des champs disjoints.
+    if (data.version !== undefined) {
+      const [updated] = await db
+        .update(tasks)
+        .set({ ...updates, version: sql`${tasks.version} + 1` })
+        .where(and(eq(tasks.id, id), eq(tasks.version, data.version)))
+        .returning({ id: tasks.id });
+      // La tâche existe déjà (chargée plus haut) → 0 ligne = conflit de version.
+      if (!updated) throw new HttpError(409, CONFLICT);
+    } else if (Object.keys(updates).length > 0) {
       await db.update(tasks).set(updates).where(eq(tasks.id, id));
     }
 
     if (isManager && data.assigneeIds !== undefined) {
+      // Remplacement des assigné·es en 2 requêtes (delete+insert) : non atomique
+      // car le driver neon-http n'a pas de transactions. Conséquence acceptable
+      // (et récupérable via la même UI) : un crash entre les deux laisserait la
+      // tâche sans assigné·e. Le verrou de version ci-dessus protège déjà du
+      // lost-update entre deux éditions concurrentes.
       await db.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
       if (data.assigneeIds.length > 0) {
         await db

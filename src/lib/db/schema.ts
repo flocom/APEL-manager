@@ -58,6 +58,8 @@ export const events = pgTable("events", {
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }),
   status: eventStatusEnum("status").notNull().default("draft"),
+  /** Compteur d'édition (verrou optimiste : rejette les écritures concurrentes périmées). */
+  version: integer("version").notNull().default(0),
   /** Jeton public pour le lien d'inscription des bénévoles. */
   shareToken: text("share_token").notNull().unique(),
   createdBy: uuid("created_by").references(() => users.id, {
@@ -86,6 +88,8 @@ export const tasks = pgTable(
     status: taskStatusEnum("status").notNull().default("todo"),
     /** Ordre d'affichage dans la check-list (réordonnable). */
     position: integer("position").notNull().default(0),
+    /** Compteur d'édition (verrou optimiste). */
+    version: integer("version").notNull().default(0),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -218,6 +222,8 @@ export const checklistTemplates = pgTable("checklist_templates", {
     .$type<{ title: string; leadTimeDays: number; description?: string }[]>()
     .notNull()
     .default(sql`'[]'::jsonb`),
+  /** Compteur d'édition (verrou optimiste). */
+  version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

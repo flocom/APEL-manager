@@ -16,6 +16,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
+import { useMutationError } from "@/lib/use-mutation-error";
 
 interface TplTask {
   title: string;
@@ -27,6 +28,7 @@ export interface Tpl {
   name: string;
   description: string | null;
   tasks: TplTask[];
+  version: number;
 }
 
 // Ligne de tâche éditée : uid stable (clés React) + leadTimeDays gardé en
@@ -129,6 +131,7 @@ function TemplateEditor({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const onError = useMutationError();
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
   const [tasks, setTasks] = useState<EditorTask[]>(() =>
@@ -163,18 +166,20 @@ function TemplateEditor({
     }
     setLoading(true);
     try {
-      const body = { name, description, tasks: cleaned };
       if (template) {
-        await api(`/api/templates/${template.id}`, { method: "PATCH", body });
+        await api(`/api/templates/${template.id}`, {
+          method: "PATCH",
+          body: { name, description, tasks: cleaned, version: template.version },
+        });
         toast("Modèle mis à jour.");
       } else {
-        await api("/api/templates", { body });
+        await api("/api/templates", { body: { name, description, tasks: cleaned } });
         toast("Modèle créé.");
       }
       router.refresh();
       onClose();
     } catch (e) {
-      toast((e as Error).message, "error");
+      onError(e);
       setLoading(false);
     }
   }

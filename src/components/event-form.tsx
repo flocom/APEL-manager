@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button, Input, Label, Select, Textarea } from "@/components/ui";
-import { api } from "@/lib/client";
+import { ApiError, api } from "@/lib/client";
 import { toDatetimeLocal } from "@/lib/dates";
 import type { Event } from "@/lib/db/schema";
+import { useMutationError } from "@/lib/use-mutation-error";
 
 export function EventForm({
   event,
@@ -16,6 +17,7 @@ export function EventForm({
   templates?: { id: string; name: string; count: number }[];
 }) {
   const router = useRouter();
+  const onError = useMutationError();
   const editing = Boolean(event);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,7 +40,10 @@ export function EventForm({
 
     try {
       if (editing && event) {
-        await api(`/api/events/${event.id}`, { method: "PATCH", body });
+        await api(`/api/events/${event.id}`, {
+          method: "PATCH",
+          body: { ...body, version: event.version },
+        });
         router.push(`/dashboard/events/${event.id}`);
       } else {
         const res = await api<{ id: string }>("/api/events", { body });
@@ -56,7 +61,12 @@ export function EventForm({
       }
       router.refresh();
     } catch (err) {
-      setError((err as Error).message);
+      // Conflit d'édition concurrente : toast « Recharger » plutôt qu'écraser.
+      if (err instanceof ApiError && err.status === 409) {
+        onError(err);
+      } else {
+        setError((err as Error).message);
+      }
       setLoading(false);
     }
   }

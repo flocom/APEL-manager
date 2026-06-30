@@ -13,13 +13,23 @@ import { cn } from "@/lib/utils";
 
 type ToastKind = "success" | "error";
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 }
 
-type ToastFn = (message: string, kind?: ToastKind) => void;
+type ToastFn = (
+  message: string,
+  kind?: ToastKind,
+  action?: ToastAction,
+) => void;
 
 const ToastContext = createContext<ToastFn>(() => {});
 
@@ -36,10 +46,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const push = useCallback<ToastFn>(
-    (message, kind = "success") => {
+    (message, kind = "success", action) => {
       const id = (counter.current += 1);
-      setToasts((list) => [...list, { id, kind, message }]);
-      setTimeout(() => dismiss(id), 4000);
+      setToasts((list) => [...list, { id, kind, message, action }]);
+      // Les toasts avec action (ex. conflit → « Recharger ») restent plus
+      // longtemps pour laisser le temps de décider.
+      setTimeout(() => dismiss(id), action ? 12000 : 4000);
     },
     [dismiss],
   );
@@ -64,7 +76,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ) : (
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
             )}
-            <p className="flex-1 text-slate-700">{t.message}</p>
+            <div className="flex-1">
+              <p className="text-slate-700">{t.message}</p>
+              {t.action && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    t.action?.onClick();
+                    dismiss(t.id);
+                  }}
+                  className="mt-1.5 font-semibold text-brand-700 hover:text-brand-800"
+                >
+                  {t.action.label}
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => dismiss(t.id)}
