@@ -11,31 +11,35 @@ export default async function AccountPage() {
   const user = await requireUser();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
         title="Mon compte"
         description="Vos informations et préférences de notification."
         icon={Settings}
       />
 
-      <Card className="p-6">
-        <dl className="mb-6 grid grid-cols-2 gap-4 border-b border-slate-100 pb-6 text-sm">
-          <div>
-            <dt className="text-slate-400">Adresse e-mail</dt>
-            <dd className="font-medium text-slate-900">{user.email}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-400">Rôle</dt>
-            <dd className="font-medium text-slate-900">{ROLE_LABELS[user.role]}</dd>
-          </div>
-        </dl>
-        <AccountForm name={user.name} telegramChatId={user.telegramChatId} />
-      </Card>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <Card className="p-6">
+          <dl className="mb-6 grid grid-cols-2 gap-4 border-b border-slate-100 pb-6 text-sm">
+            <div>
+              <dt className="text-slate-400">Adresse e-mail</dt>
+              <dd className="font-medium text-slate-900">{user.email}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-400">Rôle</dt>
+              <dd className="font-medium text-slate-900">
+                {ROLE_LABELS[user.role]}
+              </dd>
+            </div>
+          </dl>
+          <AccountForm name={user.name} telegramChatId={user.telegramChatId} />
+        </Card>
 
-      <Card className="p-6">
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
-        <PasswordChangeForm />
-      </Card>
+        <Card className="p-6">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
+          <PasswordChangeForm />
+        </Card>
+      </div>
     </div>
   );
 }
