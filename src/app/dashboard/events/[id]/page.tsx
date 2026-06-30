@@ -79,7 +79,7 @@ export default async function EventDetailPage({
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <AutoRefresh />
       <Link
         href="/dashboard/events"

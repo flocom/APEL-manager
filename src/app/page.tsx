@@ -36,7 +36,7 @@ export default async function HomePage() {
             </span>
           </div>
 
-          <div className="relative mx-auto max-w-5xl px-4 pb-24 pt-16 text-center">
+          <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-16 text-center">
             <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm ring-1 ring-white/60 backdrop-blur">
               🌊 APEL · {SCHOOL_NAME}
             </span>
@@ -61,7 +61,7 @@ export default async function HomePage() {
 
         <section
           id="evenements"
-          className="mx-auto max-w-5xl scroll-mt-20 bg-white px-4 py-12"
+          className="mx-auto max-w-6xl scroll-mt-20 bg-white px-4 py-12"
         >
           <h2 className="mb-6 flex items-center gap-2 text-xl font-bold text-slate-900">
             <span className="text-2xl">📅</span> Prochains événements

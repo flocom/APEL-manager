@@ -45,7 +45,7 @@ export default async function TasksPage() {
   const done = tasks.filter((t) => t.status === "done");
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <PageHeader
         title="Mes tâches"
         description="Les tâches qui vous ont été attribuées, par échéance."
