@@ -1,6 +1,14 @@
-import { CalendarDays, MapPin, PartyPopper, Plus } from "lucide-react";
+import { formatInTimeZone } from "date-fns-tz";
+import {
+  CalendarDays,
+  List,
+  MapPin,
+  PartyPopper,
+  Plus,
+} from "lucide-react";
 import Link from "next/link";
 
+import { CalendarMonth } from "@/components/calendar-month";
 import {
   Badge,
   buttonClasses,
@@ -10,15 +18,21 @@ import {
 } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getAllEvents } from "@/lib/data";
-import { formatDateTime, isOverdue } from "@/lib/dates";
+import { APP_TIMEZONE, formatDateTime, isOverdue } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function EventsPage() {
+export default async function EventsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ vue?: string }>;
+}) {
   const user = await requireUser();
   const events = await getAllEvents();
   const canManage = canManageEvents(user);
+  const isCalendar = (await searchParams).vue === "calendrier";
 
   const now = new Date();
   const upcoming = events
@@ -59,12 +73,86 @@ export default async function EventsPage() {
         />
       ) : (
         <>
-          <Section title="À venir" events={upcoming} emptyLabel="Aucun événement à venir." />
-          {past.length > 0 && (
-            <Section title="Passés" events={past} emptyLabel="" dimmed />
+          <ViewToggle isCalendar={isCalendar} />
+
+          {isCalendar ? (
+            <CalendarView events={events} />
+          ) : (
+            <>
+              <Section title="À venir" events={upcoming} emptyLabel="Aucun événement à venir." />
+              {past.length > 0 && (
+                <Section title="Passés" events={past} emptyLabel="" dimmed />
+              )}
+            </>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ViewToggle({ isCalendar }: { isCalendar: boolean }) {
+  const base = "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors";
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+      <Link
+        href="/dashboard/events"
+        aria-current={!isCalendar ? "page" : undefined}
+        className={cn(
+          base,
+          !isCalendar ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:text-slate-900",
+        )}
+      >
+        <List className="h-4 w-4" />
+        Liste
+      </Link>
+      <Link
+        href="/dashboard/events?vue=calendrier"
+        aria-current={isCalendar ? "page" : undefined}
+        className={cn(
+          base,
+          isCalendar ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:text-slate-900",
+        )}
+      >
+        <CalendarDays className="h-4 w-4" />
+        Calendrier
+      </Link>
+    </div>
+  );
+}
+
+function CalendarView({
+  events,
+}: {
+  events: Awaited<ReturnType<typeof getAllEvents>>;
+}) {
+  const now = new Date();
+  const calEvents = events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    status: e.status,
+    day: formatInTimeZone(e.startAt, APP_TIMEZONE, "yyyy-MM-dd"),
+  }));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-green-500" /> Publié
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-amber-400" /> Brouillon
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-slate-300" /> Archivé
+        </span>
+      </div>
+      <CalendarMonth
+        events={calEvents}
+        initialYear={Number(formatInTimeZone(now, APP_TIMEZONE, "yyyy"))}
+        initialMonth={Number(formatInTimeZone(now, APP_TIMEZONE, "M"))}
+        todayKey={formatInTimeZone(now, APP_TIMEZONE, "yyyy-MM-dd")}
+      />
     </div>
   );
 }
