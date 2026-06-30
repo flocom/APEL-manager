@@ -6,13 +6,20 @@ import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth/rbac";
 import { getTasksForUser, type UserTask } from "@/lib/data";
 import { formatDateTime, isOverdue } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function TaskItem({ task }: { task: UserTask }) {
+function TaskItem({ task, muted }: { task: UserTask; muted?: boolean }) {
   const overdue = task.status !== "done" && isOverdue(task.dueAt);
   return (
-    <div className="flex items-start justify-between gap-3 p-4">
+    <Card
+      className={cn(
+        "flex h-full items-start justify-between gap-3 p-4",
+        overdue && "ring-1 ring-coral-200",
+        muted && "opacity-75",
+      )}
+    >
       <div className="min-w-0">
         <p className="font-medium text-slate-900">{task.title}</p>
         {task.description && (
@@ -26,13 +33,13 @@ function TaskItem({ task }: { task: UserTask }) {
             {task.event.title}
           </Link>{" "}
           ·{" "}
-          <span className={overdue ? "font-medium text-red-600" : ""}>
+          <span className={overdue ? "font-medium text-coral-600" : ""}>
             à gérer avant le {formatDateTime(task.dueAt)}
           </span>
         </p>
       </div>
       <TaskStatusSelect taskId={task.id} status={task.status} />
-    </div>
+    </Card>
   );
 }
 
@@ -45,7 +52,7 @@ export default async function TasksPage() {
   const done = tasks.filter((t) => t.status === "done");
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-8">
       <PageHeader
         title="Mes tâches"
         description="Les tâches qui vous ont été attribuées, par échéance."
@@ -62,14 +69,14 @@ export default async function TasksPage() {
 
       {overdue.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-red-600">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-coral-600">
             En retard ({overdue.length})
           </h2>
-          <Card className="divide-y divide-slate-100 ring-1 ring-red-100">
+          <div className="grid gap-3 sm:grid-cols-2">
             {overdue.map((task) => (
               <TaskItem key={task.id} task={task} />
             ))}
-          </Card>
+          </div>
         </section>
       )}
 
@@ -78,11 +85,11 @@ export default async function TasksPage() {
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
             À faire ({todo.length})
           </h2>
-          <Card className="divide-y divide-slate-100">
+          <div className="grid gap-3 sm:grid-cols-2">
             {todo.map((task) => (
               <TaskItem key={task.id} task={task} />
             ))}
-          </Card>
+          </div>
         </section>
       )}
 
@@ -91,11 +98,11 @@ export default async function TasksPage() {
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
             Terminées ({done.length})
           </h2>
-          <Card className="divide-y divide-slate-100 opacity-75">
+          <div className="grid gap-3 sm:grid-cols-2">
             {done.map((task) => (
-              <TaskItem key={task.id} task={task} />
+              <TaskItem key={task.id} task={task} muted />
             ))}
-          </Card>
+          </div>
         </section>
       )}
     </div>
