@@ -23,6 +23,21 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+function useSecureCookies() {
+  const configured =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).protocol === "https:";
+    } catch {
+      // La validation de l'URL publique est faite par les points d'entrée qui
+      // en dépendent ; on conserve ici le comportement production historique.
+    }
+  }
+  return process.env.NODE_ENV === "production";
+}
+
 export async function createSession(
   userId: string,
   sessionEpoch: number,
@@ -36,7 +51,7 @@ export async function createSession(
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureCookies(),
     sameSite: "lax",
     path: "/",
     maxAge: MAX_AGE_SECONDS,

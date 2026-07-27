@@ -24,7 +24,7 @@ Le connecteur Claude.ai doit être joignable publiquement en HTTPS. Définir au
 minimum :
 
 ```env
-NEXT_PUBLIC_APP_URL="https://votre-domaine.fr"
+APP_URL="https://votre-domaine.fr"
 AUTH_SECRET="..."
 OAUTH_SECRET="..."
 DATABASE_URL="postgresql://..."

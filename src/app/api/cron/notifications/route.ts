@@ -5,10 +5,17 @@ import { NextResponse } from "next/server";
 
 import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { notificationsLog, tasks, volunteerSignups } from "@/lib/db/schema";
+import {
+  accountingEntries,
+  associationDocuments,
+  notificationsLog,
+  tasks,
+  volunteerSignups,
+} from "@/lib/db/schema";
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
 import { sendEmail } from "@/lib/notifications/email";
 import { volunteerReminderEmail } from "@/lib/notifications/emails";
+import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -40,7 +47,11 @@ export async function GET(req: Request) {
 
   const windowDaysRaw = Number(process.env.REMINDER_WINDOW_DAYS ?? "3");
   const windowDays = Number.isFinite(windowDaysRaw) ? windowDaysRaw : 3;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  const appUrl = (
+    process.env.APP_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    ""
+  ).replace(/\/$/, "");
 
   const now = new Date();
   const horizon = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
@@ -176,6 +187,30 @@ export async function GET(req: Request) {
   }
   const volunteerReminders = remindedIds.length;
 
+  let orphanedUploadsRemoved = 0;
+  try {
+    const [accountingFiles, documentFiles] = await Promise.all([
+      db
+        .select({ url: accountingEntries.attachmentUrl })
+        .from(accountingEntries)
+        .where(isNotNull(accountingEntries.attachmentUrl)),
+      db
+        .select({ url: associationDocuments.fileUrl })
+        .from(associationDocuments)
+        .where(isNotNull(associationDocuments.fileUrl)),
+    ]);
+    orphanedUploadsRemoved = await cleanupOrphanedUploads(
+      [...accountingFiles, ...documentFiles]
+        .map((item) => item.url)
+        .filter((url): url is string => Boolean(url)),
+    );
+  } catch (error) {
+    console.error(
+      "[uploads] nettoyage des fichiers orphelins impossible :",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     checkedTasks: dueTasks.length,
@@ -183,5 +218,6 @@ export async function GET(req: Request) {
     skipped,
     failed: results.length - succeeded.length,
     volunteerReminders,
+    orphanedUploadsRemoved,
   });
 }

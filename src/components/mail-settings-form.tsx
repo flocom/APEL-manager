@@ -25,12 +25,19 @@ import { formatDateTime } from "@/lib/dates";
 
 export interface MailSettingsView {
   enabled: boolean;
-  provider: "resend";
+  provider: "resend" | "smtp";
+  environmentManaged: boolean;
   fromName: string | null;
   fromEmail: string | null;
   replyTo: string | null;
   domain: string | null;
   keyLastFour: string | null;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpSecure: boolean;
+  smtpAuthConfigured: boolean;
+  smtpFrom: string | null;
+  configurationError: string | null;
   lastTestedAt: string | null;
   lastTestStatus: "untested" | "success" | "failed";
 }
@@ -104,14 +111,19 @@ export function MailSettingsForm({
                 Serveur d&apos;envoi
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                Resend · courrier transactionnel de l&apos;association
+                {settings.provider === "smtp"
+                  ? "SMTP · configuration Docker / serveur"
+                  : "Resend · courrier transactionnel de l'association"}
               </p>
             </div>
           </div>
           <MailStatus settings={settings} />
         </div>
 
-        <form onSubmit={save} className="space-y-6 p-5 sm:p-6">
+        {settings.environmentManaged ? (
+          <SmtpEnvironmentSettings settings={settings} />
+        ) : (
+          <form onSubmit={save} className="space-y-6 p-5 sm:p-6">
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-sea-200 bg-sea-50 p-4">
             <input
               type="checkbox"
@@ -228,7 +240,8 @@ export function MailSettingsForm({
               Enregistrer la configuration
             </Button>
           </div>
-        </form>
+          </form>
+        )}
       </Card>
 
       <div className="space-y-6">
@@ -240,7 +253,9 @@ export function MailSettingsForm({
             Vérifier la configuration
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Envoyez un message réel avant d&apos;activer les notifications.
+            {settings.provider === "smtp"
+              ? "Vérifiez que le serveur SMTP accepte correctement les messages."
+              : "Envoyez un message réel avant d'activer les notifications."}
           </p>
           <form onSubmit={sendTest} className="mt-5 space-y-4">
             <Field label="Destinataire du test" htmlFor="testEmail">
@@ -259,10 +274,16 @@ export function MailSettingsForm({
               loading={testing}
               icon={Send}
               className="w-full"
+              disabled={settings.provider === "smtp" && !settings.enabled}
             >
               Envoyer un e-mail de test
             </Button>
           </form>
+          {!settings.enabled && settings.configurationError && (
+            <p className="mt-3 text-sm font-semibold text-coral-700">
+              Corrigez la configuration SMTP avant d&apos;envoyer un test.
+            </p>
+          )}
         </Card>
 
         <div className="rounded-2xl border-2 border-sand-200 bg-sand-50 p-5">
@@ -273,17 +294,100 @@ export function MailSettingsForm({
             />
             <div>
               <h2 className="font-bold text-brand-950">
-                Avant la mise en production
+                {settings.provider === "smtp"
+                  ? "Configuration du relais"
+                  : "Avant la mise en production"}
               </h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                Validez le domaine dans Resend, puis ajoutez les enregistrements
-                DNS SPF et DKIM fournis. L&apos;adresse d&apos;expédition doit
-                utiliser ce domaine.
+                {settings.provider === "smtp"
+                  ? settings.smtpHost?.toLowerCase().includes("mailpit")
+                    ? "Mailpit capture les messages dans Docker sans les distribuer sur Internet. Utilisez son interface web pour consulter les e-mails de test."
+                    : "Le transport est défini par les variables d'environnement. Vérifiez que le relais autorise l'expéditeur et configurez les enregistrements DNS de votre domaine pour la distribution publique."
+                  : "Validez le domaine dans Resend, puis ajoutez les enregistrements DNS SPF et DKIM fournis. L'adresse d'expédition doit utiliser ce domaine."}
               </p>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SmtpEnvironmentSettings({
+  settings,
+}: {
+  settings: MailSettingsView;
+}) {
+  return (
+    <div className="space-y-5 p-5 sm:p-6">
+      <div
+        className={
+          settings.configurationError
+            ? "rounded-xl border-2 border-coral-200 bg-coral-50 p-4"
+            : "rounded-xl border-2 border-sea-200 bg-sea-50 p-4"
+        }
+      >
+        <p className="font-bold text-brand-950">
+          Configuration gérée par l&apos;environnement
+        </p>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Les paramètres SMTP sont injectés au démarrage du conteneur. Pour les
+          modifier, mettez à jour les variables <code>SMTP_*</code>, puis
+          redémarrez le service.
+        </p>
+        {settings.configurationError && (
+          <p className="mt-2 text-sm font-semibold text-coral-700">
+            {settings.configurationError}
+          </p>
+        )}
+      </div>
+
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <SmtpSetting
+          label="Serveur"
+          value={
+            settings.smtpHost
+              ? `${settings.smtpHost}:${settings.smtpPort ?? "—"}`
+              : "Non configuré"
+          }
+        />
+        <SmtpSetting
+          label="Sécurité"
+          value={
+            settings.smtpSecure
+              ? "TLS dès la connexion"
+              : "SMTP / STARTTLS si disponible"
+          }
+        />
+        <SmtpSetting
+          label="Authentification"
+          value={
+            settings.smtpAuthConfigured
+              ? "Identifiants configurés"
+              : "Sans authentification"
+          }
+        />
+        <SmtpSetting
+          label="Expéditeur"
+          value={settings.smtpFrom ?? "Non configuré"}
+        />
+      </dl>
+
+      <p className="border-t-2 border-slate-100 pt-4 text-sm leading-6 text-slate-500">
+        Aucun identifiant ni mot de passe SMTP n&apos;est exposé dans cette
+        interface.
+      </p>
+    </div>
+  );
+}
+
+function SmtpSetting({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border-2 border-slate-100 bg-slate-50 p-4">
+      <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd>
     </div>
   );
 }

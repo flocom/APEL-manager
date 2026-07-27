@@ -1,13 +1,18 @@
 import { randomBytes } from "node:crypto";
 
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error("DATABASE_URL est requis.");
 }
 
-const sql = neon(databaseUrl);
+const sql = postgres(databaseUrl, {
+  max: 1,
+  prepare: false,
+  connect_timeout: 10,
+  idle_timeout: 20,
+});
 
 const UNIT_IN_DAYS = {
   days: 1,
@@ -884,6 +889,7 @@ if (process.argv.includes("--verify")) {
       2,
     ),
   );
+  await sql.end({ timeout: 5 });
   process.exit(0);
 }
 
@@ -1128,3 +1134,5 @@ console.log(
     2,
   ),
 );
+
+await sql.end({ timeout: 5 });

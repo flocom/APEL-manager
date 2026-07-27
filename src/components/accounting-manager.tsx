@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FileUploadField } from "@/components/file-upload-field";
 import { ModuleStat } from "@/components/module-stat";
 import { useToast } from "@/components/toast";
 import {
@@ -572,10 +573,15 @@ function AccountingMobileCard({
         <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
           <span>{accountName || "Sans compte"}</span>
           {entry.attachmentUrl && (
-            <span className="inline-flex items-center gap-1 font-semibold text-brand-700">
+            <a
+              href={entry.attachmentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline"
+            >
               <Paperclip className="h-3 w-3" />
               Justificatif
-            </span>
+            </a>
           )}
         </div>
         {entry.status === "draft" ? (
@@ -757,20 +763,13 @@ function AccountingEntryForm({
             placeholder="N° facture, chèque…"
           />
         </Field>
-        <Field
-          label="Lien du justificatif"
-          htmlFor="attachmentUrl"
+        <FileUploadField
+          label="Justificatif"
+          name="attachmentUrl"
+          scope="accounting"
+          defaultValue={entry?.attachmentUrl}
           className="sm:col-span-2"
-          hint="URL sécurisée vers la facture ou le reçu."
-        >
-          <Input
-            id="attachmentUrl"
-            name="attachmentUrl"
-            type="url"
-            defaultValue={entry?.attachmentUrl ?? ""}
-            placeholder="https://…"
-          />
-        </Field>
+        />
         <Field
           label="Notes internes"
           htmlFor="entry-notes"

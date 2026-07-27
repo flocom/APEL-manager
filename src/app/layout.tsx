@@ -16,8 +16,10 @@ const inter = Inter({
 const description = `Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'APEL de l'${SCHOOL_NAME}.`;
 
 export const metadata: Metadata = {
-  metadataBase: process.env.NEXT_PUBLIC_APP_URL
-    ? new URL(process.env.NEXT_PUBLIC_APP_URL)
+  metadataBase: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
+    ? new URL(
+        process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      )
     : undefined,
   title: {
     default: APP_NAME,

@@ -81,7 +81,7 @@ export async function POST(req: Request, { params }: Params) {
         (SELECT version FROM bumped) AS version,
         (SELECT count(*) FROM reordered)::int AS updated
     `);
-    const row = result.rows[0] as
+    const row = result[0] as
       | {
           valid?: boolean;
           matched?: number;

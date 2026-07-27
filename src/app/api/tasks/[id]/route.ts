@@ -109,11 +109,11 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     if (isManager && data.assigneeIds !== undefined) {
-      // Remplacement des assigné·es en 2 requêtes (delete+insert) : non atomique
-      // car le driver neon-http n'a pas de transactions. Conséquence acceptable
-      // (et récupérable via la même UI) : un crash entre les deux laisserait la
-      // tâche sans assigné·e. Le verrou de version ci-dessus protège déjà du
-      // lost-update entre deux éditions concurrentes.
+      // Remplacement idempotent des assigné·es en deux requêtes. Une
+      // interruption entre le delete et l'insert peut temporairement laisser
+      // la tâche sans responsable ; la même édition depuis l'interface rétablit
+      // alors la sélection. Le verrou de version ci-dessus protège déjà des
+      // mises à jour concurrentes perdues.
       await db.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
       if (data.assigneeIds.length > 0) {
         await db
