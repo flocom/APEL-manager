@@ -9,14 +9,14 @@ interface EmailContent {
 function layout(title: string, bodyHtml: string): string {
   return `
   <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
-    <h2 style="color:#1f5be0;">${title}</h2>
+    <h2 style="color:#075d8d;">${title}</h2>
     ${bodyHtml}
     <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${APP_NAME} — message automatique</p>
   </div>`;
 }
 
 function button(href: string, label: string): string {
-  return `<a href="${href}" style="display:inline-block;background:#1f5be0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">${label}</a>`;
+  return `<a href="${href}" style="display:inline-block;background:#075d8d;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">${label}</a>`;
 }
 
 /** Échappe les valeurs non maîtrisées (nom, titres…) injectées dans le HTML. */

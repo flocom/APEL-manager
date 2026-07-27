@@ -39,7 +39,7 @@ export function VolunteerSignupForm({
 
   if (done) {
     return (
-      <div className="animate-pop rounded-2xl border border-sea-200 bg-gradient-to-b from-sea-50 to-white px-5 py-6 text-center">
+      <div className="animate-pop rounded-2xl border-2 border-sea-200 bg-sea-50 px-5 py-6 text-center">
         <div className="mx-auto mb-2 text-4xl">🎉</div>
         <p className="text-base font-semibold text-sea-800">
           Merci, votre inscription est bien enregistrée !

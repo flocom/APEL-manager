@@ -1,7 +1,11 @@
 # Déploiement — Vercel + Neon
 
 Ce guide explique comment mettre APEL Manager en ligne sur **Vercel** avec une
-base **Neon Postgres**, et comment activer les notifications.
+base **Neon Postgres**, activer les modules associatifs et configurer les
+e-mails sortants.
+
+L'instance est prévue pour l'**APEL Notre Dame des Flots**, enregistrée sous le
+numéro RNA **W853001441**.
 
 ---
 
@@ -15,20 +19,23 @@ base **Neon Postgres**, et comment activer les notifications.
    ```
    C'est la valeur de `DATABASE_URL`.
 
-### Créer les tables
+### Créer ou mettre à jour les tables
 
-Deux options, au choix :
+Après chaque installation ou mise à jour du projet, synchroniser le schéma
+Drizzle avec Neon :
 
-**Option A — en local (recommandé)**
 ```bash
-echo 'DATABASE_URL="postgresql://...votre URL Neon..."' > .env.local
 npm install
 npm run db:push
 ```
 
-**Option B — sans rien installer**
-Ouvrir le **SQL Editor** de Neon et coller le contenu du fichier
-[`drizzle/0000_init.sql`](../drizzle/0000_init.sql), puis exécuter.
+Cette commande applique notamment les tables des modules **Adhérents**,
+**Comptabilité**, **Documents**, ainsi que les réglages mail. Les migrations SQL
+versionnées restent disponibles dans [`drizzle/`](../drizzle/) pour audit ou
+application manuelle ; dans ce cas, elles doivent toutes être exécutées dans
+l'ordre, de `0000` à `0008`.
+
+> Effectuer une sauvegarde de la base avant toute migration en production.
 
 ---
 
@@ -51,29 +58,95 @@ Ouvrir le **SQL Editor** de Neon et coller le contenu du fichier
 |---|---|---|
 | `DATABASE_URL` | ✅ | Connection string *pooled* Neon |
 | `AUTH_SECRET` | ✅ | Secret de signature des sessions (≥ 32 caractères). Générer : `openssl rand -base64 32` |
+| `OAUTH_SECRET` | ⭐ recommandé | Secret dédié au consentement OAuth du serveur MCP. Si absent, `AUTH_SECRET` est utilisé |
+| `SETTINGS_ENCRYPTION_KEY` | ✅ | Chiffre les secrets saisis dans l'interface, notamment la clé Resend. Chaîne stable de 32 caractères minimum ; générer avec `openssl rand -base64 32` |
 | `NEXT_PUBLIC_APP_URL` | ⭐ recommandé | URL publique du site, ex. `https://apel-manager.vercel.app` |
+| `OAUTH_ISSUER` | ⛔ optionnel | Origine HTTPS de l'autorité OAuth si elle diffère de `NEXT_PUBLIC_APP_URL` |
+| `MCP_RESOURCE_URL` | ⛔ optionnel | URL HTTPS exacte du connecteur, terminée par `/api/mcp`, si elle doit être surchargée |
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
 | `REMINDER_WINDOW_DAYS` | ⛔ optionnel | Nb de jours avant échéance pour envoyer un rappel (défaut : `3`) |
-| `RESEND_API_KEY` | ⛔ optionnel | Clé API [Resend](https://resend.com) pour les e-mails |
-| `EMAIL_FROM` | ⛔ optionnel | Expéditeur des e-mails, ex. `APEL <contact@mondomaine.fr>` (défaut : `onboarding@resend.dev`) |
+| `RESEND_API_KEY` | ⛔ optionnel | Configuration de secours de la clé [Resend](https://resend.com), si elle n'est pas enregistrée dans l'interface |
+| `EMAIL_FROM` | ⛔ optionnel | Expéditeur de secours, ex. `APEL Notre Dame des Flots <contact@mondomaine.fr>` |
 | `TELEGRAM_BOT_TOKEN` | ⛔ optionnel | Token du bot Telegram (via @BotFather) |
 
-Les canaux de notification sont **optionnels** : si `RESEND_API_KEY` et
-`TELEGRAM_BOT_TOKEN` ne sont pas définis, l'application fonctionne normalement,
-les rappels sont simplement ignorés (et réessayés une fois configurés).
+`SETTINGS_ENCRYPTION_KEY` doit rester **strictement identique** entre les
+déploiements. La changer rendrait illisible la clé Resend déjà enregistrée ; il
+faudrait alors saisir à nouveau cette dernière.
+
+Les canaux de notification sont optionnels : sans configuration Resend ni
+`TELEGRAM_BOT_TOKEN`, l'application fonctionne normalement, mais aucun message
+n'est envoyé sur le canal concerné.
 
 ---
 
-## 4. Notifications par e-mail (Resend)
+## 4. Courrier sortant avec Resend
 
-1. Créer un compte sur [resend.com](https://resend.com) (offre gratuite : 3000
-   e-mails/mois).
-2. Créer une **API Key** → variable `RESEND_API_KEY`.
-3. Pour envoyer depuis votre propre domaine, le vérifier dans Resend puis définir
-   `EMAIL_FROM`. En test, l'expéditeur `onboarding@resend.dev` fonctionne
-   directement.
+### Configuration depuis l'interface
 
-## 5. Notifications Telegram
+1. Définir `SETTINGS_ENCRYPTION_KEY` dans `.env.local` et dans les variables
+   Vercel, puis redéployer.
+2. Exécuter `npm run db:push` pour créer la table de réglages.
+3. Créer une clé API dans [Resend](https://resend.com).
+4. Se connecter avec un compte administrateur puis ouvrir
+   **Tableau de bord → Configuration** (`/dashboard/settings`).
+5. Renseigner le nom d'expéditeur, l'adresse d'envoi, l'adresse de réponse et la
+   clé API, puis activer l'envoi.
+6. Utiliser le formulaire de test de la page avant d'activer les communications
+   réelles.
+
+La clé Resend est chiffrée côté serveur avant son stockage. L'interface ne
+réaffiche ensuite que ses quatre derniers caractères. Ne jamais inscrire la clé
+dans Git, les journaux ou une capture d'écran.
+
+### Passage ultérieur au nom de domaine
+
+En phase de test, Resend permet l'utilisation de son expéditeur de démonstration.
+Avant la mise en production :
+
+1. ajouter le futur domaine dans Resend ;
+2. publier les enregistrements DNS SPF/DKIM demandés ;
+3. attendre que le domaine soit marqué comme vérifié ;
+4. renseigner ce domaine et une adresse correspondante dans
+   **Configuration**, par exemple
+   `APEL Notre Dame des Flots <contact@votre-domaine.fr>` ;
+5. envoyer un nouveau message de test.
+
+`RESEND_API_KEY` et `EMAIL_FROM` peuvent rester définis comme solution de
+secours, mais les réglages enregistrés et activés dans l'interface sont utilisés
+en priorité.
+
+## 5. Modules de gestion associative
+
+Les quatre volets sont accessibles depuis le tableau de bord après application
+du schéma avec `npm run db:push`.
+
+### Adhérents
+
+Le volet **Adhérents** conserve l'identité, les coordonnées, l'adresse, le
+statut, l'année scolaire et le suivi de cotisation. Ces données sont distinctes
+des comptes de connexion et doivent être gérées conformément aux obligations
+RGPD de l'association.
+
+### Comptabilité
+
+Le volet **Comptabilité** suit les recettes et dépenses en centimes, les comptes
+banque/caisse, les catégories et les justificatifs. Les écritures peuvent être
+préparées en brouillon puis validées. Sauvegarder régulièrement la base et
+réserver les accès aux responsables autorisés.
+
+### Documents
+
+Le volet **Documents** centralise les procès-verbaux d'assemblée générale, les
+attestations liées à un adhérent et les autres archives. Les statuts
+**brouillon**, **final** et **archivé** permettent de maîtriser leur cycle de
+vie.
+
+L'identité à faire apparaître sur les documents officiels est :
+
+- **APEL Notre Dame des Flots**
+- **N° RNA : W853001441**
+
+## 6. Notifications Telegram
 
 1. Sur Telegram, parler à **@BotFather**, commande `/newbot`, suivre les étapes.
    Récupérer le **token** → variable `TELEGRAM_BOT_TOKEN`.
@@ -82,7 +155,7 @@ les rappels sont simplement ignorés (et réessayés une fois configurés).
    - récupère son **Chat ID** (par exemple via le bot **@userinfobot**) ;
    - le renseigne dans **Mon compte → Chat ID Telegram**.
 
-## 6. Le Cron de rappels
+## 7. Le Cron de rappels
 
 - Configuré dans [`vercel.json`](../vercel.json) : exécution quotidienne à 7h00
   UTC sur `/api/cron/notifications`.
@@ -92,16 +165,19 @@ les rappels sont simplement ignorés (et réessayés une fois configurés).
 
 ---
 
-## 7. Premier compte administrateur
+## 8. Premier compte administrateur
 
 Le **premier compte créé** via `/register` reçoit automatiquement le rôle
-**administrateur**. Il peut ensuite, depuis **Membres**, promouvoir d'autres
+**administrateur**. Il peut ensuite, depuis **Utilisateurs**, promouvoir d'autres
 comptes en *Organisateur* ou *Administrateur*.
 
 ## Rôles & permissions
 
 | Rôle | Droits |
 |---|---|
-| **Administrateur** | Tout, y compris la gestion des comptes et des rôles |
-| **Organisateur** | Créer / modifier les événements, tâches, créneaux ; assigner des membres |
+| **Administrateur** | Tout, y compris adhérents, comptabilité, configuration, comptes et rôles |
+| **Organisateur** | Créer / modifier les événements, tâches, créneaux et documents ; assigner des utilisateurs |
 | **Membre** | Consulter, gérer l'avancement de ses tâches assignées, s'inscrire comme bénévole |
+
+La procédure complète de connexion du serveur MCP à Claude.ai est décrite dans
+[`MCP_CLAUDE.md`](MCP_CLAUDE.md).

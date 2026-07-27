@@ -58,7 +58,7 @@ export const getEventWithDetails = cache(async (id: string) => {
     where: eq(events.id, id),
     with: {
       tasks: {
-        orderBy: [asc(tasks.position), asc(tasks.dueAt)],
+        orderBy: [asc(tasks.position), asc(tasks.dueAt), asc(tasks.id)],
         with: { assignees: { columns: { userId: true } } },
       },
       volunteerSlots: {

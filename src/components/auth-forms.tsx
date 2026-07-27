@@ -16,7 +16,7 @@ function ErrorMessage({ message }: { message: string | null }) {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ next = "/dashboard" }: { next?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,7 @@ export function LoginForm() {
           password: form.get("password"),
         },
       });
-      router.push("/dashboard");
+      router.push(next);
       router.refresh();
     } catch (err) {
       setError((err as Error).message);

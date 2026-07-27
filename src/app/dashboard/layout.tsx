@@ -11,10 +11,10 @@ export default async function DashboardLayout({
   const user = await requireUser();
 
   return (
-    <div className="min-h-screen lg:flex">
+    <div className="min-h-screen bg-slate-50 lg:flex">
       <DashboardNav user={{ name: user.name, role: user.role }} />
-      <main className="flex-1 px-4 py-6 sm:px-8 lg:h-screen lg:overflow-y-auto lg:px-10">
-        <div className="mx-auto max-w-6xl">{children}</div>
+      <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:px-10 lg:py-10 xl:px-12">
+        <div className="mx-auto max-w-7xl">{children}</div>
       </main>
     </div>
   );

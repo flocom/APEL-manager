@@ -5,6 +5,7 @@ import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, taskAssignees, tasks } from "@/lib/db/schema";
+import { resolveLeadTime } from "@/lib/task-lead-time";
 import { emptyToNull } from "@/lib/utils";
 import { taskSchema } from "@/lib/validation";
 
@@ -23,7 +24,11 @@ export async function POST(req: Request, { params }: Params) {
     if (!event) throw new HttpError(404, "Événement introuvable.");
 
     const data = taskSchema.parse(await req.json());
-    const dueAt = computeDueAt(event.startAt, data.leadTimeDays);
+    const duration = resolveLeadTime(data);
+    if (duration.leadTimeDays > 365) {
+      throw new HttpError(400, "La durée ne peut pas dépasser un an.");
+    }
+    const dueAt = computeDueAt(event.startAt, duration.leadTimeDays);
 
     // Nouvelle tâche ajoutée en fin de check-list.
     const [{ count }] = await db
@@ -37,7 +42,7 @@ export async function POST(req: Request, { params }: Params) {
         eventId,
         title: data.title,
         description: emptyToNull(data.description),
-        leadTimeDays: data.leadTimeDays,
+        ...duration,
         dueAt,
         position: count,
       })

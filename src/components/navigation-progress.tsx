@@ -60,7 +60,7 @@ export function NavigationProgress() {
       role="status"
       aria-label="Chargement"
     >
-      <div className="absolute h-full animate-progress-indeterminate rounded-full bg-gradient-to-r from-brand-400 via-sea-400 to-coral-400" />
+      <div className="absolute h-full animate-progress-indeterminate bg-brand-700" />
     </div>
   );
 }

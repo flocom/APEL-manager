@@ -1,6 +1,15 @@
 "use client";
 
-import { Download, ListChecks, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  ListChecks,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -9,18 +18,28 @@ import {
   Badge,
   Button,
   Card,
-  EmptyState,
   Field,
   Input,
   Label,
+  Select,
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
+import {
+  formatLeadTimeDuration,
+  LEAD_TIME_MAX,
+  leadTimeToDays,
+  resolveLeadTime,
+  type LeadTimeUnit,
+} from "@/lib/task-lead-time";
 import { useMutationError } from "@/lib/use-mutation-error";
+import { cn } from "@/lib/utils";
 
 interface TplTask {
   title: string;
   leadTimeDays: number;
+  leadTimeValue?: number;
+  leadTimeUnit?: LeadTimeUnit;
   description?: string;
 }
 export interface Tpl {
@@ -31,17 +50,59 @@ export interface Tpl {
   version: number;
 }
 
-// Ligne de tâche éditée : uid stable (clés React) + leadTimeDays gardé en
-// chaîne pour autoriser le champ vide pendant la saisie (coercition au save).
-type EditorTask = { uid: number; title: string; leadTimeDays: string; description?: string };
+type EditorTask = {
+  uid: number;
+  title: string;
+  leadTimeValue: string;
+  leadTimeUnit: LeadTimeUnit;
+  description?: string;
+};
 let uidCounter = 0;
 const nextUid = () => (uidCounter += 1);
+
+function formatTemplateTaskLeadTime(task: TplTask) {
+  const duration = resolveLeadTime(task);
+  return formatLeadTimeDuration(
+    duration.leadTimeValue,
+    duration.leadTimeUnit,
+  );
+}
+
+const templateTones = [
+  {
+    border: "!border-brand-200",
+    accent: "bg-brand-600",
+    icon: "text-brand-700",
+  },
+  {
+    border: "!border-sea-200",
+    accent: "bg-sea-600",
+    icon: "text-sea-700",
+  },
+  {
+    border: "!border-slate-200",
+    accent: "bg-slate-500",
+    icon: "text-slate-600",
+  },
+] as const;
 
 export function TemplateManager({ templates }: { templates: Tpl[] }) {
   const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState<null | "new" | Tpl>(null);
   const [seeding, setSeeding] = useState(false);
+  const [query, setQuery] = useState("");
+  const filteredTemplates = templates.filter((template) => {
+    const needle = query.trim().toLocaleLowerCase("fr");
+    if (!needle) return true;
+    return (
+      template.name.toLocaleLowerCase("fr").includes(needle) ||
+      template.description?.toLocaleLowerCase("fr").includes(needle) ||
+      template.tasks.some((task) =>
+        task.title.toLocaleLowerCase("fr").includes(needle),
+      )
+    );
+  });
 
   async function seed() {
     setSeeding(true);
@@ -77,45 +138,160 @@ export function TemplateManager({ templates }: { templates: Tpl[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {templates.length === 0 && (
-          <Button variant="outline" icon={Download} loading={seeding} onClick={seed}>
-            Importer les modèles par défaut
-          </Button>
+    <div className="space-y-5">
+      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div aria-hidden className="flex gap-1.5">
+              <span className="h-8 w-2 rounded bg-brand-600" />
+              <span className="h-8 w-2 rounded bg-sea-600" />
+              <span className="h-8 w-2 rounded bg-slate-500" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-950">
+                {templates.length} modèle{templates.length > 1 ? "s" : ""} prêt
+                {templates.length > 1 ? "s" : ""}
+              </p>
+              <p className="text-sm text-slate-500">
+                Choisissez un modèle pour consulter ou modifier ses tâches.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {templates.length === 0 && (
+              <Button
+                variant="outline"
+                icon={Download}
+                loading={seeding}
+                onClick={seed}
+                className="!bg-white !bg-none !shadow-none hover:!translate-y-0"
+              >
+                Importer les modèles par défaut
+              </Button>
+            )}
+            <Button
+              icon={Plus}
+              onClick={() => setEditing("new")}
+              className="!bg-brand-600 !bg-none !shadow-none hover:!translate-y-0 hover:!bg-brand-700"
+            >
+              Nouveau modèle
+            </Button>
+          </div>
+        </div>
+        {templates.length > 4 && (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Rechercher un modèle ou une tâche…"
+              className="pl-10"
+              aria-label="Rechercher dans les modèles"
+            />
+          </div>
         )}
-        <Button icon={Plus} onClick={() => setEditing("new")}>
-          Nouveau modèle
-        </Button>
       </div>
 
       {templates.length === 0 ? (
-        <EmptyState
-          icon={ListChecks}
-          title="Aucun modèle de check-list"
-          description="Importez les modèles prêts à l'emploi (vide-grenier, kermesse…) ou créez les vôtres."
-        />
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50 px-6 py-14 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-600 text-white">
+            <ListChecks className="h-7 w-7" />
+          </span>
+          <p className="mt-4 font-bold text-slate-950">
+            Aucun modèle de check-list
+          </p>
+          <p className="mt-1 max-w-md text-sm text-slate-600">
+            Importez les modèles prêts à l&apos;emploi (vide-grenier,
+            kermesse…) ou créez les vôtres.
+          </p>
+        </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {templates.map((t) => (
-            <Card key={t.id} className="flex flex-col p-4">
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-semibold text-slate-900">{t.name}</p>
-                <Badge color="blue">{t.tasks.length} tâches</Badge>
-              </div>
-              {t.description && (
-                <p className="mt-1 text-sm text-slate-500">{t.description}</p>
-              )}
-              <div className="mt-3 flex gap-2 pt-1">
-                <Button size="sm" variant="outline" icon={Pencil} onClick={() => setEditing(t)}>
-                  Modifier
-                </Button>
-                <Button size="sm" variant="ghost" icon={Trash2} onClick={() => remove(t)}>
-                  Supprimer
-                </Button>
-              </div>
-            </Card>
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {filteredTemplates.map((t, index) => {
+            const tone = templateTones[index % templateTones.length];
+            return (
+              <Card
+                key={t.id}
+                className={cn(
+                  "group relative flex flex-col overflow-hidden !rounded-2xl !shadow-none transition-colors hover:!bg-slate-50",
+                  tone.border,
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn("absolute inset-y-0 left-0 w-1.5", tone.accent)}
+                />
+                <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
+                  <div className="min-w-0">
+                    <p className="font-bold tracking-tight text-slate-950">
+                      {t.name}
+                    </p>
+                    {t.description && (
+                      <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
+                        {t.description}
+                      </p>
+                    )}
+                  </div>
+                  <Badge color="blue" className="!rounded-lg shrink-0">
+                    {t.tasks.length} tâches
+                  </Badge>
+                </div>
+                <div className="mx-5 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                  {t.tasks.slice(0, 3).map((task, taskIndex) => (
+                    <div
+                      key={`${task.title}-${taskIndex}`}
+                      className="flex items-start gap-2 text-sm text-slate-600"
+                    >
+                      <CheckCircle2
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0",
+                          tone.icon,
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 line-clamp-1">
+                        {task.title}
+                      </span>
+                      <span className="shrink-0 text-xs font-semibold text-brand-700">
+                        {formatTemplateTaskLeadTime(task)}
+                      </span>
+                    </div>
+                  ))}
+                  {t.tasks.length > 3 && (
+                    <p className="pl-6 text-xs font-semibold text-slate-400">
+                      + {t.tasks.length - 3} autre
+                      {t.tasks.length - 3 > 1 ? "s" : ""} tâche
+                      {t.tasks.length - 3 > 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="mt-5 flex gap-2 border-t border-slate-200 bg-white px-5 py-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={Pencil}
+                    onClick={() => setEditing(t)}
+                    className="!bg-white !bg-none !shadow-none hover:!translate-y-0"
+                  >
+                    Modifier
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={Trash2}
+                    onClick={() => remove(t)}
+                    className="!shadow-none hover:!translate-y-0 hover:!bg-coral-50 hover:!text-coral-800"
+                  >
+                    Supprimer
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+          {filteredTemplates.length === 0 && (
+            <p className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center text-sm text-slate-500">
+              Aucun modèle ne correspond à cette recherche.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -138,12 +314,16 @@ function TemplateEditor({
     (template?.tasks.length
       ? template.tasks
       : [{ title: "", leadTimeDays: 7 }]
-    ).map((t) => ({
-      uid: nextUid(),
-      title: t.title,
-      leadTimeDays: String(t.leadTimeDays),
-      description: t.description,
-    })),
+    ).map((t) => {
+      const duration = resolveLeadTime(t);
+      return {
+        uid: nextUid(),
+        title: t.title,
+        leadTimeValue: String(duration.leadTimeValue),
+        leadTimeUnit: duration.leadTimeUnit,
+        description: t.description,
+      };
+    }),
   );
   const [loading, setLoading] = useState(false);
 
@@ -155,11 +335,16 @@ function TemplateEditor({
     e.preventDefault();
     const cleaned = tasks
       .filter((t) => t.title.trim())
-      .map((t) => ({
-        title: t.title.trim(),
-        leadTimeDays: Number(t.leadTimeDays) || 0,
-        description: t.description,
-      }));
+      .map((t) => {
+        const leadTimeValue = Number(t.leadTimeValue) || 0;
+        return {
+          title: t.title.trim(),
+          leadTimeDays: leadTimeToDays(leadTimeValue, t.leadTimeUnit),
+          leadTimeValue,
+          leadTimeUnit: t.leadTimeUnit,
+          description: t.description,
+        };
+      });
     if (cleaned.length === 0) {
       toast("Ajoutez au moins une tâche.", "error");
       return;
@@ -185,22 +370,32 @@ function TemplateEditor({
   }
 
   return (
-    <Card className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">
-          {template ? "Modifier le modèle" : "Nouveau modèle"}
-        </h2>
+    <Card className="overflow-hidden !rounded-2xl !border-brand-200 !shadow-none">
+      <div className="flex items-center justify-between border-b border-brand-200 bg-brand-50 px-5 py-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-600 text-white">
+            <ListChecks className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-bold text-slate-950">
+              {template ? "Modifier le modèle" : "Nouveau modèle"}
+            </h2>
+            <p className="text-sm text-slate-600">
+              Définissez les tâches à réutiliser.
+            </p>
+          </div>
+        </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+          className="grid h-9 w-9 place-items-center rounded-xl border border-brand-200 bg-white text-slate-500 transition-colors hover:bg-brand-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           aria-label="Fermer"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <form onSubmit={save} className="space-y-4">
+      <form onSubmit={save} className="space-y-5 p-5 sm:p-6">
         <Field label="Nom du modèle" htmlFor="tpl-name">
           <Input
             id="tpl-name"
@@ -209,6 +404,7 @@ function TemplateEditor({
             required
             minLength={2}
             placeholder="Ex. Tournoi sportif"
+            className="!rounded-xl !bg-white !shadow-none focus:!ring-2"
           />
         </Field>
         <Field label="Description (facultatif)" htmlFor="tpl-desc">
@@ -217,46 +413,99 @@ function TemplateEditor({
             rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            className="!rounded-xl !bg-white !shadow-none focus:!ring-2"
           />
         </Field>
 
-        <div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <Label>Tâches</Label>
-          <p className="mb-2 text-xs text-slate-400">
-            Chaque tâche a un délai « à gérer X jours avant l'événement ».
+          <p className="mb-3 text-xs text-slate-500">
+            Définissez pour chacune à partir de quand elle doit être traitée.
           </p>
           <div className="space-y-2">
             {tasks.map((task, i) => (
-              <div key={task.uid} className="flex items-center gap-2">
-                <Input
-                  value={task.title}
-                  onChange={(e) => updateTask(task.uid, { title: e.target.value })}
-                  placeholder={`Tâche ${i + 1}`}
-                  className="flex-1"
-                />
-                <div className="flex shrink-0 items-center gap-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={365}
-                    value={task.leadTimeDays}
-                    onChange={(e) =>
-                      updateTask(task.uid, { leadTimeDays: e.target.value })
+              <div
+                key={task.uid}
+                className="rounded-xl border border-slate-200 bg-white p-3"
+              >
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(260px,auto)_auto] sm:items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-100 text-xs font-extrabold text-brand-700">
+                      {i + 1}
+                    </span>
+                    <Input
+                      value={task.title}
+                      onChange={(e) =>
+                        updateTask(task.uid, { title: e.target.value })
+                      }
+                      placeholder={`Tâche ${i + 1}`}
+                      className="flex-1 !rounded-xl !bg-white !shadow-none focus:!ring-2"
+                    />
+                  </div>
+                  <div className="grid shrink-0 grid-cols-[90px_minmax(150px,1fr)] gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={LEAD_TIME_MAX[task.leadTimeUnit]}
+                      value={task.leadTimeValue}
+                      onChange={(e) =>
+                        updateTask(task.uid, {
+                          leadTimeValue: e.target.value,
+                        })
+                      }
+                      aria-label={`Durée de traitement de la tâche ${i + 1}`}
+                      className="w-24 !rounded-xl !bg-white !shadow-none focus:!ring-2"
+                    />
+                    <Select
+                      value={task.leadTimeUnit}
+                      onChange={(e) => {
+                        const unit = e.target.value as LeadTimeUnit;
+                        updateTask(task.uid, {
+                          leadTimeUnit: unit,
+                          leadTimeValue: String(
+                            Math.min(
+                              Number(task.leadTimeValue) || 0,
+                              LEAD_TIME_MAX[unit],
+                            ),
+                          ),
+                        });
+                      }}
+                      aria-label={`Unité de traitement de la tâche ${i + 1}`}
+                      className="!rounded-xl !bg-white !shadow-none focus:!ring-2"
+                    >
+                      <option value="days">jour(s) avant</option>
+                      <option value="weeks">semaine(s) avant</option>
+                      <option value="months">mois avant</option>
+                    </Select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTasks((ts) => ts.filter((t) => t.uid !== task.uid))
                     }
-                    className="w-20"
-                  />
-                  <span className="text-xs text-slate-400">j avant</span>
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-coral-50 text-coral-700 transition-colors hover:bg-coral-100 hover:text-coral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-coral-300"
+                    aria-label="Retirer la tâche"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setTasks((ts) => ts.filter((t) => t.uid !== task.uid))
-                  }
-                  className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-                  aria-label="Retirer la tâche"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-500 hover:text-brand-700">
+                    Consigne détaillée (facultatif)
+                  </summary>
+                  <Textarea
+                    value={task.description ?? ""}
+                    onChange={(event) =>
+                      updateTask(task.uid, {
+                        description: event.target.value,
+                      })
+                    }
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="Précisions utiles pour réaliser cette tâche…"
+                    className="mt-2 !rounded-xl !bg-white !shadow-none focus:!ring-2"
+                  />
+                </details>
               </div>
             ))}
           </div>
@@ -265,11 +514,16 @@ function TemplateEditor({
             size="sm"
             variant="outline"
             icon={Plus}
-            className="mt-2"
+            className="mt-3 !bg-white !bg-none !shadow-none hover:!translate-y-0"
             onClick={() =>
               setTasks((ts) => [
                 ...ts,
-                { uid: nextUid(), title: "", leadTimeDays: "7" },
+                {
+                  uid: nextUid(),
+                  title: "",
+                  leadTimeValue: "1",
+                  leadTimeUnit: "weeks",
+                },
               ])
             }
           >
@@ -277,11 +531,20 @@ function TemplateEditor({
           </Button>
         </div>
 
-        <div className="flex gap-2 border-t border-slate-100 pt-4">
-          <Button type="submit" loading={loading}>
+        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-5">
+          <Button
+            type="submit"
+            loading={loading}
+            className="!bg-brand-600 !bg-none !shadow-none hover:!translate-y-0 hover:!bg-brand-700"
+          >
             {template ? "Enregistrer" : "Créer le modèle"}
           </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="!bg-white !bg-none !shadow-none hover:!translate-y-0"
+          >
             Annuler
           </Button>
         </div>

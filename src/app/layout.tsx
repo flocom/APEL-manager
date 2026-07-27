@@ -32,6 +32,10 @@ export const metadata: Metadata = {
     locale: "fr_FR",
   },
   twitter: { card: "summary" },
+  icons: {
+    icon: "/site-icon.png",
+    apple: "/site-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -41,7 +45,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={inter.variable}>
-      <body className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-sea-50/40 font-sans text-slate-900 antialiased">
+      <body className="min-h-screen bg-[#f4f7f7] font-sans text-slate-950 antialiased">
         <NavigationProgress />
         <ToastProvider>{children}</ToastProvider>
       </body>

@@ -25,7 +25,10 @@ export function ApplyTemplate({
     return (
       <p className="text-sm text-slate-500">
         Aucun modèle disponible.{" "}
-        <Link href="/dashboard/templates" className="text-brand-600 hover:underline">
+        <Link
+          href="/dashboard/events/templates"
+          className="text-brand-600 hover:underline"
+        >
           Créer un modèle
         </Link>
       </p>

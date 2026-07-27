@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@neondatabase/serverless": "^0.10.4",
     "bcryptjs": "^2.4.3",
     "canvas-confetti": "^1.9.4",

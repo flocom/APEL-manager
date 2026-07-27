@@ -4,10 +4,17 @@
 
 :root {
   color-scheme: light;
+  --page-bg: #f4f7f7;
+  --surface: #ffffff;
+  --ink: #082a40;
+  --brand-blue: #075d8d;
+  --brand-mist: #b8e0f7;
+  --brand-sea: #12aa9e;
 }
 
 html {
   scroll-behavior: smooth;
+  background: var(--page-bg);
 }
 
 html,
@@ -16,12 +23,69 @@ body {
   margin: 0;
 }
 
+body {
+  min-width: 320px;
+}
+
 ::selection {
   background-color: theme("colors.brand.200");
+  color: theme("colors.brand.950");
+}
+
+*:focus-visible {
+  outline: none;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer utilities {
+  .page-grid {
+    background-image: none;
+  }
+
+  .text-gradient {
+    color: inherit;
+  }
+
+  .premium-surface {
+    background: var(--surface);
+  }
 }
 
 /* Champs date/heure plus discrets */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   opacity: 0.55;
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-progress-indeterminate {
+    left: 0;
+    width: 100%;
+    animation: none !important;
+  }
 }

@@ -77,9 +77,12 @@ export function SlotManager({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Bénévoles &amp; créneaux
-        </h2>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Créneaux</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Une mission claire par créneau facilite les inscriptions.
+          </p>
+        </div>
         {canManage && !showAdd && (
           <Button size="sm" onClick={() => setShowAdd(true)}>
             + Ajouter un créneau
@@ -152,6 +155,10 @@ export function SlotManager({
         <ul className="space-y-3">
           {slots.map((slot) => {
             const remaining = slot.capacity - slot.signups.length;
+            const fillRate = Math.min(
+              100,
+              Math.round((slot.signups.length / slot.capacity) * 100),
+            );
             return (
               <li
                 key={slot.id}
@@ -173,7 +180,8 @@ export function SlotManager({
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge color={remaining > 0 ? "amber" : "green"}>
-                      {slot.signups.length}/{slot.capacity}
+                      {slot.signups.length} inscrit
+                      {slot.signups.length > 1 ? "s" : ""} sur {slot.capacity}
                     </Badge>
                     {canManage && (
                       <button
@@ -187,34 +195,56 @@ export function SlotManager({
                   </div>
                 </div>
 
+                <div
+                  className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"
+                  role="progressbar"
+                  aria-label={`Remplissage du créneau ${slot.title}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={fillRate}
+                >
+                  <span
+                    className="block h-full rounded-full bg-sea-600"
+                    style={{ width: `${fillRate}%` }}
+                  />
+                </div>
+
                 {slot.signups.length > 0 && (
-                  <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3">
-                    {slot.signups.map((s) => (
-                      <li
-                        key={s.id}
-                        className="flex items-center justify-between gap-2 text-sm"
-                      >
-                        <span className="text-slate-700">
-                          {s.name}
-                          {(s.email || s.phone) && (
-                            <span className="text-slate-400">
-                              {" — "}
-                              {[s.email, s.phone].filter(Boolean).join(" · ")}
-                            </span>
+                  <details className="mt-3 border-t border-slate-100 pt-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-brand-700 hover:text-brand-900">
+                      Voir les {slot.signups.length} personne
+                      {slot.signups.length > 1 ? "s" : ""} inscrite
+                      {slot.signups.length > 1 ? "s" : ""}
+                    </summary>
+                    <ul className="mt-3 space-y-2">
+                      {slot.signups.map((signup) => (
+                        <li
+                          key={signup.id}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                        >
+                          <span className="min-w-0 text-slate-700">
+                            <span className="font-medium">{signup.name}</span>
+                            {(signup.email || signup.phone) && (
+                              <span className="block truncate text-xs text-slate-400">
+                                {[signup.email, signup.phone]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            )}
+                          </span>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => removeSignup(signup.id)}
+                              className="shrink-0 text-xs text-slate-400 hover:text-red-600"
+                            >
+                              Retirer
+                            </button>
                           )}
-                        </span>
-                        {canManage && (
-                          <button
-                            type="button"
-                            onClick={() => removeSignup(s.id)}
-                            className="text-xs text-slate-300 hover:text-red-600"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
               </li>
             );

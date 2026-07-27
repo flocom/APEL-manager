@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { hashPassword } from "@/lib/auth/password";
 import { db } from "@/lib/db";
-import { passwordResetTokens, users } from "@/lib/db/schema";
+import { oauthTokens, passwordResetTokens, users } from "@/lib/db/schema";
 import { hashToken } from "@/lib/tokens";
 import { resetPasswordSchema } from "@/lib/validation";
 
@@ -41,6 +41,15 @@ export async function POST(req: Request) {
       .update(passwordResetTokens)
       .set({ usedAt: new Date() })
       .where(eq(passwordResetTokens.id, row.id));
+    await db
+      .update(oauthTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(oauthTokens.userId, row.userId),
+          isNull(oauthTokens.revokedAt),
+        ),
+      );
 
     return NextResponse.json({ ok: true });
   } catch (error) {

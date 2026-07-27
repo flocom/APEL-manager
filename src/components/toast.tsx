@@ -65,7 +65,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={t.id}
             role="status"
             className={cn(
-              "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border bg-white px-4 py-3 text-sm shadow-lg",
+              "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border-2 bg-white px-4 py-3 text-sm",
               t.kind === "success"
                 ? "border-green-200"
                 : "border-red-200",

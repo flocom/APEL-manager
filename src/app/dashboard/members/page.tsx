@@ -23,8 +23,8 @@ export default async function MembersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Membres"
-        description="Gérez les comptes et leurs niveaux de droits."
+        title="Utilisateurs"
+        description="Gérez les comptes qui accèdent à l'application et leurs niveaux de droits."
         icon={Users}
       />
 
@@ -48,15 +48,15 @@ export default async function MembersPage() {
 
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
-          Contacter les membres
+          Contacter les utilisateurs
         </h2>
         <p className="mb-3 text-sm text-slate-500">
-          Envoyer un e-mail à tous les membres de l'association.
+          Envoyer un e-mail à tous les comptes enregistrés.
         </p>
         <BroadcastForm
           endpoint="/api/members/message"
-          title="Écrire à tous les membres"
-          hint="Cet e-mail sera envoyé à l'ensemble des comptes."
+          title="Écrire à tous les utilisateurs"
+          hint="Cet e-mail sera envoyé à l'ensemble des comptes applicatifs."
         />
       </Card>
 
