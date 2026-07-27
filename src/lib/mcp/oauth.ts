@@ -194,6 +194,7 @@ function requestOrigin(request: Request): string {
   const configured =
     process.env.OAUTH_ISSUER?.trim() ||
     process.env.MCP_BASE_URL?.trim() ||
+    process.env.APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (configured) {
     const url = normalizeConfiguredUrl(configured, "L’URL publique OAuth");

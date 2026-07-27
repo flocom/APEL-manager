@@ -94,7 +94,7 @@ export async function POST(req: Request) {
       throw e;
     }
 
-    if (inserted.rows.length === 0) {
+    if (inserted.length === 0) {
       throw new HttpError(409, "Ce créneau est complet.");
     }
 

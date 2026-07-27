@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer";
+
 import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
 
 interface EmailParams {
@@ -7,10 +9,7 @@ interface EmailParams {
   text?: string;
 }
 
-/**
- * Envoie un e-mail via l'API Resend. Les réglages enregistrés dans
- * Configuration > E-mail priment sur les variables d'environnement.
- */
+/** Envoie un e-mail via le transport SMTP ou Resend configuré. */
 export async function sendEmail({
   to,
   subject,
@@ -26,6 +25,23 @@ export async function sendEmail({
   }
 
   try {
+    if (config.provider === "smtp") {
+      const transporter = nodemailer.createTransport({
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        ...(config.auth ? { auth: config.auth } : {}),
+      });
+      await transporter.sendMail({
+        from: config.from,
+        to,
+        subject,
+        html,
+        text,
+      });
+      return true;
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -48,7 +64,9 @@ export async function sendEmail({
     }
     return true;
   } catch (error) {
-    console.error("[email] erreur réseau:", error);
+    const reason =
+      error instanceof Error ? error.message : "erreur réseau inconnue";
+    console.error(`[email] échec du transport ${config.provider} : ${reason}`);
     return false;
   }
 }

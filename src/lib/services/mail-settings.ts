@@ -16,6 +16,103 @@ import { outboundMailSettingsSchema } from "@/lib/validation";
 import { recordAudit, type AuditActor } from "./audit";
 
 const SETTINGS_ID = "default";
+const DEFAULT_RESEND_FROM =
+  "APEL Notre Dame des Flots <onboarding@resend.dev>";
+const DEFAULT_SMTP_FROM = "APEL Notre Dame des Flots <noreply@apel.local>";
+
+export type OutboundMailRuntimeConfig =
+  | {
+      provider: "resend";
+      apiKey: string;
+      from: string;
+      replyTo?: string;
+    }
+  | {
+      provider: "smtp";
+      host: string;
+      port: number;
+      secure: boolean;
+      auth?: {
+        user: string;
+        pass: string;
+      };
+      from: string;
+    };
+
+type SmtpEnvironment = {
+  selected: true;
+  config: Extract<OutboundMailRuntimeConfig, { provider: "smtp" }> | null;
+  error: string | null;
+  host: string | null;
+  port: number | null;
+  secure: boolean;
+  authConfigured: boolean;
+  from: string;
+};
+
+function parseBooleanEnvironment(
+  value: string | undefined,
+): boolean | null {
+  if (value === undefined || value.trim() === "") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return null;
+}
+
+/**
+ * Lit le transport SMTP géré par l'environnement. Le mot de passe n'est
+ * présent que dans la configuration d'exécution et ne doit jamais être
+ * retourné par une API ou journalisé.
+ */
+function getSmtpEnvironment(): SmtpEnvironment | null {
+  if (process.env.MAIL_PROVIDER?.trim().toLowerCase() !== "smtp") return null;
+
+  const host = process.env.SMTP_HOST?.trim() || null;
+  const portValue = process.env.SMTP_PORT?.trim() || "25";
+  const port = /^\d+$/.test(portValue) ? Number(portValue) : null;
+  const explicitSecure = parseBooleanEnvironment(process.env.SMTP_SECURE);
+  const secure = explicitSecure ?? port === 465;
+  const user = process.env.SMTP_USER?.trim() || null;
+  const password = process.env.SMTP_PASSWORD || null;
+  const from =
+    process.env.SMTP_FROM?.trim() ||
+    process.env.EMAIL_FROM?.trim() ||
+    DEFAULT_SMTP_FROM;
+
+  let error: string | null = null;
+  if (!host) {
+    error = "SMTP_HOST doit être configuré.";
+  } else if (port === null || port < 1 || port > 65_535) {
+    error = "SMTP_PORT doit être un port valide entre 1 et 65535.";
+  } else if (process.env.SMTP_SECURE?.trim() && explicitSecure === null) {
+    error = "SMTP_SECURE doit valoir true ou false.";
+  } else if (Boolean(user) !== Boolean(password)) {
+    error =
+      "SMTP_USER et SMTP_PASSWORD doivent être configurés ensemble, ou tous les deux laissés vides.";
+  }
+
+  return {
+    selected: true,
+    config:
+      !error && host && port
+        ? {
+            provider: "smtp",
+            host,
+            port,
+            secure,
+            ...(user && password ? { auth: { user, pass: password } } : {}),
+            from,
+          }
+        : null,
+    error,
+    host,
+    port,
+    secure,
+    authConfigured: Boolean(user && password),
+    from,
+  };
+}
 
 function encryptionKey(): Buffer {
   const source =
@@ -71,8 +168,33 @@ export async function getOutboundMailSettings() {
 
 export async function getOutboundMailStatus() {
   const settings = await getOutboundMailSettings();
+  const smtp = getSmtpEnvironment();
+  if (smtp) {
+    return {
+      provider: "smtp" as const,
+      environmentManaged: true,
+      enabled: Boolean(smtp.config),
+      fromName: null,
+      fromEmail: null,
+      replyTo: null,
+      domain: null,
+      keyConfigured: false,
+      keyLastFour: null,
+      smtpHost: smtp.host,
+      smtpPort: smtp.port,
+      smtpSecure: smtp.secure,
+      smtpAuthConfigured: smtp.authConfigured,
+      smtpFrom: smtp.from,
+      configurationError: smtp.error,
+      lastTestedAt: settings?.lastTestedAt ?? null,
+      lastTestStatus: settings?.lastTestStatus ?? "untested",
+      updatedAt: settings?.updatedAt ?? null,
+    };
+  }
+
   return {
-    provider: settings?.provider ?? "resend",
+    provider: "resend" as const,
+    environmentManaged: false,
     enabled: settings?.enabled ?? Boolean(process.env.RESEND_API_KEY),
     fromName: settings?.fromName ?? null,
     fromEmail: settings?.fromEmail ?? null,
@@ -86,6 +208,12 @@ export async function getOutboundMailStatus() {
       (process.env.RESEND_API_KEY
         ? process.env.RESEND_API_KEY.slice(-4)
         : null),
+    smtpHost: null,
+    smtpPort: null,
+    smtpSecure: false,
+    smtpAuthConfigured: false,
+    smtpFrom: null,
+    configurationError: null,
     lastTestedAt: settings?.lastTestedAt ?? null,
     lastTestStatus: settings?.lastTestStatus ?? "untested",
     updatedAt: settings?.updatedAt ?? null,
@@ -158,11 +286,17 @@ export async function markOutboundMailTest(
   });
 }
 
-export async function getOutboundMailRuntimeConfig(): Promise<{
-  apiKey: string;
-  from: string;
-  replyTo?: string;
-} | null> {
+export async function getOutboundMailRuntimeConfig(): Promise<
+  OutboundMailRuntimeConfig | null
+> {
+  const smtp = getSmtpEnvironment();
+  if (smtp) {
+    if (!smtp.config && smtp.error) {
+      console.error(`[email] configuration SMTP invalide : ${smtp.error}`);
+    }
+    return smtp.config;
+  }
+
   try {
     const settings = await getOutboundMailSettings();
     if (settings) {
@@ -171,14 +305,13 @@ export async function getOutboundMailRuntimeConfig(): Promise<{
         ? decryptSecret(settings.encryptedApiKey)
         : process.env.RESEND_API_KEY?.trim();
       if (!apiKey) return null;
-      const envFrom =
-        process.env.EMAIL_FROM ||
-        "APEL Notre Dame des Flots <onboarding@resend.dev>";
+      const envFrom = process.env.EMAIL_FROM || DEFAULT_RESEND_FROM;
       const from =
         settings.fromEmail && settings.fromName
           ? `${settings.fromName} <${settings.fromEmail}>`
           : settings.fromEmail || envFrom;
       return {
+        provider: "resend",
         apiKey,
         from,
         replyTo: settings.replyTo ?? undefined,
@@ -187,15 +320,17 @@ export async function getOutboundMailRuntimeConfig(): Promise<{
   } catch (error) {
     // Compatibilité avant application de la migration : les variables
     // d'environnement historiques continuent de fonctionner.
-    console.warn("[email] réglages dynamiques indisponibles, repli sur l’environnement", error);
+    console.warn(
+      "[email] réglages dynamiques indisponibles, repli sur l’environnement",
+      error,
+    );
   }
 
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) return null;
   return {
+    provider: "resend",
     apiKey,
-    from:
-      process.env.EMAIL_FROM ||
-      "APEL Notre Dame des Flots <onboarding@resend.dev>",
+    from: process.env.EMAIL_FROM || DEFAULT_RESEND_FROM,
   };
 }

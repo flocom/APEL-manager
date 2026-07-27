@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FileUploadField } from "@/components/file-upload-field";
 import { ModuleStat } from "@/components/module-stat";
 import { useToast } from "@/components/toast";
 import {
@@ -654,20 +655,13 @@ function DocumentForm({
             placeholder="Rédigez ou collez le contenu du document…"
           />
         </Field>
-        <Field
-          label="Lien vers le fichier signé"
-          htmlFor="fileUrl"
+        <FileUploadField
+          label="Fichier signé"
+          name="fileUrl"
+          scope="document"
+          defaultValue={document?.fileUrl}
           className="sm:col-span-2 lg:col-span-4"
-          hint="Utilisez une URL sécurisée pour les documents confidentiels."
-        >
-          <Input
-            id="fileUrl"
-            name="fileUrl"
-            type="url"
-            defaultValue={document?.fileUrl ?? ""}
-            placeholder="https://…"
-          />
-        </Field>
+        />
       </div>
       <div className="flex flex-col-reverse gap-2 border-t-2 border-slate-100 pt-5 sm:flex-row sm:justify-end">
         <Button

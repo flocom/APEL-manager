@@ -49,10 +49,9 @@ export async function PATCH(req: Request, { params }: Params) {
       if (data.status !== undefined)
         setFragments.push(sql`status = ${data.status}`);
 
-      // Un SEUL statement (CTE) : la mise à jour de l'événement (verrouillée par
-      // la version) ET le recalcul des échéances des tâches sont atomiques — le
-      // driver neon-http ne supporte pas les transactions multi-requêtes. Le
-      // recalcul est idempotent (due_at dérivé de start_at), il auto-corrige
+      // Un seul statement (CTE) rend atomiques la mise à jour de l'événement
+      // (verrouillée par la version) et le recalcul des échéances des tâches.
+      // Le recalcul est idempotent (due_at dérivé de start_at), il auto-corrige
       // donc toute dérive. `interval '24 hours'` = 24h fixes (cf. computeDueAt).
       const res = await db.execute(sql`
         WITH bumped AS (
@@ -70,7 +69,7 @@ export async function PATCH(req: Request, { params }: Params) {
         SELECT (SELECT count(*) FROM bumped)::int AS matched
       `);
       const matched = Number(
-        (res.rows[0] as { matched?: number } | undefined)?.matched ?? 0,
+        (res[0] as { matched?: number } | undefined)?.matched ?? 0,
       );
       if (matched === 0) {
         const [exists] = await db

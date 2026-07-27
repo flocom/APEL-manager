@@ -46,7 +46,7 @@ l'ordre, de `0000` à `0008`.
 2. Renseigner les **variables d'environnement** (section ci-dessous).
 3. **Deploy**. Le `vercel.json` configure déjà le Cron quotidien des rappels.
 
-> ⚠️ Après le premier déploiement, pensez à définir `NEXT_PUBLIC_APP_URL` avec
+> ⚠️ Après le premier déploiement, pensez à définir `APP_URL` avec
 > l'URL réelle (ex. `https://apel-manager.vercel.app`) puis redéployez, pour que
 > les liens dans les e-mails et les liens d'inscription soient corrects.
 
@@ -60,8 +60,9 @@ l'ordre, de `0000` à `0008`.
 | `AUTH_SECRET` | ✅ | Secret de signature des sessions (≥ 32 caractères). Générer : `openssl rand -base64 32` |
 | `OAUTH_SECRET` | ⭐ recommandé | Secret dédié au consentement OAuth du serveur MCP. Si absent, `AUTH_SECRET` est utilisé |
 | `SETTINGS_ENCRYPTION_KEY` | ✅ | Chiffre les secrets saisis dans l'interface, notamment la clé Resend. Chaîne stable de 32 caractères minimum ; générer avec `openssl rand -base64 32` |
-| `NEXT_PUBLIC_APP_URL` | ⭐ recommandé | URL publique du site, ex. `https://apel-manager.vercel.app` |
-| `OAUTH_ISSUER` | ⛔ optionnel | Origine HTTPS de l'autorité OAuth si elle diffère de `NEXT_PUBLIC_APP_URL` |
+| `APP_URL` | ⭐ recommandé | URL publique du site, configurable à l'exécution, ex. `https://apel-manager.vercel.app` |
+| `NEXT_PUBLIC_APP_URL` | ⛔ compatibilité | Ancien nom de l'URL publique ; `APP_URL` est prioritaire |
+| `OAUTH_ISSUER` | ⛔ optionnel | Origine HTTPS de l'autorité OAuth si elle diffère de `APP_URL` |
 | `MCP_RESOURCE_URL` | ⛔ optionnel | URL HTTPS exacte du connecteur, terminée par `/api/mcp`, si elle doit être surchargée |
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
 | `REMINDER_WINDOW_DAYS` | ⛔ optionnel | Nb de jours avant échéance pour envoyer un rappel (défaut : `3`) |

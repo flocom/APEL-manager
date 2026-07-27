@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { Building2, SlidersHorizontal } from "lucide-react";
 
 import {
@@ -6,47 +5,34 @@ import {
   type MailSettingsView,
 } from "@/components/mail-settings-form";
 import { Card, PageHeader } from "@/components/ui";
-import { APP_NAME, ASSOCIATION_RNA, SCHOOL_NAME } from "@/lib/app-config";
 import { requireRole } from "@/lib/auth/rbac";
-import { db } from "@/lib/db";
-import { outboundMailSettings } from "@/lib/db/schema";
+import { APP_NAME, ASSOCIATION_RNA, SCHOOL_NAME } from "@/lib/app-config";
+import { getOutboundMailStatus } from "@/lib/services/mail-settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireRole("admin");
-  const [stored] = await db
-    .select({
-      enabled: outboundMailSettings.enabled,
-      provider: outboundMailSettings.provider,
-      fromName: outboundMailSettings.fromName,
-      fromEmail: outboundMailSettings.fromEmail,
-      replyTo: outboundMailSettings.replyTo,
-      domain: outboundMailSettings.domain,
-      keyLastFour: outboundMailSettings.keyLastFour,
-      lastTestedAt: outboundMailSettings.lastTestedAt,
-      lastTestStatus: outboundMailSettings.lastTestStatus,
-    })
-    .from(outboundMailSettings)
-    .where(eq(outboundMailSettings.id, "default"))
-    .limit(1);
-
-  const settings: MailSettingsView = stored
-    ? {
-        ...stored,
-        lastTestedAt: stored.lastTestedAt?.toISOString() ?? null,
-      }
-    : {
-        enabled: false,
-        provider: "resend",
-        fromName: APP_NAME,
-        fromEmail: null,
-        replyTo: null,
-        domain: null,
-        keyLastFour: null,
-        lastTestedAt: null,
-        lastTestStatus: "untested",
-      };
+  const status = await getOutboundMailStatus();
+  const settings: MailSettingsView = {
+    enabled: status.enabled,
+    provider: status.provider,
+    environmentManaged: status.environmentManaged,
+    fromName:
+      status.fromName ?? (status.provider === "resend" ? APP_NAME : null),
+    fromEmail: status.fromEmail,
+    replyTo: status.replyTo,
+    domain: status.domain,
+    keyLastFour: status.keyLastFour,
+    smtpHost: status.smtpHost,
+    smtpPort: status.smtpPort,
+    smtpSecure: status.smtpSecure,
+    smtpAuthConfigured: status.smtpAuthConfigured,
+    smtpFrom: status.smtpFrom,
+    configurationError: status.configurationError,
+    lastTestedAt: status.lastTestedAt?.toISOString() ?? null,
+    lastTestStatus: status.lastTestStatus,
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">

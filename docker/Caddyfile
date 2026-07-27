@@ -1,0 +1,20 @@
+{
+	admin off
+}
+
+{$CADDY_SITE_ADDRESS:http://localhost} {
+	encode zstd gzip
+
+	request_body {
+		max_size {$CADDY_MAX_UPLOAD_SIZE:20MB}
+	}
+
+	header {
+		-Server
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	reverse_proxy app:3000
+}

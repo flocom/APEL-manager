@@ -1,5 +1,5 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 
 import * as schema from "./schema";
 
@@ -9,8 +9,37 @@ const connectionString =
   process.env.DATABASE_URL ??
   "postgresql://user:password@localhost:5432/placeholder";
 
-const sql = neon(connectionString);
+type DatabaseGlobal = typeof globalThis & {
+  apelPostgresClient?: ReturnType<typeof postgres>;
+};
 
-export const db = drizzle(sql, { schema });
+const databaseGlobal = globalThis as DatabaseGlobal;
+
+function readPoolSize() {
+  const fallback = process.env.VERCEL ? 1 : 10;
+  const configured = Number(process.env.DATABASE_POOL_MAX ?? fallback);
+
+  if (!Number.isInteger(configured) || configured < 1) return fallback;
+  return Math.min(configured, 50);
+}
+
+const client =
+  databaseGlobal.apelPostgresClient ??
+  postgres(connectionString, {
+    // Désactive les prepared statements nommés pour rester compatible avec les
+    // URLs Neon "pooled", tout en fonctionnant normalement avec PostgreSQL.
+    prepare: false,
+    max: readPoolSize(),
+    connect_timeout: 10,
+    idle_timeout: 20,
+  });
+
+// Le rechargement à chaud de Next.js ne doit pas créer un nouveau pool à
+// chaque compilation en développement.
+if (process.env.NODE_ENV !== "production") {
+  databaseGlobal.apelPostgresClient = client;
+}
+
+export const db = drizzle(client, { schema });
 
 export { schema };

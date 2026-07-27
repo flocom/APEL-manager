@@ -189,14 +189,27 @@ const optionalEmail = z
   .nullable()
   .optional()
   .or(z.literal(""));
-const optionalUrl = z
-  .string()
-  .trim()
-  .url("URL invalide")
-  .max(2000)
-  .nullable()
-  .optional()
-  .or(z.literal(""));
+function optionalUrl(scope: "accounting" | "document") {
+  const storedFilePattern = new RegExp(
+    `^/api/uploads/${scope}-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[A-Za-z0-9][A-Za-z0-9._-]{0,139}$`,
+  );
+  return z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((value) => {
+      if (value === "" || storedFilePattern.test(value)) return true;
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" || url.protocol === "http:";
+      } catch {
+        return false;
+      }
+    }, "Utilisez un fichier enregistré ou une URL HTTP(S) valide")
+    .nullable()
+    .optional()
+    .or(z.literal(""));
+}
 
 const schoolYear = z
   .string()
@@ -269,7 +282,7 @@ export const accountingEntrySchema = z.object({
   paymentMethod: optionalText(80),
   reference: optionalText(160),
   notes: optionalText(10_000),
-  attachmentUrl: optionalUrl,
+  attachmentUrl: optionalUrl("accounting"),
   version: optimisticVersion,
 });
 
@@ -282,7 +295,7 @@ export const associationDocumentSchema = z.object({
   documentDate: localDateTime,
   content: z.string().max(200_000).default(""),
   memberId: nullableUuid,
-  fileUrl: optionalUrl,
+  fileUrl: optionalUrl("document"),
   version: optimisticVersion,
 });
 
