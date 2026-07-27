@@ -6,6 +6,7 @@ import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { checklistTemplates, events, tasks } from "@/lib/db/schema";
+import { resolveLeadTime } from "@/lib/task-lead-time";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -49,14 +50,17 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    const rows = template.tasks.map((t, i) => ({
-      eventId,
-      title: t.title,
-      description: t.description ?? null,
-      leadTimeDays: t.leadTimeDays,
-      dueAt: computeDueAt(event.startAt, t.leadTimeDays),
-      position: i,
-    }));
+    const rows = template.tasks.map((t, i) => {
+      const duration = resolveLeadTime(t);
+      return {
+        eventId,
+        title: t.title,
+        description: t.description ?? null,
+        ...duration,
+        dueAt: computeDueAt(event.startAt, duration.leadTimeDays),
+        position: i,
+      };
+    });
 
     await db.insert(tasks).values(rows);
 

@@ -1,3 +1,5 @@
+import { toPlainText } from "@/lib/text-formatting";
+
 interface IcsEvent {
   id: string;
   title: string;
@@ -57,7 +59,9 @@ export function buildEventIcs(event: IcsEvent): string {
     `DTEND:${formatIcsDate(end)}`,
     `SUMMARY:${escapeIcs(event.title)}`,
   ];
-  if (event.description) lines.push(`DESCRIPTION:${escapeIcs(event.description)}`);
+  if (event.description) {
+    lines.push(`DESCRIPTION:${escapeIcs(toPlainText(event.description))}`);
+  }
   if (event.location) lines.push(`LOCATION:${escapeIcs(event.location)}`);
   lines.push("END:VEVENT", "END:VCALENDAR");
   return lines.map(foldIcsLine).join("\r\n");

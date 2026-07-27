@@ -14,6 +14,7 @@ import { hasRole } from "@/lib/auth/rbac";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, taskAssignees, tasks } from "@/lib/db/schema";
+import { resolveLeadTime } from "@/lib/task-lead-time";
 import { taskUpdateSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -49,6 +50,8 @@ export async function PATCH(req: Request, { params }: Params) {
         data.title !== undefined ||
         data.description !== undefined ||
         data.leadTimeDays !== undefined ||
+        data.leadTimeValue !== undefined ||
+        data.leadTimeUnit !== undefined ||
         data.assigneeIds !== undefined;
       if (touchesRestricted) {
         throw new HttpError(
@@ -61,14 +64,29 @@ export async function PATCH(req: Request, { params }: Params) {
     const updates: Partial<typeof tasks.$inferInsert> = {};
     if (data.title !== undefined) updates.title = data.title;
     if (data.description !== undefined) updates.description = data.description;
-    if (data.leadTimeDays !== undefined) {
-      updates.leadTimeDays = data.leadTimeDays;
+    if (
+      data.leadTimeDays !== undefined ||
+      data.leadTimeValue !== undefined ||
+      data.leadTimeUnit !== undefined
+    ) {
+      const duration = resolveLeadTime(data, {
+        leadTimeDays: task.leadTimeDays,
+        leadTimeValue: task.leadTimeValue,
+        leadTimeUnit: task.leadTimeUnit,
+      });
+      if (duration.leadTimeDays > 365) {
+        throw new HttpError(400, "La durée ne peut pas dépasser un an.");
+      }
+      updates.leadTimeDays = duration.leadTimeDays;
+      updates.leadTimeValue = duration.leadTimeValue;
+      updates.leadTimeUnit = duration.leadTimeUnit;
       const [event] = await db
         .select({ startAt: events.startAt })
         .from(events)
         .where(eq(events.id, task.eventId))
         .limit(1);
-      if (event) updates.dueAt = computeDueAt(event.startAt, data.leadTimeDays);
+      if (event)
+        updates.dueAt = computeDueAt(event.startAt, duration.leadTimeDays);
     }
     if (data.status !== undefined) {
       updates.status = data.status;

@@ -50,6 +50,20 @@
       "when": 1782807038862,
       "tag": "0006_optimistic_version",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785145634081,
+      "tag": "0007_mysterious_puma",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785155464009,
+      "tag": "0008_yielding_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

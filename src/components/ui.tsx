@@ -1,4 +1,5 @@
 import { Loader2, type LucideIcon } from "lucide-react";
+import { forwardRef } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 /** Style commun aux champs de saisie (input, textarea, select). */
 const fieldClasses =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base shadow-sm sm:text-sm transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500";
+  "w-full rounded-lg border-2 border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-900 transition-colors duration-150 placeholder:text-slate-400 hover:border-slate-300 focus:border-brand-600 focus:outline-none focus:ring-0 sm:text-sm";
 
 type Variant =
   | "primary"
@@ -29,21 +30,24 @@ export function buttonClasses(
   size: Size = "md",
 ): string {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
+    "inline-flex items-center justify-center gap-2 rounded-lg border-2 font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
   const sizes: Record<Size, string> = {
-    sm: "px-3 py-1.5 text-sm",
-    md: "px-4 py-2 text-sm",
+    sm: "min-h-9 px-3 py-1.5 text-sm",
+    md: "min-h-11 px-4 py-2.5 text-sm",
   };
   const variants: Record<Variant, string> = {
     primary:
-      "bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-sm hover:shadow-buoy hover:-translate-y-0.5",
+      "border-brand-700 bg-brand-700 text-white hover:border-brand-800 hover:bg-brand-800",
     accent:
-      "bg-gradient-to-b from-coral-400 to-coral-500 text-white shadow-sm hover:shadow-buoy hover:-translate-y-0.5",
-    secondary: "bg-slate-800 text-white shadow-sm hover:bg-slate-900",
+      "border-coral-600 bg-coral-600 text-white hover:border-coral-700 hover:bg-coral-700",
+    secondary:
+      "border-brand-950 bg-brand-950 text-white hover:bg-brand-900",
     outline:
-      "border border-slate-300 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/60",
-    danger: "bg-red-600 text-white shadow-sm hover:bg-red-700",
-    ghost: "text-slate-600 hover:bg-slate-100",
+      "border-slate-300 bg-white text-slate-700 hover:border-brand-700 hover:bg-brand-50 hover:text-brand-800",
+    danger:
+      "border-coral-700 bg-coral-700 text-white hover:border-coral-800 hover:bg-coral-800",
+    ghost:
+      "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950",
   };
   return cn(base, sizes[size], variants[variant]);
 }
@@ -90,14 +94,14 @@ export function Input({
   );
 }
 
-export function Textarea({
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(function Textarea({ className, ...props }, ref) {
   return (
-    <textarea className={cn(fieldClasses, className)} {...props} />
+    <textarea ref={ref} className={cn(fieldClasses, className)} {...props} />
   );
-}
+});
 
 export function Select({
   className,
@@ -114,7 +118,10 @@ export function Label({
 }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("mb-1 block text-sm font-medium text-slate-700", className)}
+      className={cn(
+        "mb-1.5 block text-sm font-semibold text-slate-700",
+        className,
+      )}
       {...props}
     />
   );
@@ -141,9 +148,9 @@ export function Field({
       {label && <Label htmlFor={htmlFor}>{label}</Label>}
       {children}
       {error ? (
-        <p className="mt-1 text-xs text-red-600">{error}</p>
+        <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-slate-500">{hint}</p>
+        <p className="mt-1.5 text-xs text-slate-500">{hint}</p>
       ) : null}
     </div>
   );
@@ -156,7 +163,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-slate-200/80 bg-white shadow-sm",
+        "rounded-2xl border-2 border-slate-200 bg-white",
         className,
       )}
       {...props}
@@ -165,13 +172,13 @@ export function Card({
 }
 
 const badgeColors = {
-  slate: "bg-slate-100 text-slate-700",
-  green: "bg-emerald-100 text-emerald-700",
-  amber: "bg-sand-100 text-sand-800",
-  red: "bg-coral-100 text-coral-700",
-  blue: "bg-brand-100 text-brand-700",
-  sea: "bg-sea-100 text-sea-700",
-  coral: "bg-coral-100 text-coral-700",
+  slate: "bg-slate-100 text-slate-700 ring-slate-200/70",
+  green: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
+  amber: "bg-sand-50 text-sand-800 ring-sand-200/80",
+  red: "bg-coral-50 text-coral-700 ring-coral-200/80",
+  blue: "bg-brand-50 text-brand-700 ring-brand-200/80",
+  sea: "bg-sea-50 text-sea-700 ring-sea-200/80",
+  coral: "bg-coral-50 text-coral-700 ring-coral-200/80",
 } as const;
 
 export function Badge({
@@ -188,7 +195,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset",
         badgeColors[color],
         className,
       )}
@@ -212,23 +219,27 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex items-start gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex items-start gap-3.5">
         {Icon && (
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-sea-500 text-white shadow-buoy">
-            <Icon className="h-5 w-5" />
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border-2 border-brand-200 bg-brand-50 text-brand-700">
+            <Icon className="h-5 w-5" strokeWidth={2.2} />
           </span>
         )}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
             {title}
           </h1>
           {description && (
-            <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">
+              {description}
+            </p>
           )}
         </div>
       </div>
-      {children && <div className="flex items-center gap-2">{children}</div>}
+      {children && (
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      )}
     </div>
   );
 }
@@ -245,8 +256,8 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-brand-200 bg-gradient-to-b from-brand-50/50 to-sea-50/40 px-6 py-12 text-center">
-      <span className="grid h-14 w-14 animate-float place-items-center rounded-2xl bg-gradient-to-br from-brand-100 to-sea-100 text-brand-600 shadow-sm">
+    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 px-6 py-14 text-center">
+      <span className="grid h-14 w-14 place-items-center rounded-xl bg-brand-700 text-white">
         <Icon className="h-7 w-7" />
       </span>
       <p className="mt-4 font-semibold text-slate-900">{title}</p>
@@ -259,11 +270,11 @@ export function EmptyState({
 }
 
 const statTones = {
-  brand: "text-white bg-gradient-to-br from-brand-500 to-sea-500",
-  slate: "text-slate-700 bg-slate-100",
-  red: "text-white bg-gradient-to-br from-coral-400 to-coral-500",
-  green: "text-white bg-gradient-to-br from-emerald-400 to-sea-500",
-  sand: "text-white bg-gradient-to-br from-sand-300 to-sand-500",
+  brand: "border-brand-700 bg-brand-700 text-white",
+  slate: "border-slate-200 bg-slate-100 text-slate-700",
+  red: "border-coral-700 bg-coral-700 text-white",
+  green: "border-emerald-700 bg-emerald-700 text-white",
+  sand: "border-sand-400 bg-sand-400 text-brand-950",
 } as const;
 
 export function Stat({
@@ -278,11 +289,11 @@ export function Stat({
   tone?: keyof typeof statTones;
 }) {
   return (
-    <Card className="flex items-center gap-4 p-4">
+    <Card className="flex items-center gap-4 p-5">
       {Icon && (
         <span
           className={cn(
-            "grid h-11 w-11 shrink-0 place-items-center rounded-2xl shadow-sm",
+            "grid h-12 w-12 shrink-0 place-items-center rounded-xl border-2",
             statTones[tone],
           )}
         >
@@ -290,8 +301,10 @@ export function Stat({
         </span>
       )}
       <div>
-        <p className="text-2xl font-bold leading-none text-slate-900">{value}</p>
-        <p className="mt-1 text-sm text-slate-500">{label}</p>
+        <p className="text-2xl font-bold leading-none tracking-tight text-slate-950">
+          {value}
+        </p>
+        <p className="mt-1.5 text-sm font-medium text-slate-500">{label}</p>
       </div>
     </Card>
   );
@@ -301,7 +314,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "animate-pulse rounded-xl bg-gradient-to-r from-brand-100/60 via-slate-200/70 to-sea-100/60",
+        "animate-pulse rounded-xl bg-slate-200",
         className,
       )}
     />

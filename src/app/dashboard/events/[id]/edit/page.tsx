@@ -1,8 +1,9 @@
+import { ArrowLeft, PencilLine } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { EventForm } from "@/components/event-form";
-import { Card } from "@/components/ui";
+import { buttonClasses, PageHeader } from "@/components/ui";
 import { requireRole } from "@/lib/auth/rbac";
 import { getEventById } from "@/lib/data";
 
@@ -19,21 +20,20 @@ export default async function EditEventPage({
   if (!event) notFound();
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link
-          href={`/dashboard/events/${event.id}`}
-          className="text-sm text-brand-600 hover:underline"
-        >
-          ← Retour à l'événement
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">
-          Modifier l'événement
-        </h1>
-      </div>
-      <Card className="p-6">
-        <EventForm event={event} />
-      </Card>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <Link
+        href={`/dashboard/events/${event.id}`}
+        className={buttonClasses("outline", "sm")}
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Retour à l’événement
+      </Link>
+      <PageHeader
+        title="Modifier l’événement"
+        description="Avancez section par section. Les informations peuvent être modifiées à tout moment."
+        icon={PencilLine}
+      />
+      <EventForm event={event} />
     </div>
   );
 }

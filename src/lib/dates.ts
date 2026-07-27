@@ -9,7 +9,7 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 // "hydration mismatch".
 export const APP_TIMEZONE = "Europe/Paris";
 
-/** Échéance d'une tâche = début de l'événement - délai (en jours). */
+/** Début de traitement d'une tâche = début de l'événement - durée d'anticipation. */
 export function computeDueAt(startAt: Date, leadTimeDays: number): Date {
   return new Date(startAt.getTime() - leadTimeDays * 24 * 60 * 60 * 1000);
 }

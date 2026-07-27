@@ -1,3 +1,5 @@
+import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
+
 interface EmailParams {
   to: string;
   subject: string;
@@ -6,8 +8,8 @@ interface EmailParams {
 }
 
 /**
- * Envoie un e-mail via l'API Resend. Si RESEND_API_KEY n'est pas configuré,
- * l'envoi est ignoré silencieusement (retourne false).
+ * Envoie un e-mail via l'API Resend. Les réglages enregistrés dans
+ * Configuration > E-mail priment sur les variables d'environnement.
  */
 export async function sendEmail({
   to,
@@ -15,11 +17,11 @@ export async function sendEmail({
   html,
   text,
 }: EmailParams): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM || "APEL Manager <onboarding@resend.dev>";
-
-  if (!apiKey) {
-    console.warn(`[email] RESEND_API_KEY absent — e-mail non envoyé : "${subject}"`);
+  const config = await getOutboundMailRuntimeConfig();
+  if (!config) {
+    console.warn(
+      `[email] fournisseur désactivé ou clé absente — e-mail non envoyé : "${subject}"`,
+    );
     return false;
   }
 
@@ -27,10 +29,17 @@ export async function sendEmail({
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to, subject, html, text }),
+      body: JSON.stringify({
+        from: config.from,
+        to,
+        subject,
+        html,
+        text,
+        ...(config.replyTo ? { reply_to: config.replyTo } : {}),
+      }),
     });
 
     if (!res.ok) {

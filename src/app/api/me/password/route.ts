@@ -1,11 +1,11 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiUser } from "@/lib/auth/guards";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { oauthTokens, users } from "@/lib/db/schema";
 import { passwordChangeSchema } from "@/lib/validation";
 
 export async function PATCH(req: Request) {
@@ -32,6 +32,18 @@ export async function PATCH(req: Request) {
       })
       .where(eq(users.id, user.id))
       .returning({ sessionEpoch: users.sessionEpoch });
+
+    // Un changement de mot de passe révoque aussi toutes les connexions MCP
+    // existantes, y compris les refresh tokens de longue durée.
+    await db
+      .update(oauthTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(oauthTokens.userId, user.id),
+          isNull(oauthTokens.revokedAt),
+        ),
+      );
 
     // On ré-émet la session de l'appareil courant (sinon l'utilisateur se
     // déconnecte lui-même) ; les autres sessions sont invalidées.

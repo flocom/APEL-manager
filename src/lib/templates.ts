@@ -5,11 +5,17 @@
  * bord (Modèles).
  */
 
+import {
+  resolveLeadTime,
+  type LeadTimeUnit,
+} from "@/lib/task-lead-time";
 import { emptyToNull } from "@/lib/utils";
 
 export interface TemplateTask {
   title: string;
   leadTimeDays: number;
+  leadTimeValue?: number;
+  leadTimeUnit?: LeadTimeUnit;
   description?: string;
 }
 
@@ -17,9 +23,14 @@ export interface TemplateTask {
 export function normalizeTemplateTasks(tasks: TemplateTask[]): TemplateTask[] {
   return tasks.map((t) => {
     const description = emptyToNull(t.description);
+    const duration = resolveLeadTime(t);
+    const normalized = {
+      title: t.title,
+      ...duration,
+    };
     return description
-      ? { title: t.title, leadTimeDays: t.leadTimeDays, description }
-      : { title: t.title, leadTimeDays: t.leadTimeDays };
+      ? { ...normalized, description }
+      : normalized;
   });
 }
 

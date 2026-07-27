@@ -34,7 +34,8 @@ function TaskItem({ task, muted }: { task: UserTask; muted?: boolean }) {
           </Link>{" "}
           ·{" "}
           <span className={overdue ? "font-medium text-coral-600" : ""}>
-            à gérer avant le {formatDateTime(task.dueAt)}
+            {overdue ? "à traiter depuis le" : "à traiter à partir du"}{" "}
+            {formatDateTime(task.dueAt)}
           </span>
         </p>
       </div>
@@ -55,7 +56,7 @@ export default async function TasksPage() {
     <div className="mx-auto max-w-5xl space-y-8">
       <PageHeader
         title="Mes tâches"
-        description="Les tâches qui vous ont été attribuées, par échéance."
+        description="Les tâches qui vous ont été attribuées, classées par date de traitement."
         icon={ListChecks}
       />
 
@@ -70,7 +71,7 @@ export default async function TasksPage() {
       {overdue.length > 0 && (
         <section>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-coral-600">
-            En retard ({overdue.length})
+            À traiter maintenant ({overdue.length})
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {overdue.map((task) => (
@@ -83,7 +84,7 @@ export default async function TasksPage() {
       {todo.length > 0 && (
         <section>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
-            À faire ({todo.length})
+            À venir ({todo.length})
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {todo.map((task) => (

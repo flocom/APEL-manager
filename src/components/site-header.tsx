@@ -1,25 +1,43 @@
 import { LayoutDashboard } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
-import { buttonClasses } from "@/components/ui";
-import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
+import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 
 export async function SiteHeader() {
   const user = await getCurrentUser();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-sea-500 font-bold text-white shadow-buoy">
-            {APP_INITIAL}
+    <header className="sticky top-0 z-30 border-b-2 border-brand-100 bg-white">
+      <div className="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+        <Link
+          href="/"
+          className="flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+        >
+          <Image
+            src="/logo-notre-dame-des-flots.png"
+            alt="Notre Dame des Flots"
+            width={425}
+            height={228}
+            priority
+            className="h-12 w-auto shrink-0 object-contain"
+          />
+          <span className="hidden min-w-0 border-l-2 border-brand-100 pl-3 sm:block">
+            <span className="block truncate text-sm font-extrabold tracking-[-0.02em] text-brand-950">
+              {APP_NAME}
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">
+              {SCHOOL_NAME}
+            </span>
           </span>
-          {APP_NAME}
         </Link>
-        <nav className="flex items-center gap-3 text-sm">
+        <nav className="flex shrink-0 items-center gap-2 text-sm">
           {user ? (
-            <Link href="/dashboard" className={buttonClasses("primary", "sm")}>
+            <Link
+              href="/dashboard"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-brand-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+            >
               <LayoutDashboard className="h-4 w-4" />
               Mon espace
             </Link>
@@ -27,11 +45,14 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="font-medium text-slate-600 transition-colors hover:text-slate-900"
+                className="hidden rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:inline"
               >
                 Connexion
               </Link>
-              <Link href="/register" className={buttonClasses("primary", "sm")}>
+              <Link
+                href="/register"
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+              >
                 Créer un compte
               </Link>
             </>

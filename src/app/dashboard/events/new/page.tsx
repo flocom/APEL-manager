@@ -1,7 +1,8 @@
+import { ArrowLeft, CalendarPlus } from "lucide-react";
 import Link from "next/link";
 
 import { EventForm } from "@/components/event-form";
-import { Card } from "@/components/ui";
+import { buttonClasses, PageHeader } from "@/components/ui";
 import { requireRole } from "@/lib/auth/rbac";
 import { getChecklistTemplates } from "@/lib/data";
 
@@ -17,21 +18,20 @@ export default async function NewEventPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link
-          href="/dashboard/events"
-          className="text-sm text-brand-600 hover:underline"
-        >
-          ← Retour aux événements
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">
-          Nouvel événement
-        </h1>
-      </div>
-      <Card className="p-6">
-        <EventForm templates={templateOptions} />
-      </Card>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <Link
+        href="/dashboard/events"
+        className={buttonClasses("outline", "sm")}
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Retour aux événements
+      </Link>
+      <PageHeader
+        title="Nouvel événement"
+        description="Renseignez l’essentiel maintenant ; la préparation et les bénévoles pourront être complétés ensuite."
+        icon={CalendarPlus}
+      />
+      <EventForm templates={templateOptions} />
     </div>
   );
 }

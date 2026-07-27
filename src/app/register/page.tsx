@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AuthShell } from "@/components/auth-shell";
 import { RegisterForm } from "@/components/auth-forms";
-import { Card } from "@/components/ui";
-import { APP_INITIAL, APP_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -13,27 +11,12 @@ export default async function RegisterPage() {
   if (user) redirect("/dashboard");
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm">
-        <Link
-          href="/"
-          className="mb-6 flex items-center justify-center gap-2 text-lg font-semibold text-slate-900"
-        >
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white">
-            {APP_INITIAL}
-          </span>
-          {APP_NAME}
-        </Link>
-        <Card className="p-6">
-          <h1 className="mb-1 text-xl font-semibold text-slate-900">
-            Créer un compte
-          </h1>
-          <p className="mb-5 text-sm text-slate-500">
-            Le premier compte créé devient administrateur.
-          </p>
-          <RegisterForm />
-        </Card>
-      </div>
-    </div>
+    <AuthShell
+      eyebrow="Rejoindre l’équipe"
+      title="Créer un compte"
+      description="Le premier compte créé devient administrateur de l’espace APEL."
+    >
+      <RegisterForm />
+    </AuthShell>
   );
 }
