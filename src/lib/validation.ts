@@ -189,16 +189,22 @@ const optionalEmail = z
   .nullable()
   .optional()
   .or(z.literal(""));
-function optionalUrl(scope: "accounting" | "document") {
-  const storedFilePattern = new RegExp(
+type UploadScope = "accounting" | "document" | "branding";
+
+function storedFilePattern(scope: UploadScope) {
+  return new RegExp(
     `^/api/uploads/${scope}-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[A-Za-z0-9][A-Za-z0-9._-]{0,139}$`,
   );
+}
+
+function optionalUrl(scope: UploadScope) {
+  const stored = storedFilePattern(scope);
   return z
     .string()
     .trim()
     .max(2000)
     .refine((value) => {
-      if (value === "" || storedFilePattern.test(value)) return true;
+      if (value === "" || stored.test(value)) return true;
       try {
         const url = new URL(value);
         return url.protocol === "https:" || url.protocol === "http:";
@@ -206,6 +212,26 @@ function optionalUrl(scope: "accounting" | "document") {
         return false;
       }
     }, "Utilisez un fichier enregistré ou une URL HTTP(S) valide")
+    .nullable()
+    .optional()
+    .or(z.literal(""));
+}
+
+/**
+ * Fichier hébergé par l'application, sans URL externe autorisée. Le logo est
+ * affiché sur les pages publiques : une adresse distante exposerait les
+ * visiteurs à un tiers et échapperait aux règles de sécurité du site.
+ */
+function storedFileOnly(scope: UploadScope) {
+  const stored = storedFilePattern(scope);
+  return z
+    .string()
+    .trim()
+    .max(2000)
+    .refine(
+      (value) => value === "" || stored.test(value),
+      "Importez le fichier depuis cet écran.",
+    )
     .nullable()
     .optional()
     .or(z.literal(""));
@@ -275,6 +301,7 @@ export const accountingEntrySchema = z.object({
   status: z.enum(["draft", "posted"]).default("draft"),
   accountId: nullableUuid,
   categoryId: nullableUuid,
+  eventId: nullableUuid,
   label: z.string().trim().min(1, "Libellé requis").max(300),
   amountCents: z.coerce
     .number()
@@ -306,10 +333,20 @@ export const associationDocumentSchema = z.object({
 export const associationDocumentUpdateSchema =
   associationDocumentSchema.partial();
 
+/** Pièce jointe d'un événement : devis, affiche, attestation, plan de salle. */
+export const eventAttachmentSchema = z.object({
+  label: z.string().trim().min(1, "Nom requis").max(200),
+  fileUrl: optionalUrl("document").refine(
+    (value): value is string => Boolean(value),
+    "Importez un fichier ou indiquez un lien.",
+  ),
+});
+
 export const associationSettingsSchema = z.object({
   associationName: z.string().trim().min(2).max(160),
   schoolName: z.string().trim().min(2).max(200),
   contactEmail: optionalEmail,
+  logoUrl: storedFileOnly("branding"),
   rna: z
     .string()
     .trim()

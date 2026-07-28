@@ -9,7 +9,11 @@ import {
   associationMembers,
   auditLogs,
 } from "@/lib/db/schema";
-import { sendEmail } from "@/lib/notifications/email";
+import {
+  sendBulkEmail,
+  sendEmail,
+  uniqueRecipients,
+} from "@/lib/notifications/email";
 import {
   createAccountingEntry,
   createFinancialAccount,
@@ -240,13 +244,19 @@ export function registerAssociationTools(
     {
       title: "Synthèse comptable",
       description:
-        "Calcule recettes, dépenses, solde, brouillons et justificatifs manquants.",
-      inputSchema: z.object({}),
+        "Calcule recettes, dépenses, solde, brouillons et justificatifs manquants. Restreindre à un événement donne son bilan.",
+      inputSchema: z.object({
+        eventId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe("Limiter la synthèse aux écritures de cet événement."),
+      }),
       annotations: readOnlyTool,
     },
-    async () => {
+    async ({ eventId }) => {
       requireMcpAccess(principal, "mcp:read", "admin");
-      return toolResult({ summary: await getAccountingSummary() });
+      return toolResult({ summary: await getAccountingSummary({ eventId }) });
     },
   );
 
@@ -260,12 +270,17 @@ export function registerAssociationTools(
         limit: z.number().int().min(1).max(500).default(100),
         type: z.enum(["income", "expense"]).optional(),
         status: z.enum(["draft", "posted"]).optional(),
+        eventId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe("Ne garder que les écritures rattachées à cet événement."),
       }),
       annotations: readOnlyTool,
     },
-    async ({ limit, type, status }) => {
+    async ({ limit, type, status, eventId }) => {
       requireMcpAccess(principal, "mcp:read", "admin");
-      let items = await listAccountingEntries(limit);
+      let items = await listAccountingEntries(limit, { eventId });
       if (type) items = items.filter((item) => item.type === type);
       if (status) items = items.filter((item) => item.status === status);
       return toolResult({ items, count: items.length });
@@ -283,6 +298,7 @@ export function registerAssociationTools(
         status: z.enum(["draft", "posted"]).default("draft"),
         accountId: optionalNullableUuid,
         categoryId: optionalNullableUuid,
+        eventId: optionalNullableUuid,
         label: z.string().min(1).max(300),
         amountCents: z.number().int().positive(),
         occurredAt: localDateTime,
@@ -317,6 +333,7 @@ export function registerAssociationTools(
         status: z.enum(["draft", "posted"]).optional(),
         accountId: optionalNullableUuid,
         categoryId: optionalNullableUuid,
+        eventId: optionalNullableUuid,
         label: z.string().min(1).max(300).optional(),
         amountCents: z.number().int().positive().optional(),
         occurredAt: localDateTime.optional(),
@@ -733,6 +750,13 @@ export function registerAssociationTools(
         associationName: z.string().min(2).max(160).optional(),
         schoolName: z.string().min(2).max(200).optional(),
         contactEmail: z.string().email().nullable().optional(),
+        logoUrl: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "Chemin d'un logo déjà importé depuis Configuration, ou null pour revenir au logo par défaut.",
+          ),
         rna: z
           .string()
           .regex(/^W\d{9}$/i, "Numéro RNA invalide")
@@ -908,13 +932,9 @@ export function registerAssociationTools(
         .orderBy(desc(associationMembers.createdAt));
       if (schoolYear)
         members = members.filter((item) => item.schoolYear === schoolYear);
-      const recipients = [
-        ...new Set(
-          members
-            .map((member) => member.email?.toLowerCase())
-            .filter((email): email is string => Boolean(email)),
-        ),
-      ].slice(0, 500);
+      const recipients = uniqueRecipients(
+        members.map((member) => member.email),
+      );
       if (recipients.length === 0) {
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
@@ -922,16 +942,7 @@ export function registerAssociationTools(
         { subject, message, senderName: principal.name },
         association.associationName,
       );
-      let sent = 0;
-      const batchSize = 5;
-      for (let index = 0; index < recipients.length; index += batchSize) {
-        const results = await Promise.all(
-          recipients
-            .slice(index, index + batchSize)
-            .map((to) => sendEmail({ to, ...mail })),
-        );
-        sent += results.filter(Boolean).length;
-      }
+      const sent = await sendBulkEmail(recipients, mail);
       await recordAudit(
         mcpAuditActor(principal),
         "mail.broadcast_adherents",

@@ -71,6 +71,13 @@
       "when": 1785228520172,
       "tag": "0009_ancient_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785252545076,
+      "tag": "0010_curly_the_watchers",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { getEventWithDetails } from "@/lib/data";
-import { sendEmail } from "@/lib/notifications/email";
+import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { messageSchema } from "@/lib/validation";
@@ -18,14 +18,12 @@ export async function POST(req: Request, { params }: Params) {
     const event = await getEventWithDetails(id);
     if (!event) throw new HttpError(404, "Événement introuvable.");
 
-    // E-mails distincts des bénévoles inscrits.
-    const emails = new Set<string>();
-    for (const slot of event.volunteerSlots) {
-      for (const s of slot.signups) {
-        if (s.email) emails.add(s.email.toLowerCase());
-      }
-    }
-    if (emails.size === 0) {
+    const recipients = uniqueRecipients(
+      event.volunteerSlots
+        .flatMap((slot) => slot.signups)
+        .map((signup) => signup.email),
+    );
+    if (recipients.length === 0) {
       throw new HttpError(400, "Aucun bénévole avec une adresse e-mail.");
     }
 
@@ -40,10 +38,7 @@ export async function POST(req: Request, { params }: Params) {
         rna: association.rna,
       },
     });
-    const results = await Promise.all(
-      [...emails].map((to) => sendEmail({ to, ...mail })),
-    );
-    const sent = results.filter(Boolean).length;
+    const sent = await sendBulkEmail(recipients, mail);
 
     return NextResponse.json({ ok: true, sent });
   } catch (error) {

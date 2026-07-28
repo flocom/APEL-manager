@@ -21,11 +21,20 @@ import {
   volunteerSlots,
 } from "@/lib/db/schema";
 import { getEventWithDetails } from "@/lib/data";
-import { sendEmail } from "@/lib/notifications/email";
+import {
+  sendBulkEmail,
+  sendEmail,
+  uniqueRecipients,
+} from "@/lib/notifications/email";
 import {
   broadcastEmail,
   volunteerConfirmationEmail,
 } from "@/lib/notifications/emails";
+import {
+  createEventAttachment,
+  deleteEventAttachment,
+  listEventAttachments,
+} from "@/lib/services/event-attachments";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { generateShareToken, generateToken } from "@/lib/tokens";
@@ -617,6 +626,71 @@ export function registerCoreTools(
   );
 
   server.registerTool(
+    "list_event_attachments",
+    {
+      title: "Lister les pièces jointes d’un événement",
+      description:
+        "Liste les devis, affiches, attestations et autres documents rattachés à un événement.",
+      inputSchema: z.object({ eventId: z.string().uuid() }),
+      annotations: readOnlyTool,
+    },
+    async ({ eventId }) => {
+      requireMcpAccess(principal, "mcp:read", "manager");
+      const items = await listEventAttachments(eventId);
+      return toolResult({ eventId, items, count: items.length });
+    },
+  );
+
+  server.registerTool(
+    "add_event_attachment",
+    {
+      title: "Rattacher une pièce jointe à un événement",
+      description:
+        "Rattache un document déjà déposé dans l’application, ou un lien HTTP(S), à un événement. Le dépôt du fichier lui-même se fait depuis l’interface.",
+      inputSchema: z.object({
+        eventId: z.string().uuid(),
+        label: z.string().min(1).max(200),
+        fileUrl: z
+          .string()
+          .min(1)
+          .max(2000)
+          .describe(
+            "Chemin d’un fichier déjà importé (/api/uploads/document-…) ou URL HTTP(S).",
+          ),
+      }),
+      annotations: writeTool,
+    },
+    async ({ eventId, label, fileUrl }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const attachment = await createEventAttachment(
+        eventId,
+        { label, fileUrl },
+        mcpAuditActor(principal),
+      );
+      return toolResult({ attachment }, "Pièce jointe rattachée.");
+    },
+  );
+
+  server.registerTool(
+    "delete_event_attachment",
+    {
+      title: "Retirer une pièce jointe",
+      description:
+        "Détache un document d’un événement. Le fichier reste conservé dans le stockage.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        confirm: z.literal(true),
+      }),
+      annotations: destructiveTool,
+    },
+    async ({ id }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      await deleteEventAttachment(id, mcpAuditActor(principal));
+      return toolResult({ id, deleted: true });
+    },
+  );
+
+  server.registerTool(
     "list_checklist_templates",
     {
       title: "Lister les modèles de checklist",
@@ -1140,14 +1214,11 @@ export function registerCoreTools(
       const event = await getEventWithDetails(eventId);
       if (!event) throw new Error("Événement introuvable.");
 
-      const recipients = [
-        ...new Set(
-          event.volunteerSlots
-            .flatMap((slot) => slot.signups)
-            .map((signup) => signup.email?.toLowerCase())
-            .filter((email): email is string => Boolean(email)),
-        ),
-      ].slice(0, 500);
+      const recipients = uniqueRecipients(
+        event.volunteerSlots
+          .flatMap((slot) => slot.signups)
+          .map((signup) => signup.email),
+      );
       if (recipients.length === 0) {
         throw new Error("Aucun bénévole inscrit avec une adresse e-mail.");
       }
@@ -1162,16 +1233,7 @@ export function registerCoreTools(
           rna: association.rna,
         },
       });
-      let sent = 0;
-      const batchSize = 5;
-      for (let index = 0; index < recipients.length; index += batchSize) {
-        const results = await Promise.all(
-          recipients
-            .slice(index, index + batchSize)
-            .map((to) => sendEmail({ to, ...mail })),
-        );
-        sent += results.filter(Boolean).length;
-      }
+      const sent = await sendBulkEmail(recipients, mail);
 
       await recordAudit(
         mcpAuditActor(principal),
@@ -1214,13 +1276,7 @@ export function registerCoreTools(
         .select({ email: users.email })
         .from(users)
         .where(role ? eq(users.role, role) : undefined);
-      const recipients = [
-        ...new Set(
-          rows
-            .map((row) => row.email?.toLowerCase())
-            .filter((email): email is string => Boolean(email)),
-        ),
-      ].slice(0, 500);
+      const recipients = uniqueRecipients(rows.map((row) => row.email));
       if (recipients.length === 0) {
         throw new Error("Aucun membre à contacter.");
       }
@@ -1235,16 +1291,7 @@ export function registerCoreTools(
           rna: association.rna,
         },
       });
-      let sent = 0;
-      const batchSize = 5;
-      for (let index = 0; index < recipients.length; index += batchSize) {
-        const results = await Promise.all(
-          recipients
-            .slice(index, index + batchSize)
-            .map((to) => sendEmail({ to, ...mail })),
-        );
-        sent += results.filter(Boolean).length;
-      }
+      const sent = await sendBulkEmail(recipients, mail);
 
       await recordAudit(
         mcpAuditActor(principal),

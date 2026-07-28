@@ -71,3 +71,47 @@ export async function sendEmail({
     return false;
   }
 }
+
+/** Limite de diffusion : au-delà, on ne cherche plus à joindre tout le monde. */
+const MAX_RECIPIENTS = 500;
+
+/**
+ * Normalise une liste d'adresses : minuscules, sans doublon ni valeur vide,
+ * plafonnée. Les mêmes destinataires arrivent de sources différentes
+ * (inscriptions, adhérents, comptes) et se recoupent souvent.
+ */
+export function uniqueRecipients(
+  values: Array<string | null | undefined>,
+): string[] {
+  return [
+    ...new Set(
+      values
+        .map((value) => value?.trim().toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ].slice(0, MAX_RECIPIENTS);
+}
+
+/**
+ * Envoie le même message à plusieurs destinataires, par petits lots.
+ *
+ * Les fournisseurs limitent le débit : tout envoyer d'un coup fait rejeter une
+ * partie des messages sans qu'on sache lesquels. Retourne le nombre d'envois
+ * réussis, les échecs étant déjà journalisés par `sendEmail`.
+ */
+export async function sendBulkEmail(
+  recipients: string[],
+  mail: Omit<EmailParams, "to">,
+  { batchSize = 5 }: { batchSize?: number } = {},
+): Promise<number> {
+  let sent = 0;
+  for (let index = 0; index < recipients.length; index += batchSize) {
+    const results = await Promise.all(
+      recipients
+        .slice(index, index + batchSize)
+        .map((to) => sendEmail({ to, ...mail })),
+    );
+    sent += results.filter(Boolean).length;
+  }
+  return sent;
+}

@@ -29,6 +29,7 @@ export default async function SettingsPage() {
     schoolName: associationStatus.schoolName,
     contactEmail: associationStatus.contactEmail,
     rna: associationStatus.rna,
+    logoUrl: associationStatus.logoUrl,
     taskReminderWindowDays: associationStatus.taskReminderWindowDays,
     volunteerReminderWindowDays:
       associationStatus.volunteerReminderWindowDays,

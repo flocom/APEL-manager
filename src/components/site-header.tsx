@@ -19,10 +19,11 @@ export async function SiteHeader() {
           className="flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
         >
           <Image
-            src="/logo.svg"
+            src={settings.logoUrl || "/logo.svg"}
             alt={settings.schoolName}
             width={96}
             height={96}
+            unoptimized
             priority
             className="h-12 w-auto shrink-0 object-contain"
           />

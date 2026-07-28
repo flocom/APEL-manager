@@ -12,9 +12,10 @@ messagerie, journal d'audit et suivi des mises à jour.
 | **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list |
 | **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables |
 | **Bénévoles** | Créneaux (créer, modifier, supprimer), inscriptions (lister, inscrire manuellement, annuler) |
+| **Pièces jointes** | Lister, rattacher et retirer les documents d'un événement |
 | **Communication** | Écrire aux bénévoles d'un événement, aux membres de l'équipe, aux adhérents ; régler Resend/SMTP et envoyer un message de test |
 | **Adhérents** | Lister, créer, modifier, archiver |
-| **Comptabilité** | Synthèse, écritures (créer, modifier, supprimer un brouillon), comptes bancaires et caisses, catégories (créer, modifier, supprimer) |
+| **Comptabilité** | Synthèse globale ou par événement, écritures (créer, modifier, supprimer un brouillon, rattacher à un événement), comptes bancaires et caisses, catégories (créer, modifier, supprimer) |
 | **Documents** | Lister, lire, créer, modifier, archiver ; supprimer un PV archivé |
 | **Comptes** | Lister, changer un rôle, supprimer |
 | **Exploitation** | Identité et réglages de l'association, état du courrier sortant, journal d'audit, version installée et mises à jour disponibles |
