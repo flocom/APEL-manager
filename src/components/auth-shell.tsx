@@ -112,7 +112,7 @@ export async function AuthShell({
         <div className="relative z-10 my-auto max-w-2xl py-10">
           <div className="inline-flex items-center gap-2 rounded-lg bg-sea-200 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-brand-950">
             <ShieldCheck className="h-4 w-4" />
-            L&apos;outil des équipes APEL
+            L&apos;outil de l&apos;équipe {settings.associationName}
           </div>
 
           <h2 className="mt-7 max-w-xl text-4xl font-black leading-[1.06] tracking-[-0.045em] text-white xl:text-5xl">

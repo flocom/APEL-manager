@@ -9,17 +9,20 @@ import {
   type MailSettingsView,
 } from "@/components/mail-settings-form";
 import { PageHeader } from "@/components/ui";
+import { UpdateStatusCard } from "@/components/update-status-card";
 import { requireRole } from "@/lib/auth/rbac";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { getOutboundMailStatus } from "@/lib/services/mail-settings";
+import { getUpdateStatus } from "@/lib/services/updates";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireRole("admin");
-  const [associationStatus, status] = await Promise.all([
+  const [associationStatus, status, updateStatus] = await Promise.all([
     getAssociationSettings(),
     getOutboundMailStatus(),
+    getUpdateStatus(),
   ]);
   const associationSettings: AssociationSettingsView = {
     associationName: associationStatus.associationName,
@@ -65,6 +68,8 @@ export default async function SettingsPage() {
       <AssociationSettingsForm settings={associationSettings} />
 
       <MailSettingsForm settings={settings} />
+
+      <UpdateStatusCard status={updateStatus} />
     </div>
   );
 }

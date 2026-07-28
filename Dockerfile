@@ -29,10 +29,26 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 FROM base AS runner
 
+# Estampille de version : injectée par le workflow de publication, elle permet à
+# l'application d'afficher ce qu'elle exécute et de le comparer à la dernière
+# version publiée. Sans ces arguments, l'image se déclare « dev ».
+ARG APP_VERSION=dev
+ARG APP_REVISION=""
+ARG APP_BUILD_TIME=""
+
 ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \
-    UPLOADS_DIR=/app/data/uploads
+    UPLOADS_DIR=/app/data/uploads \
+    APP_VERSION=${APP_VERSION} \
+    APP_REVISION=${APP_REVISION} \
+    APP_BUILD_TIME=${APP_BUILD_TIME}
+
+LABEL org.opencontainers.image.title="APEL Manager" \
+      org.opencontainers.image.source="https://github.com/flocom/APEL-manager" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${APP_REVISION}" \
+      org.opencontainers.image.created="${APP_BUILD_TIME}"
 
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs --home-dir /app nextjs \

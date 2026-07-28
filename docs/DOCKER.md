@@ -232,11 +232,75 @@ https://apel.example.org/api/mcp
 
 ## Mise à jour
 
+Chaque évolution de `main` déclenche la publication d'une image sur GHCR
+(`ghcr.io/flocom/apel-manager:latest`), via le workflow
+[`docker-publish.yml`](../.github/workflows/docker-publish.yml). Trois façons de
+la récupérer, de la plus automatique à la plus manuelle.
+
+### Automatique (recommandé en production)
+
+Le service `updater` surveille l'image publiée et remplace `app` et `scheduler`
+dès qu'une nouvelle version paraît. Il est inactif tant qu'il n'est pas demandé
+explicitement dans `.env` :
+
+```env
+COMPOSE_PROFILES="autoupdate"
+WATCHTOWER_POLL_INTERVAL="3600"
+```
+
+```bash
+docker compose up -d
+```
+
+Déroulé d'une mise à jour : l'`updater` détecte l'image, la télécharge, recrée
+les conteneurs, l'entrypoint applique les migrations, puis Caddy réachemine le
+trafic. Les requêtes reçues pendant la bascule patientent au lieu d'échouer
+(`lb_try_duration` dans le Caddyfile). Aucune intervention n'est nécessaire.
+
+Seuls `app` et `scheduler` portent le label
+`com.centurylinklabs.watchtower.enable` : PostgreSQL, Caddy et Mailpit ne sont
+jamais remplacés automatiquement.
+
+> L'`updater` a besoin d'accéder à `/var/run/docker.sock`, ce qui équivaut à un
+> accès root sur l'hôte. À réserver à une machine dont les accès sont
+> maîtrisés. Pour vous en passer, laissez `COMPOSE_PROFILES` vide et utilisez
+> l'une des deux méthodes ci-dessous.
+
+### Manuelle depuis l'image publiée
+
+```bash
+docker compose pull
+docker compose up -d
+docker image prune
+```
+
+### Manuelle depuis les sources
+
 ```bash
 git pull
 docker compose up --build -d
 docker image prune
 ```
+
+### Vérifier ce qui tourne
+
+**Configuration → Version et mises à jour** affiche la version installée, sa
+révision, sa date de construction, la cadence de l'`updater` et signale si une
+version plus récente est publiée. Le bouton **Vérifier maintenant** force un
+contrôle immédiat.
+
+La même information est disponible sans authentification sur `/api/health` :
+
+```bash
+curl -s https://apel.example.org/api/health
+{"status":"ok","database":"up","latencyMs":3,"version":"main-42","revision":"a1b2c3d", ...}
+```
+
+Ces indicateurs reposent sur un appel à l'API publique de GitHub, mis en cache
+30 minutes. `UPDATE_CHECK_ENABLED="false"` supprime tout appel sortant : la
+mise à jour automatique continue de fonctionner, seul l'indicateur disparaît.
+
+### Précautions
 
 Les migrations sont rejouées de manière idempotente avant chaque démarrage de
 l'application. Sauvegarder PostgreSQL et les pièces jointes avant une mise à
