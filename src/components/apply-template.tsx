@@ -60,7 +60,7 @@ export function ApplyTemplate({
         onChange={(e) => setTemplateId(e.target.value)}
         className="sm:max-w-xs"
       >
-        <option value="">Partir d'un modèle…</option>
+        <option value="">Partir d’un modèle…</option>
         {templates.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name} ({t.count} tâches)

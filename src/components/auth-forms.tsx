@@ -164,7 +164,7 @@ export function ForgotForm() {
     return (
       <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
         Si un compte existe avec cette adresse, un e-mail de réinitialisation
-        vient d'être envoyé. Pensez à vérifier vos spams.
+        vient d’être envoyé. Pensez à vérifier vos spams.
       </p>
     );
   }

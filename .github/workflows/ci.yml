@@ -1,0 +1,38 @@
+name: Contrôles
+
+# Types et lint sur chaque proposition de changement. La construction de
+# l'image ne les rejoue pas : une remarque de style ne doit pas empêcher un
+# déploiement, mais elle doit être vue avant la fusion.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Préparer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier les types
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
