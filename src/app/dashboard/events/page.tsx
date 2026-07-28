@@ -273,7 +273,7 @@ function EventRows({
 
               <div className="min-w-0 px-4 py-4 sm:px-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="min-w-0 truncate font-bold tracking-tight text-slate-950 transition-colors group-hover:text-brand-700">
+                  <h3 className="min-w-0 break-words font-bold tracking-tight text-slate-950 transition-colors group-hover:text-brand-700">
                     {event.title}
                   </h3>
                   <Badge
@@ -300,7 +300,9 @@ function EventRows({
                   {event.location && (
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{event.location}</span>
+                      <span className="min-w-0 break-words">
+                        {event.location}
+                      </span>
                     </span>
                   )}
                 </div>

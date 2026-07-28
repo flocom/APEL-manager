@@ -71,7 +71,7 @@ export default async function DashboardPage() {
       </section>
 
       <section aria-label="Indicateurs clés">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           <FlatStat
             label="Événements à venir"
             helper="Dans votre agenda"
@@ -96,6 +96,7 @@ export default async function DashboardPage() {
             value={overdueTasks.length}
             icon={TriangleAlert}
             tone={overdueTasks.length > 0 ? "overdue" : "neutral"}
+            className="sm:col-span-2 md:col-span-1"
           />
         </div>
       </section>
@@ -124,11 +125,13 @@ export default async function DashboardPage() {
                     className="flex items-center justify-between gap-3 border-b border-slate-200 p-4 transition-colors last:border-b-0 hover:bg-slate-50 sm:p-5"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-bold text-slate-950">
+                      <p className="break-words font-bold text-slate-950">
                         {task.title}
                       </p>
-                      <p className="mt-1.5 flex min-w-0 items-center gap-2 text-sm text-slate-500">
-                        <span className="truncate">{task.event.title}</span>
+                      <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+                        <span className="min-w-0 break-words">
+                          {task.event.title}
+                        </span>
                         <span aria-hidden>·</span>
                         <span
                           className={
@@ -186,7 +189,9 @@ export default async function DashboardPage() {
                   {event.location && (
                     <p className="mt-1.5 flex items-center gap-2 text-sm text-slate-500">
                       <MapPin className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{event.location}</span>
+                      <span className="min-w-0 break-words">
+                        {event.location}
+                      </span>
                     </p>
                   )}
                 </Link>
@@ -222,10 +227,10 @@ export default async function DashboardPage() {
                   <HandHeart className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-slate-950">
+                  <p className="break-words font-bold text-slate-950">
                     {signup.slot.title}
                   </p>
-                  <p className="mt-1 truncate text-sm text-slate-500">
+                  <p className="mt-1 break-words text-sm text-slate-500">
                     {signup.slot.event.title} ·{" "}
                     {formatDateTime(signup.slot.event.startAt)}
                   </p>
@@ -241,10 +246,38 @@ export default async function DashboardPage() {
 }
 
 const statTones = {
-  brand: "bg-brand-100 text-brand-700",
-  navy: "bg-brand-900 text-white",
-  overdue: "bg-coral-100 text-coral-700",
-  neutral: "bg-slate-100 text-slate-600",
+  brand: {
+    card: "border-brand-200 bg-brand-50",
+    accent: "bg-brand-500",
+    icon: "bg-brand-700 text-white",
+    value: "text-brand-950",
+    label: "text-brand-950",
+    helper: "border-brand-200 bg-white text-brand-800",
+  },
+  navy: {
+    card: "border-brand-900 bg-brand-950",
+    accent: "bg-sea-400",
+    icon: "bg-sea-200 text-brand-950",
+    value: "text-white",
+    label: "text-brand-100",
+    helper: "border-brand-700 bg-brand-900 text-brand-100",
+  },
+  overdue: {
+    card: "border-coral-300 bg-coral-50",
+    accent: "bg-coral-600",
+    icon: "bg-coral-700 text-white",
+    value: "text-coral-900",
+    label: "text-coral-900",
+    helper: "border-coral-200 bg-white text-coral-800",
+  },
+  neutral: {
+    card: "border-slate-200 bg-white",
+    accent: "bg-slate-300",
+    icon: "bg-slate-100 text-slate-600",
+    value: "text-slate-950",
+    label: "text-slate-800",
+    helper: "border-slate-200 bg-slate-50 text-slate-600",
+  },
 } as const;
 
 function FlatStat({
@@ -253,28 +286,48 @@ function FlatStat({
   value,
   icon: Icon,
   tone,
+  className = "",
 }: {
   label: string;
   helper: string;
   value: number;
   icon: LucideIcon;
   tone: keyof typeof statTones;
+  className?: string;
 }) {
+  const colors = statTones[tone];
+
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+    <div
+      className={`relative min-h-36 overflow-hidden rounded-2xl border p-4 sm:p-5 ${colors.card} ${className}`}
+    >
       <span
-        className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${statTones[tone]}`}
-      >
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <p className="text-3xl font-extrabold leading-none tracking-tight text-slate-950">
-            {value}
-          </p>
-          <p className="truncate text-sm font-bold text-slate-700">{label}</p>
-        </div>
-        <p className="mt-1 text-xs font-medium text-slate-500">{helper}</p>
+        className={`absolute inset-x-0 top-0 h-1 ${colors.accent}`}
+        aria-hidden
+      />
+      <div className="flex items-start justify-between gap-3 pt-1">
+        <span
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${colors.icon}`}
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+        <span
+          className={`max-w-[11rem] rounded-full border px-2.5 py-1 text-right text-[11px] font-bold leading-4 ${colors.helper}`}
+        >
+          {helper}
+        </span>
+      </div>
+      <div className="mt-5 flex items-end gap-3">
+        <p
+          className={`shrink-0 text-4xl font-black leading-none tracking-[-0.055em] ${colors.value}`}
+        >
+          {value}
+        </p>
+        <p
+          className={`min-w-0 break-words pb-0.5 text-sm font-extrabold leading-tight sm:text-[15px] ${colors.label}`}
+        >
+          {label}
+        </p>
       </div>
     </div>
   );

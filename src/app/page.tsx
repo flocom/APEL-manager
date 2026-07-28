@@ -117,7 +117,7 @@ export default async function HomePage() {
                     <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
                       Association des parents
                     </p>
-                    <p className="mt-1 truncate text-lg font-black tracking-[-0.02em] text-brand-950 sm:text-xl">
+                    <p className="mt-1 break-words text-lg font-black tracking-[-0.02em] text-brand-950 sm:text-xl">
                       {SCHOOL_NAME}
                     </p>
                   </div>
@@ -243,7 +243,7 @@ export default async function HomePage() {
                           {event.description && (
                             <FormattedText
                               text={event.description}
-                              className="mt-4 line-clamp-3 text-sm font-medium leading-6 text-slate-600"
+                              className="mt-4 break-words text-sm font-medium leading-6 text-slate-600"
                             />
                           )}
                           <div className="mt-auto flex items-center gap-2 pt-6 text-sm font-extrabold text-brand-700">

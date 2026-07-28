@@ -114,10 +114,10 @@ function Logo() {
         />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.18em] text-brand-200">
+        <span className="block break-words text-[10px] font-bold uppercase tracking-[0.18em] text-brand-200">
           Espace APEL
         </span>
-        <span className="mt-0.5 block truncate text-sm font-bold leading-tight text-white">
+        <span className="mt-0.5 block break-words text-sm font-bold leading-tight text-white">
           {APP_NAME}
         </span>
       </span>
@@ -259,7 +259,7 @@ export function DashboardNav({
         {initials || "?"}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-white">{user.name}</p>
+        <p className="break-words text-sm font-bold text-white">{user.name}</p>
         <p className="mt-0.5 text-xs text-brand-200">{ROLE_LABELS[user.role]}</p>
       </div>
       <button

@@ -24,10 +24,10 @@ export async function SiteHeader() {
             className="h-12 w-auto shrink-0 object-contain"
           />
           <span className="hidden min-w-0 border-l-2 border-brand-100 pl-3 sm:block">
-            <span className="block truncate text-sm font-extrabold tracking-[-0.02em] text-brand-950">
+            <span className="block break-words text-sm font-extrabold tracking-[-0.02em] text-brand-950">
               {APP_NAME}
             </span>
-            <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">
+            <span className="mt-0.5 block break-words text-[11px] font-medium text-slate-500">
               {SCHOOL_NAME}
             </span>
           </span>

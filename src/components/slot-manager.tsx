@@ -225,7 +225,7 @@ export function SlotManager({
                           <span className="min-w-0 text-slate-700">
                             <span className="font-medium">{signup.name}</span>
                             {(signup.email || signup.phone) && (
-                              <span className="block truncate text-xs text-slate-400">
+                              <span className="block break-all text-xs text-slate-400">
                                 {[signup.email, signup.phone]
                                   .filter(Boolean)
                                   .join(" · ")}
