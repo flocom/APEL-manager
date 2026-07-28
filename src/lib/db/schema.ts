@@ -498,12 +498,12 @@ export const associationSettings = pgTable(
     id: text("id").primaryKey().default("default"),
     associationName: text("association_name")
       .notNull()
-      .default("APEL Notre Dame des Flots"),
+      .default("APEL Manager"),
     schoolName: text("school_name")
       .notNull()
-      .default("École Notre Dame des Flots"),
+      .default("Votre établissement"),
     contactEmail: text("contact_email"),
-    rna: text("rna").notNull().default("W853001441"),
+    rna: text("rna").notNull().default(""),
     taskReminderWindowDays: integer("task_reminder_window_days")
       .notNull()
       .default(3),

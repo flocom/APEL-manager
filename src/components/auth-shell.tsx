@@ -44,10 +44,10 @@ function Brand({
     >
       <span className="flex h-[62px] w-[116px] shrink-0 items-center justify-center rounded-xl bg-white px-2">
         <Image
-          src="/logo-notre-dame-des-flots.png"
-          alt="Notre Dame des Flots"
-          width={425}
-          height={228}
+          src="/logo.svg"
+          alt={schoolName}
+          width={96}
+          height={96}
           priority
           className="h-auto w-full object-contain"
         />

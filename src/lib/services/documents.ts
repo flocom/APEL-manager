@@ -286,6 +286,9 @@ export async function renderPrintableDocument(document: {
             .join(" "),
         )}</p>`
       : "";
+  const rnaSuffix = association.rna.trim()
+    ? ` · RNA ${escapeHtml(association.rna.trim())}`
+    : "";
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -307,7 +310,7 @@ export async function renderPrintableDocument(document: {
 <body>
   <header>
     <div class="org">${escapeHtml(association.associationName)}</div>
-    <div class="rna">${escapeHtml(association.schoolName)} · RNA ${escapeHtml(association.rna)}</div>
+    <div class="rna">${escapeHtml(association.schoolName)}${rnaSuffix}</div>
   </header>
   <main>
     <p class="meta">${typeLabel} · ${new Intl.DateTimeFormat("fr-FR", {
@@ -318,7 +321,7 @@ export async function renderPrintableDocument(document: {
     ${beneficiary}
     <div class="content">${escapeHtml(document.content)}</div>
   </main>
-  <footer>${escapeHtml(association.associationName)} · RNA ${escapeHtml(association.rna)}</footer>
+  <footer>${escapeHtml(association.associationName)}${rnaSuffix}</footer>
   <script>window.addEventListener("load",()=>window.print())</script>
 </body>
 </html>`;

@@ -1,4 +1,4 @@
-/** Bande de vagues décorative (clin d'œil à « Notre Dame des Flots »). */
+/** Bande de vagues décorative utilisée en pied de sections. */
 export function Waves({ className }: { className?: string }) {
   return (
     <svg

@@ -41,8 +41,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: { card: "summary" },
     icons: {
-      icon: "/site-icon.png",
-      apple: "/site-icon.png",
+      icon: "/logo.svg",
+      apple: "/logo.svg",
     },
   };
 }
