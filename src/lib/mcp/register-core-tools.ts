@@ -8,6 +8,7 @@ import {
   computeDueAt,
   formatDateTime,
   parseLocalDateTime,
+  toSqlTimestamp,
 } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
@@ -241,8 +242,8 @@ export function registerCoreTools(
       if (data.startAt !== undefined) {
         await db.execute(sql`
           update tasks
-          set due_at = ${data.startAt}::timestamptz - (lead_time_days * interval '24 hours')
-          where event_id = ${id}
+          set due_at = ${toSqlTimestamp(data.startAt)}::timestamptz - (lead_time_days * interval '24 hours')
+          where event_id = ${id}::uuid
         `);
       }
       await recordAudit(

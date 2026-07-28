@@ -2,6 +2,7 @@ import { eq, sql, type SQL } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
+import { toSqlTimestamp } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { emptyToNull } from "@/lib/utils";
@@ -43,9 +44,13 @@ export async function PATCH(req: Request, { params }: Params) {
       if (data.location !== undefined)
         setFragments.push(sql`location = ${emptyToNull(data.location)}`);
       if (data.startAt !== undefined)
-        setFragments.push(sql`start_at = ${data.startAt}::timestamptz`);
+        setFragments.push(
+          sql`start_at = ${toSqlTimestamp(data.startAt)}::timestamptz`,
+        );
       if (data.endAt !== undefined)
-        setFragments.push(sql`end_at = ${data.endAt ?? null}`);
+        setFragments.push(
+          sql`end_at = ${toSqlTimestamp(data.endAt)}::timestamptz`,
+        );
       if (data.status !== undefined)
         setFragments.push(sql`status = ${data.status}`);
 
@@ -57,7 +62,7 @@ export async function PATCH(req: Request, { params }: Params) {
         WITH bumped AS (
           UPDATE events
           SET ${sql.join(setFragments, sql`, `)}, version = version + 1
-          WHERE id = ${id} AND version = ${data.version}
+          WHERE id = ${id}::uuid AND version = ${data.version}
           RETURNING id, start_at
         ), recompute AS (
           UPDATE tasks
@@ -93,8 +98,8 @@ export async function PATCH(req: Request, { params }: Params) {
     if (data.startAt !== undefined) {
       await db.execute(
         sql`update tasks
-            set due_at = ${data.startAt}::timestamptz - (lead_time_days * interval '24 hours')
-            where event_id = ${id}`,
+            set due_at = ${toSqlTimestamp(data.startAt)}::timestamptz - (lead_time_days * interval '24 hours')
+            where event_id = ${id}::uuid`,
       );
     }
 

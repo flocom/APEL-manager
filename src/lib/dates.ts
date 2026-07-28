@@ -40,6 +40,19 @@ export function parseLocalDateTime(value: string): Date {
   return fromZonedTime(value, APP_TIMEZONE);
 }
 
+/**
+ * Prépare un instant pour une requête SQL écrite à la main.
+ *
+ * Les requêtes construites avec `sql\`\`` puis exécutées par `db.execute`
+ * passent par le mode `unsafe` du pilote, qui n'accepte que des chaînes : un
+ * objet Date interpolé tel quel fait échouer la sérialisation des paramètres.
+ * Le constructeur de requêtes Drizzle, lui, connaît le type des colonnes et
+ * n'a pas besoin de cette conversion.
+ */
+export function toSqlTimestamp(value: Date | null | undefined): string | null {
+  return value == null ? null : value.toISOString();
+}
+
 /** Convertit un instant en valeur pour <input type="datetime-local"> (heure de Paris). */
 export function toDatetimeLocal(d: Date | string | null | undefined): string {
   if (!d) return "";
