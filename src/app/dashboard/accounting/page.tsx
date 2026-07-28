@@ -53,7 +53,15 @@ export default async function AccountingPage() {
       />
       <AccountingManager
         entries={serialized}
-        accounts={accounts.map(({ id, name, type }) => ({ id, name, type }))}
+        accounts={accounts.map(
+          ({ id, name, type, description, isActive }) => ({
+            id,
+            name,
+            type,
+            description,
+            isActive,
+          }),
+        )}
         categories={categories.map(({ id, name, type }) => ({
           id,
           name,

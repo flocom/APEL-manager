@@ -3,6 +3,10 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { HttpError } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { associationDocuments, associationMembers } from "@/lib/db/schema";
+import {
+  removeUpload,
+  storedUploadIdFromUrl,
+} from "@/lib/uploads";
 import { emptyToNull } from "@/lib/utils";
 import {
   associationDocumentSchema,
@@ -158,6 +162,74 @@ export async function archiveAssociationDocument(
     .returning();
   if (!document) throw new HttpError(404, "Document introuvable.");
   await recordAudit(actor, "document.archive", "association_document", id);
+  return document;
+}
+
+export async function deleteArchivedAgMinutes(
+  id: string,
+  actor: AuditActor,
+) {
+  const [document] = await db
+    .delete(associationDocuments)
+    .where(
+      and(
+        eq(associationDocuments.id, id),
+        eq(associationDocuments.type, "ag_minutes"),
+        eq(associationDocuments.status, "archived"),
+      ),
+    )
+    .returning({
+      id: associationDocuments.id,
+      type: associationDocuments.type,
+      status: associationDocuments.status,
+      title: associationDocuments.title,
+      fileUrl: associationDocuments.fileUrl,
+    });
+
+  if (!document) {
+    const existing = await getAssociationDocument(id);
+    if (!existing) throw new HttpError(404, "Document introuvable.");
+    if (existing.type !== "ag_minutes") {
+      throw new HttpError(
+        409,
+        "Seuls les procès-verbaux archivés peuvent être supprimés.",
+      );
+    }
+    throw new HttpError(
+      409,
+      "Le procès-verbal doit être archivé avant sa suppression.",
+    );
+  }
+
+  await recordAudit(actor, "document.delete", "association_document", id, {
+    type: document.type,
+    title: document.title,
+    hadFile: Boolean(document.fileUrl),
+  });
+
+  const fileUrl = document.fileUrl;
+  const uploadId = fileUrl
+    ? storedUploadIdFromUrl(fileUrl, "document")
+    : null;
+  if (uploadId && fileUrl) {
+    const [remainingReference] = await db
+      .select({ id: associationDocuments.id })
+      .from(associationDocuments)
+      .where(eq(associationDocuments.fileUrl, fileUrl))
+      .limit(1);
+    if (!remainingReference) {
+      try {
+        await removeUpload(uploadId);
+      } catch (error) {
+        // Le nettoyage quotidien supprimera ce fichier devenu orphelin.
+        console.error(
+          `[documents] impossible de supprimer la pièce jointe ${uploadId}:`,
+          error,
+        );
+      }
+    }
+  }
+
   return document;
 }
 

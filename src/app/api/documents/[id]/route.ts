@@ -8,6 +8,7 @@ import {
 import { webAuditActor } from "@/lib/services/audit";
 import {
   archiveAssociationDocument,
+  deleteArchivedAgMinutes,
   getAssociationDocument,
   renderPrintableDocument,
   updateAssociationDocument,
@@ -56,9 +57,14 @@ export async function DELETE(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    const actor = webAuditActor(user.id, req);
+    if (new URL(req.url).searchParams.get("permanent") === "true") {
+      const document = await deleteArchivedAgMinutes(id, actor);
+      return NextResponse.json({ ok: true, document, deleted: true });
+    }
     const document = await archiveAssociationDocument(
       id,
-      webAuditActor(user.id, req),
+      actor,
     );
     return NextResponse.json({ ok: true, document, archived: true });
   } catch (error) {
