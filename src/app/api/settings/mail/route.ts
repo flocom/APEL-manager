@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { sendEmail } from "@/lib/notifications/email";
+import { mailSettingsTestEmail } from "@/lib/notifications/emails";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { webAuditActor } from "@/lib/services/audit";
 import {
   getOutboundMailStatus,
@@ -46,11 +48,16 @@ export async function POST(req: Request) {
       })
       .parse(body);
     const actor = webAuditActor(user.id, req);
+    const association = await getAssociationSettings();
+    const mail = mailSettingsTestEmail({
+      associationName: association.associationName,
+      schoolName: association.schoolName,
+      rna: association.rna,
+    });
     const sent = await sendEmail({
       to: testEmail,
-      subject: "Test de messagerie — APEL Notre Dame des Flots",
-      html: `<div style="font-family:Arial,sans-serif;color:#082a40"><h2>La messagerie fonctionne.</h2><p>Ce message confirme que l’envoi sortant de l’APEL Notre Dame des Flots est correctement configuré.</p><p style="color:#64748b;font-size:13px">RNA W853001441</p></div>`,
-      text: "La messagerie de l’APEL Notre Dame des Flots est correctement configurée. RNA W853001441.",
+      ...mail,
+      allowDisabled: true,
     });
     await markOutboundMailTest(actor, sent);
     return NextResponse.json({ ok: sent, sent }, { status: sent ? 200 : 502 });

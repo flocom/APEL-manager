@@ -118,7 +118,7 @@ async function handleMcp(request: Request): Promise<Response> {
   const authentication = await authenticateMcpRequest(request);
   if (!authentication) return unauthorized(request);
 
-  const server = createApelMcpServer({
+  const server = await createApelMcpServer({
     userId: authentication.user.id,
     name: authentication.user.name,
     email: authentication.user.email,

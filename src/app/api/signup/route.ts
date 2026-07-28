@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { events, volunteerSignups } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import { volunteerConfirmationEmail } from "@/lib/notifications/emails";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import { signupSchema } from "@/lib/validation";
@@ -100,7 +101,10 @@ export async function POST(req: Request) {
 
     // Confirmation par e-mail (avec lien de désinscription), si un e-mail est fourni.
     if (email) {
-      const baseUrl = await getBaseUrl();
+      const [baseUrl, association] = await Promise.all([
+        getBaseUrl(),
+        getAssociationSettings(),
+      ]);
       const mail = volunteerConfirmationEmail({
         name: data.name,
         eventTitle: event.title,
@@ -108,6 +112,11 @@ export async function POST(req: Request) {
         slotTitle: slot.title,
         location: event.location,
         cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
+        identity: {
+          associationName: association.associationName,
+          schoolName: association.schoolName,
+          rna: association.rna,
+        },
       });
       await sendEmail({ to: email, ...mail });
     }

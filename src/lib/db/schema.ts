@@ -76,6 +76,7 @@ export const associationDocumentStatusEnum = pgEnum(
 
 export const outboundMailProviderEnum = pgEnum("outbound_mail_provider", [
   "resend",
+  "smtp",
 ]);
 
 export const outboundMailTestStatusEnum = pgEnum(
@@ -490,6 +491,52 @@ export const associationDocuments = pgTable(
   }),
 );
 
+/** Réglages métier modifiables sans reconstruire ni redémarrer l'application. */
+export const associationSettings = pgTable(
+  "association_settings",
+  {
+    id: text("id").primaryKey().default("default"),
+    associationName: text("association_name")
+      .notNull()
+      .default("APEL Notre Dame des Flots"),
+    schoolName: text("school_name")
+      .notNull()
+      .default("École Notre Dame des Flots"),
+    contactEmail: text("contact_email"),
+    rna: text("rna").notNull().default("W853001441"),
+    taskReminderWindowDays: integer("task_reminder_window_days")
+      .notNull()
+      .default(3),
+    volunteerReminderWindowDays: integer("volunteer_reminder_window_days")
+      .notNull()
+      .default(2),
+    telegramEnabled: boolean("telegram_enabled").notNull().default(false),
+    /** Token du bot chiffré ; jamais exposé par une API de lecture. */
+    encryptedTelegramBotToken: text("encrypted_telegram_bot_token"),
+    telegramTokenLastFour: text("telegram_token_last_four"),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    singletonCheck: check(
+      "association_settings_singleton_check",
+      sql`${t.id} = 'default'`,
+    ),
+    taskReminderWindowCheck: check(
+      "association_settings_task_reminder_window_check",
+      sql`${t.taskReminderWindowDays} >= 0 and ${t.taskReminderWindowDays} <= 30`,
+    ),
+    volunteerReminderWindowCheck: check(
+      "association_settings_volunteer_reminder_window_check",
+      sql`${t.volunteerReminderWindowDays} >= 0 and ${t.volunteerReminderWindowDays} <= 30`,
+    ),
+  }),
+);
+
 /** Configuration unique du fournisseur de courrier sortant. */
 export const outboundMailSettings = pgTable(
   "outbound_mail_settings",
@@ -504,6 +551,12 @@ export const outboundMailSettings = pgTable(
     /** Secret chiffré côté application ; jamais exposé par une API de lecture. */
     encryptedApiKey: text("encrypted_api_key"),
     keyLastFour: text("key_last_four"),
+    smtpHost: text("smtp_host"),
+    smtpPort: integer("smtp_port"),
+    smtpSecure: boolean("smtp_secure").notNull().default(false),
+    smtpUsername: text("smtp_username"),
+    /** Mot de passe SMTP chiffré ; jamais exposé par une API de lecture. */
+    encryptedSmtpPassword: text("encrypted_smtp_password"),
     lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
     lastTestStatus: outboundMailTestStatusEnum("last_test_status")
       .notNull()
@@ -519,6 +572,10 @@ export const outboundMailSettings = pgTable(
     singletonCheck: check(
       "outbound_mail_settings_singleton_check",
       sql`${t.id} = 'default'`,
+    ),
+    smtpPortCheck: check(
+      "outbound_mail_settings_smtp_port_check",
+      sql`${t.smtpPort} is null or (${t.smtpPort} >= 1 and ${t.smtpPort} <= 65535)`,
     ),
   }),
 );
@@ -691,6 +748,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   associationMember: one(associationMembers),
   accountingEntries: many(accountingEntries),
   associationDocuments: many(associationDocuments),
+  updatedAssociationSettings: many(associationSettings),
   updatedMailSettings: many(outboundMailSettings),
   oauthClients: many(oauthClients),
   oauthAuthorizationCodes: many(oauthAuthorizationCodes),
@@ -818,6 +876,16 @@ export const outboundMailSettingsRelations = relations(
   }),
 );
 
+export const associationSettingsRelations = relations(
+  associationSettings,
+  ({ one }) => ({
+    updater: one(users, {
+      fields: [associationSettings.updatedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
 export const oauthClientsRelations = relations(
   oauthClients,
   ({ one, many }) => ({
@@ -896,6 +964,8 @@ export type AccountingEntry = typeof accountingEntries.$inferSelect;
 export type NewAccountingEntry = typeof accountingEntries.$inferInsert;
 export type AssociationDocument = typeof associationDocuments.$inferSelect;
 export type NewAssociationDocument = typeof associationDocuments.$inferInsert;
+export type AssociationSettings = typeof associationSettings.$inferSelect;
+export type NewAssociationSettings = typeof associationSettings.$inferInsert;
 export type OutboundMailSettings = typeof outboundMailSettings.$inferSelect;
 export type NewOutboundMailSettings =
   typeof outboundMailSettings.$inferInsert;

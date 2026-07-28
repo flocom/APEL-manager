@@ -302,19 +302,54 @@ export const associationDocumentSchema = z.object({
 export const associationDocumentUpdateSchema =
   associationDocumentSchema.partial();
 
+export const associationSettingsSchema = z.object({
+  associationName: z.string().trim().min(2).max(160),
+  schoolName: z.string().trim().min(2).max(200),
+  contactEmail: optionalEmail,
+  rna: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^W\d{9}$/, "Numéro RNA invalide (format attendu : W123456789)"),
+  taskReminderWindowDays: z.coerce.number().int().min(0).max(30),
+  volunteerReminderWindowDays: z.coerce.number().int().min(0).max(30),
+  telegramEnabled: z.boolean().default(false),
+  telegramBotToken: z
+    .string()
+    .trim()
+    .min(20)
+    .max(500)
+    .optional()
+    .or(z.literal("")),
+  clearTelegramBotToken: z.boolean().default(false),
+});
+
 /**
- * Schéma d'entrée sûr pour les réglages : `apiKey` est le secret brut reçu
- * ponctuellement. Le service devra le chiffrer avant de remplir
- * `encryptedApiKey`; cette dernière valeur ne doit jamais sortir de l'API.
+ * Entrée sûre pour la messagerie. Les secrets bruts ne transitent qu'au
+ * moment de leur remplacement et sont chiffrés par le service avant stockage.
  */
 export const outboundMailSettingsSchema = z.object({
-  provider: z.literal("resend").default("resend"),
+  provider: z.enum(["resend", "smtp"]).default("resend"),
   enabled: z.boolean().default(false),
   fromName: optionalText(160),
   fromEmail: optionalEmail,
   replyTo: optionalEmail,
   domain: optionalText(253),
   apiKey: z.string().trim().min(8).max(500).optional().or(z.literal("")),
+  clearApiKey: z.boolean().default(false),
+  smtpHost: optionalText(253),
+  smtpPort: z
+    .union([
+      z.coerce.number().int().min(1).max(65_535),
+      z.literal(""),
+      z.null(),
+    ])
+    .optional(),
+  smtpSecure: z.boolean().default(false),
+  smtpUsername: optionalText(320),
+  // Ne pas appliquer trim() : les espaces peuvent faire partie du secret.
+  smtpPassword: z.string().min(1).max(1_000).optional().or(z.literal("")),
+  clearSmtpPassword: z.boolean().default(false),
 });
 
 export const oauthClientSchema = z.object({
@@ -383,6 +418,9 @@ export type AccountingCategoryInput = z.infer<typeof accountingCategorySchema>;
 export type AccountingEntryInput = z.infer<typeof accountingEntrySchema>;
 export type AssociationDocumentInput = z.infer<
   typeof associationDocumentSchema
+>;
+export type AssociationSettingsInput = z.infer<
+  typeof associationSettingsSchema
 >;
 export type OutboundMailSettingsInput = z.infer<
   typeof outboundMailSettingsSchema

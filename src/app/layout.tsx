@@ -3,9 +3,11 @@ import { Inter } from "next/font/google";
 
 import { NavigationProgress } from "@/components/navigation-progress";
 import { ToastProvider } from "@/components/toast";
-import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -13,32 +15,37 @@ const inter = Inter({
   display: "swap",
 });
 
-const description = `Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'APEL de l'${SCHOOL_NAME}.`;
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getAssociationSettings();
+  const description = `Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'APEL de l'${settings.schoolName}.`;
 
-export const metadata: Metadata = {
-  metadataBase: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
-    ? new URL(
-        process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-      )
-    : undefined,
-  title: {
-    default: APP_NAME,
-    template: `%s · ${APP_NAME}`,
-  },
-  description,
-  openGraph: {
-    title: APP_NAME,
+  return {
+    metadataBase: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
+      ? new URL(
+          process.env.APP_URL ||
+            process.env.NEXT_PUBLIC_APP_URL ||
+            "http://localhost:3000",
+        )
+      : undefined,
+    title: {
+      default: settings.associationName,
+      template: `%s · ${settings.associationName}`,
+    },
     description,
-    siteName: APP_NAME,
-    type: "website",
-    locale: "fr_FR",
-  },
-  twitter: { card: "summary" },
-  icons: {
-    icon: "/site-icon.png",
-    apple: "/site-icon.png",
-  },
-};
+    openGraph: {
+      title: settings.associationName,
+      description,
+      siteName: settings.associationName,
+      type: "website",
+      locale: "fr_FR",
+    },
+    twitter: { card: "summary" },
+    icons: {
+      icon: "/site-icon.png",
+      apple: "/site-icon.png",
+    },
+  };
+}
 
 export default function RootLayout({
   children,

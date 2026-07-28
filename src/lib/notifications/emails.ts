@@ -6,12 +6,28 @@ interface EmailContent {
   text: string;
 }
 
-function layout(title: string, bodyHtml: string): string {
+export interface NotificationIdentity {
+  associationName: string;
+  schoolName?: string | null;
+  rna?: string | null;
+}
+
+function layout(
+  title: string,
+  bodyHtml: string,
+  identity?: NotificationIdentity,
+): string {
+  const associationName = identity?.associationName || APP_NAME;
+  const details = [
+    identity?.schoolName?.trim(),
+    identity?.rna?.trim() ? `RNA ${identity.rna.trim()}` : null,
+  ].filter((value): value is string => Boolean(value));
+
   return `
   <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
     <h2 style="color:#075d8d;">${title}</h2>
     ${bodyHtml}
-    <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${APP_NAME} — message automatique</p>
+    <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${esc(associationName)} — message automatique${details.length ? `<br>${details.map(esc).join(" · ")}` : ""}</p>
   </div>`;
 }
 
@@ -36,6 +52,7 @@ interface VolunteerCtx {
   slotTitle: string;
   location?: string | null;
   cancelUrl: string;
+  identity?: NotificationIdentity;
 }
 
 export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
@@ -56,6 +73,7 @@ export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
        </ul>
        <p>Si vous ne pouvez finalement pas venir, vous pouvez vous désinscrire en un clic :</p>
        <p>${button(ctx.cancelUrl, "Me désinscrire")}</p>`,
+      ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nInscription confirmée :\n- Événement : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n- Créneau : ${ctx.slotTitle}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nMe désinscrire : ${ctx.cancelUrl}`,
   };
@@ -71,6 +89,7 @@ export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
        (<strong>${ctx.eventDate}</strong>) — créneau « <strong>${esc(ctx.slotTitle)}</strong> »${ctx.location ? `, ${esc(ctx.location)}` : ""}.</p>
        <p>Merci pour votre aide ! Empêchement de dernière minute ?</p>
        <p>${button(ctx.cancelUrl, "Me désinscrire")}</p>`,
+      ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nRappel : bénévole pour ${ctx.eventTitle} (${ctx.eventDate}), créneau ${ctx.slotTitle}.\nMe désinscrire : ${ctx.cancelUrl}`,
   };
@@ -80,6 +99,7 @@ export function broadcastEmail(ctx: {
   subject: string;
   message: string;
   senderName?: string;
+  identity?: NotificationIdentity;
 }): EmailContent {
   const paragraphs = ctx.message
     .split(/\n{2,}/)
@@ -90,6 +110,7 @@ export function broadcastEmail(ctx: {
     html: layout(
       esc(ctx.subject),
       `${paragraphs}${ctx.senderName ? `<p style="color:#64748b;">— ${esc(ctx.senderName)}</p>` : ""}`,
+      ctx.identity,
     ),
     text: `${ctx.message}${ctx.senderName ? `\n\n— ${ctx.senderName}` : ""}`,
   };
@@ -98,16 +119,49 @@ export function broadcastEmail(ctx: {
 export function passwordResetEmail(ctx: {
   name: string;
   resetUrl: string;
+  identity?: NotificationIdentity;
 }): EmailContent {
+  const associationName = ctx.identity?.associationName || APP_NAME;
   return {
-    subject: `Réinitialisation de votre mot de passe — ${APP_NAME}`,
+    subject: `Réinitialisation de votre mot de passe — ${associationName}`,
     html: layout(
       "Réinitialisation du mot de passe",
       `<p>Bonjour ${ctx.name},</p>
        <p>Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable 1 heure :</p>
        <p>${button(ctx.resetUrl, "Choisir un nouveau mot de passe")}</p>
        <p style="color:#64748b;font-size:13px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
+      ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nRéinitialisez votre mot de passe (valable 1h) : ${ctx.resetUrl}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.`,
+  };
+}
+
+export function mailSettingsTestEmail(
+  identity: NotificationIdentity,
+): EmailContent {
+  const associationName = identity.associationName.trim() || APP_NAME;
+  const schoolLine = identity.schoolName?.trim()
+    ? `<p>Établissement : <strong>${esc(identity.schoolName.trim())}</strong></p>`
+    : "";
+  const rnaLine = identity.rna?.trim()
+    ? `<p style="color:#64748b;font-size:13px">RNA ${esc(identity.rna.trim())}</p>`
+    : "";
+
+  return {
+    subject: `Test de messagerie — ${associationName}`,
+    html: layout(
+      "La messagerie fonctionne.",
+      `<p>Ce message confirme que l’envoi sortant de <strong>${esc(associationName)}</strong> est correctement configuré.</p>${schoolLine}${rnaLine}`,
+      identity,
+    ),
+    text: [
+      `La messagerie de ${associationName} est correctement configurée.`,
+      identity.schoolName?.trim()
+        ? `Établissement : ${identity.schoolName.trim()}`
+        : null,
+      identity.rna?.trim() ? `RNA ${identity.rna.trim()}` : null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n"),
   };
 }

@@ -2,59 +2,37 @@ name: apel-manager
 
 x-app-build: &app-build
   context: .
-  args:
-    NEXT_PUBLIC_APP_URL: ${DOCKER_APP_URL:-http://localhost:3000}
-    NEXT_PUBLIC_ASSO_NAME: ${DOCKER_ASSO_NAME:-APEL Notre Dame des Flots}
-    NEXT_PUBLIC_SCHOOL_NAME: ${DOCKER_SCHOOL_NAME:-École Notre Dame des Flots}
-    NEXT_PUBLIC_CONTACT_EMAIL: ${DOCKER_CONTACT_EMAIL:-}
-    NEXT_PUBLIC_ASSOCIATION_RNA: ${DOCKER_ASSOCIATION_RNA:-W853001441}
 
 x-app-environment: &app-environment
   NODE_ENV: production
   NEXT_TELEMETRY_DISABLED: "1"
-  APP_URL: ${DOCKER_APP_URL:-http://localhost:3000}
-  NEXT_PUBLIC_APP_URL: ${DOCKER_APP_URL:-http://localhost:3000}
-  NEXT_PUBLIC_ASSO_NAME: ${DOCKER_ASSO_NAME:-APEL Notre Dame des Flots}
-  NEXT_PUBLIC_SCHOOL_NAME: ${DOCKER_SCHOOL_NAME:-École Notre Dame des Flots}
-  NEXT_PUBLIC_CONTACT_EMAIL: ${DOCKER_CONTACT_EMAIL:-}
-  NEXT_PUBLIC_ASSOCIATION_RNA: ${DOCKER_ASSOCIATION_RNA:-W853001441}
-  DATABASE_URL: ${DOCKER_DATABASE_URL:-}
-  DATABASE_POOL_MAX: ${DOCKER_DATABASE_POOL_MAX:-10}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  DATABASE_URL: ${DATABASE_URL:-}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
   POSTGRES_HOST: db
   POSTGRES_PORT: "5432"
-  POSTGRES_DB: ${DOCKER_POSTGRES_DB:-apel_manager}
-  POSTGRES_USER: ${DOCKER_POSTGRES_USER:-apel}
-  POSTGRES_PASSWORD: ${DOCKER_POSTGRES_PASSWORD:-apel-local-only}
-  AUTH_SECRET: ${DOCKER_AUTH_SECRET:-}
-  OAUTH_SECRET: ${DOCKER_OAUTH_SECRET:-}
-  SETTINGS_ENCRYPTION_KEY: ${DOCKER_SETTINGS_ENCRYPTION_KEY:-}
-  CRON_SECRET: ${DOCKER_CRON_SECRET:-}
-  OAUTH_ISSUER: ${DOCKER_OAUTH_ISSUER:-}
-  MCP_BASE_URL: ${DOCKER_MCP_BASE_URL:-}
-  MCP_RESOURCE_URL: ${DOCKER_MCP_RESOURCE_URL:-}
-  REMINDER_WINDOW_DAYS: ${DOCKER_REMINDER_WINDOW_DAYS:-3}
-  MAIL_PROVIDER: ${DOCKER_MAIL_PROVIDER:-smtp}
-  SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
-  SMTP_PORT: ${DOCKER_SMTP_PORT:-1025}
-  SMTP_SECURE: ${DOCKER_SMTP_SECURE:-false}
-  SMTP_USER: ${DOCKER_SMTP_USER:-}
-  SMTP_PASSWORD: ${DOCKER_SMTP_PASSWORD:-}
-  SMTP_FROM: ${DOCKER_SMTP_FROM:-APEL Notre Dame des Flots <noreply@localhost>}
-  RESEND_API_KEY: ${DOCKER_RESEND_API_KEY:-}
-  EMAIL_FROM: ${DOCKER_EMAIL_FROM:-APEL Notre Dame des Flots <noreply@localhost>}
-  TELEGRAM_BOT_TOKEN: ${DOCKER_TELEGRAM_BOT_TOKEN:-}
-  UPLOADS_DIR: /app/data/uploads
-  UPLOAD_MAX_BYTES: ${DOCKER_UPLOAD_MAX_BYTES:-15728640}
-  UPLOAD_ORPHAN_MAX_AGE_HOURS: ${DOCKER_UPLOAD_ORPHAN_MAX_AGE_HOURS:-24}
+  POSTGRES_DB: ${POSTGRES_DB:-apel_manager}
+  POSTGRES_USER: ${POSTGRES_USER:-apel}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apel-local-only}
+  AUTH_SECRET: ${AUTH_SECRET:-}
+  OAUTH_SECRET: ${OAUTH_SECRET:-}
+  SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
+  CRON_SECRET: ${CRON_SECRET:-}
+  OAUTH_ISSUER: ${OAUTH_ISSUER:-}
+  MCP_BASE_URL: ${MCP_BASE_URL:-}
+  MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+  UPLOADS_DIR: ${UPLOADS_DIR:-/app/data/uploads}
+  UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-15728640}
+  UPLOAD_ORPHAN_MAX_AGE_HOURS: ${UPLOAD_ORPHAN_MAX_AGE_HOURS:-24}
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DOCKER_POSTGRES_DB:-apel_manager}
-      POSTGRES_USER: ${DOCKER_POSTGRES_USER:-apel}
-      POSTGRES_PASSWORD: ${DOCKER_POSTGRES_PASSWORD:-apel-local-only}
+      POSTGRES_DB: ${POSTGRES_DB:-apel_manager}
+      POSTGRES_USER: ${POSTGRES_USER:-apel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apel-local-only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -81,12 +59,12 @@ services:
     volumes:
       - mailpit_data:/data
     ports:
-      - "${DOCKER_MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
     security_opt:
       - no-new-privileges:true
 
   app:
-    image: ${DOCKER_APEL_IMAGE:-apel-manager:local}
+    image: ${APEL_IMAGE:-apel-manager:local}
     build: *app-build
     restart: unless-stopped
     init: true
@@ -99,8 +77,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      mailpit:
-        condition: service_started
     healthcheck:
       test:
         [
@@ -118,7 +94,7 @@ services:
     stop_grace_period: 30s
 
   scheduler:
-    image: ${DOCKER_APEL_IMAGE:-apel-manager:local}
+    image: ${APEL_IMAGE:-apel-manager:local}
     pull_policy: never
     restart: unless-stopped
     init: true
@@ -126,9 +102,9 @@ services:
       <<: *app-environment
       SKIP_MIGRATIONS: "1"
       CRON_TARGET_URL: http://app:3000/api/cron/notifications
-      SCHEDULER_HOUR_UTC: ${DOCKER_SCHEDULER_HOUR_UTC:-7}
-      SCHEDULER_MINUTE_UTC: ${DOCKER_SCHEDULER_MINUTE_UTC:-0}
-      RUN_CRON_ON_START: ${DOCKER_RUN_CRON_ON_START:-false}
+      SCHEDULER_HOUR_UTC: ${SCHEDULER_HOUR_UTC:-7}
+      SCHEDULER_MINUTE_UTC: ${SCHEDULER_MINUTE_UTC:-0}
+      RUN_CRON_ON_START: ${RUN_CRON_ON_START:-false}
     command: ["node", "scripts/scheduler.mjs"]
     volumes:
       - app_config:/app/data/config
@@ -145,12 +121,12 @@ services:
     image: caddy:2.11.4-alpine
     restart: unless-stopped
     environment:
-      CADDY_SITE_ADDRESS: ${DOCKER_CADDY_SITE_ADDRESS:-http://localhost}
-      CADDY_MAX_UPLOAD_SIZE: ${DOCKER_CADDY_MAX_UPLOAD_SIZE:-20MB}
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-http://localhost}
+      CADDY_MAX_UPLOAD_SIZE: ${CADDY_MAX_UPLOAD_SIZE:-20MB}
     ports:
-      - "${DOCKER_HTTP_PORT:-3000}:80"
-      - "${DOCKER_HTTPS_PORT:-3443}:443"
-      - "${DOCKER_HTTPS_PORT:-3443}:443/udp"
+      - "${HTTP_PORT:-3000}:80"
+      - "${HTTPS_PORT:-3443}:443"
+      - "${HTTPS_PORT:-3443}:443/udp"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

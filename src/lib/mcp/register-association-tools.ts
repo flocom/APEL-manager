@@ -9,7 +9,6 @@ import {
   financialAccounts,
 } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
-import { broadcastEmail } from "@/lib/notifications/emails";
 import {
   createAccountingEntry,
   deleteDraftAccountingEntry,
@@ -23,6 +22,10 @@ import {
   listAssociationMembers,
   updateAssociationMember,
 } from "@/lib/services/adherents";
+import {
+  getAssociationSettings,
+  saveAssociationSettings,
+} from "@/lib/services/association-settings";
 import { recordAudit } from "@/lib/services/audit";
 import {
   archiveAssociationDocument,
@@ -49,6 +52,7 @@ import {
   requireMcpAccess,
   toolResult,
   writeTool,
+  type McpAssociationProfile,
   type McpPrincipal,
 } from "./types";
 
@@ -59,9 +63,42 @@ const localDateTime = z
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function associationBroadcastEmail(
+  input: { subject: string; message: string; senderName?: string },
+  associationName: string,
+) {
+  const paragraphs = input.message
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  const signature = input.senderName
+    ? `<p style="color:#64748b;">— ${escapeHtml(input.senderName)}</p>`
+    : "";
+  return {
+    subject: input.subject,
+    html: `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
+        <h2 style="color:#075d8d;">${escapeHtml(input.subject)}</h2>
+        ${paragraphs}${signature}
+        <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${escapeHtml(associationName)} — message automatique</p>
+      </div>`,
+    text: `${input.message}${input.senderName ? `\n\n— ${input.senderName}` : ""}`,
+  };
+}
+
 export function registerAssociationTools(
   server: McpServer,
   principal: McpPrincipal,
+  association: McpAssociationProfile,
 ) {
   server.registerTool(
     "list_adherents",
@@ -101,7 +138,7 @@ export function registerAssociationTools(
     {
       title: "Créer un adhérent",
       description:
-        "Ajoute un adhérent à l’APEL Notre Dame des Flots pour une année scolaire.",
+        `Ajoute un adhérent à ${association.associationName} pour une année scolaire.`,
       inputSchema: z.object({
         firstName: z.string().min(1).max(120),
         lastName: z.string().min(1).max(120),
@@ -544,11 +581,79 @@ export function registerAssociationTools(
   );
 
   server.registerTool(
+    "get_application_settings",
+    {
+      title: "Lire les réglages de l’association",
+      description:
+        "Retourne l’identité, les fenêtres de rappel et l’état non sensible de Telegram.",
+      inputSchema: z.object({}),
+      annotations: readOnlyTool,
+    },
+    async () => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      return toolResult({ settings: await getAssociationSettings() });
+    },
+  );
+
+  server.registerTool(
+    "update_application_settings",
+    {
+      title: "Modifier les réglages de l’association",
+      description:
+        "Met à jour l’identité, les fenêtres de rappel et l’activation de Telegram. Le token Telegram reste exclusivement configurable dans l’interface administrateur.",
+      inputSchema: z.object({
+        associationName: z.string().min(2).max(160).optional(),
+        schoolName: z.string().min(2).max(200).optional(),
+        contactEmail: z.string().email().nullable().optional(),
+        rna: z
+          .string()
+          .regex(/^W\d{9}$/i, "Numéro RNA invalide")
+          .optional(),
+        taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
+        volunteerReminderWindowDays: z
+          .number()
+          .int()
+          .min(0)
+          .max(30)
+          .optional(),
+        telegramEnabled: z.boolean().optional(),
+      }),
+      annotations: writeTool,
+    },
+    async (args) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const current = await getAssociationSettings();
+      const settings = await saveAssociationSettings(
+        {
+          associationName:
+            args.associationName ?? current.associationName,
+          schoolName: args.schoolName ?? current.schoolName,
+          contactEmail:
+            args.contactEmail === undefined
+              ? current.contactEmail
+              : args.contactEmail,
+          rna: args.rna ?? current.rna,
+          taskReminderWindowDays:
+            args.taskReminderWindowDays ??
+            current.taskReminderWindowDays,
+          volunteerReminderWindowDays:
+            args.volunteerReminderWindowDays ??
+            current.volunteerReminderWindowDays,
+          telegramEnabled:
+            args.telegramEnabled ?? current.telegramEnabled,
+        },
+        mcpAuditActor(principal),
+      );
+      return toolResult({ settings }, "Réglages de l’association enregistrés.");
+    },
+  );
+
+  server.registerTool(
     "get_outbound_mail_status",
     {
       title: "État de la messagerie",
       description:
-        "Retourne la configuration non sensible de Resend. Ne révèle jamais la clé API.",
+        "Retourne la configuration non sensible de la messagerie sortante. Ne révèle jamais les secrets.",
       inputSchema: z.object({}),
       annotations: readOnlyTool,
     },
@@ -563,13 +668,18 @@ export function registerAssociationTools(
     {
       title: "Configurer la messagerie",
       description:
-        "Configure les paramètres non sensibles de Resend. La clé API doit être saisie exclusivement dans l’interface administrateur.",
+        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur.",
       inputSchema: z.object({
+        provider: z.enum(["resend", "smtp"]).optional(),
         enabled: z.boolean(),
         fromName: optionalNullableString,
         fromEmail: z.string().email().nullable().optional(),
         replyTo: z.string().email().nullable().optional(),
         domain: optionalNullableString,
+        smtpHost: optionalNullableString,
+        smtpPort: z.number().int().min(1).max(65_535).nullable().optional(),
+        smtpSecure: z.boolean().optional(),
+        smtpUsername: optionalNullableString,
       }),
       annotations: writeTool,
     },
@@ -578,7 +688,7 @@ export function registerAssociationTools(
       const current = await getOutboundMailStatus();
       const settings = await saveOutboundMailSettings(
         {
-          provider: "resend",
+          provider: args.provider ?? current.provider,
           enabled: args.enabled,
           fromName:
             args.fromName === undefined ? current.fromName : args.fromName,
@@ -587,6 +697,18 @@ export function registerAssociationTools(
           replyTo:
             args.replyTo === undefined ? current.replyTo : args.replyTo,
           domain: args.domain === undefined ? current.domain : args.domain,
+          smtpHost:
+            args.smtpHost === undefined ? current.smtpHost : args.smtpHost,
+          smtpPort:
+            args.smtpPort === undefined ? current.smtpPort : args.smtpPort,
+          smtpSecure:
+            args.smtpSecure === undefined
+              ? current.smtpSecure
+              : args.smtpSecure,
+          smtpUsername:
+            args.smtpUsername === undefined
+              ? current.smtpUsername
+              : args.smtpUsername,
         },
         mcpAuditActor(principal),
       );
@@ -599,7 +721,7 @@ export function registerAssociationTools(
     {
       title: "Envoyer un e-mail de test",
       description:
-        "Envoie un vrai message de test via Resend à l’adresse indiquée.",
+        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée.",
       inputSchema: z.object({
         to: z.string().email(),
         confirm: z.literal(true),
@@ -613,14 +735,16 @@ export function registerAssociationTools(
     async ({ to }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
       const actor = mcpAuditActor(principal);
+      const associationName = association.associationName;
       const sent = await sendEmail({
         to,
-        subject: "Test de messagerie — APEL Notre Dame des Flots",
-        html: "<h2>La messagerie fonctionne.</h2><p>Test envoyé depuis le serveur MCP sécurisé de l’APEL Notre Dame des Flots.</p>",
-        text: "La messagerie de l’APEL Notre Dame des Flots fonctionne.",
+        subject: `Test de messagerie — ${associationName}`,
+        html: `<h2>La messagerie fonctionne.</h2><p>Test envoyé depuis le serveur MCP sécurisé de ${escapeHtml(associationName)}.</p>`,
+        text: `La messagerie de ${associationName} fonctionne.`,
+        allowDisabled: true,
       });
       await markOutboundMailTest(actor, sent);
-      if (!sent) throw new Error("L’envoi Resend a échoué.");
+      if (!sent) throw new Error("L’envoi du message de test a échoué.");
       return toolResult({ sent: true, to }, "E-mail de test envoyé.");
     },
   );
@@ -666,11 +790,10 @@ export function registerAssociationTools(
       if (recipients.length === 0) {
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
-      const mail = broadcastEmail({
-        subject,
-        message,
-        senderName: principal.name,
-      });
+      const mail = associationBroadcastEmail(
+        { subject, message, senderName: principal.name },
+        association.associationName,
+      );
       let sent = 0;
       const batchSize = 5;
       for (let index = 0; index < recipients.length; index += batchSize) {

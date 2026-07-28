@@ -15,6 +15,10 @@ import {
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
 import { sendEmail } from "@/lib/notifications/email";
 import { volunteerReminderEmail } from "@/lib/notifications/emails";
+import {
+  getAssociationSettings,
+  getTelegramBotToken,
+} from "@/lib/services/association-settings";
 import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
@@ -45,8 +49,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const windowDaysRaw = Number(process.env.REMINDER_WINDOW_DAYS ?? "3");
-  const windowDays = Number.isFinite(windowDaysRaw) ? windowDaysRaw : 3;
+  const [association, telegramBotToken] = await Promise.all([
+    getAssociationSettings(),
+    getTelegramBotToken(),
+  ]);
   const appUrl = (
     process.env.APP_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -54,7 +60,15 @@ export async function GET(req: Request) {
   ).replace(/\/$/, "");
 
   const now = new Date();
-  const horizon = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+  const notificationIdentity = {
+    associationName: association.associationName,
+    schoolName: association.schoolName,
+    rna: association.rna,
+  };
+  const horizon = new Date(
+    now.getTime() +
+      association.taskReminderWindowDays * 24 * 60 * 60 * 1000,
+  );
 
   const dueTasks = await db.query.tasks.findMany({
     where: and(ne(tasks.status, "done"), lte(tasks.dueAt, horizon)),
@@ -113,6 +127,8 @@ export async function GET(req: Request) {
         dueAt: c.task.dueAt,
         kind: c.kind,
         appUrl,
+        identity: notificationIdentity,
+        telegramBotToken,
       });
       return { c, ok };
     }),
@@ -134,9 +150,12 @@ export async function GET(req: Request) {
       .onConflictDoNothing();
   }
 
-  // --- Rappels aux bénévoles : événement publié dans <= 2 jours, e-mail fourni,
-  //     pas encore rappelé. ----------------------------------------------------
-  const volunteerHorizon = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+  // --- Rappels aux bénévoles : événement publié dans la fenêtre configurée,
+  //     e-mail fourni, pas encore rappelé. -------------------------------------
+  const volunteerHorizon = new Date(
+    now.getTime() +
+      association.volunteerReminderWindowDays * 24 * 60 * 60 * 1000,
+  );
   // Sans URL publique configurée, les liens des e-mails seraient cassés : on saute.
   const signups = appUrl
     ? await db.query.volunteerSignups.findMany({
@@ -172,6 +191,7 @@ export async function GET(req: Request) {
           cancelUrl: s.cancelToken
             ? `${appUrl}/annulation/${s.cancelToken}`
             : appUrl,
+          identity: notificationIdentity,
         });
         const ok = await sendEmail({ to: s.email as string, ...mail });
         return ok ? s.id : null;

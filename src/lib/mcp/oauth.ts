@@ -17,6 +17,7 @@ import {
   users,
   type Role,
 } from "@/lib/db/schema";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 const MCP_PATH = "/api/mcp";
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -612,11 +613,19 @@ function htmlEscape(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-function htmlResponse(markup: string, status = 200): Response {
+function htmlResponse(
+  markup: string,
+  status = 200,
+  formActionOrigins: readonly string[] = [],
+): Response {
   const headers = noStoreHeaders("text/html; charset=utf-8");
+  const formActions = ["'self'", ...new Set(formActionOrigins)].join(" ");
+  // Cloudflare respecte no-transform et n'injecte donc pas son script
+  // d'obfuscation d'e-mail dans ces pages OAuth volontairement sans script.
+  headers.set("Cache-Control", "no-store, no-transform");
   headers.set(
     "Content-Security-Policy",
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    `default-src 'none'; style-src 'unsafe-inline'; form-action ${formActions}; frame-ancestors 'none'; base-uri 'none'`,
   );
   headers.set("X-Frame-Options", "DENY");
   return new Response(markup, { status, headers });
@@ -923,6 +932,7 @@ function scopesGrantedToRole(requested: string[], role: Role): string[] {
 function consentPage(
   request: AuthorizationRequest,
   user: { id: string; name: string; email: string },
+  association: { associationName: string; rna: string },
 ): Response {
   const consentToken = signConsentToken({
     ...request,
@@ -949,14 +959,14 @@ function consentPage(
     <main style="max-width:660px;margin:6vh auto;padding:24px">
       <section style="overflow:hidden;background:#fff;border:2px solid #b8e0f7;border-radius:20px">
         <header style="padding:26px 30px;background:#082a40;color:#fff;border-bottom:6px solid #2ccbbb">
-          <p style="margin:0 0 8px;color:#9af1e3;font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase">${htmlEscape(APP_NAME)} · RNA W853001441</p>
+          <p style="margin:0 0 8px;color:#9af1e3;font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase">${htmlEscape(association.associationName)} · RNA ${htmlEscape(association.rna)}</p>
           <h1 style="margin:0;font-size:28px;line-height:1.15">Autoriser l’accès MCP</h1>
         </header>
         <div style="padding:30px">
           <p style="margin:0 0 18px;line-height:1.65;color:#475569">
             <strong style="color:#082a40">${htmlEscape(request.clientName)}</strong>
             souhaite agir au nom de <strong style="color:#082a40">${htmlEscape(user.name)}</strong>
-            (${htmlEscape(user.email)}).
+            (<!--email_off-->${htmlEscape(user.email)}<!--/email_off-->).
           </p>
           <div style="padding:18px 20px;background:#ecfdf9;border:2px solid #9af1e3;border-radius:14px">
             <p style="margin:0;font-weight:800">Ce connecteur pourra :</p>
@@ -975,7 +985,10 @@ function consentPage(
       </section>
     </main>
   </body>
-</html>`);
+</html>`,
+    200,
+    [new URL(request.redirectUri).origin],
+  );
 }
 
 export async function authorizeOAuthGet(
@@ -1005,7 +1018,8 @@ export async function authorizeOAuthGet(
         ),
       );
     }
-    return consentPage({ ...validation.value, scopes }, user);
+    const association = await getAssociationSettings();
+    return consentPage({ ...validation.value, scopes }, user, association);
   } catch (error) {
     return oauthHtmlError(error);
   }

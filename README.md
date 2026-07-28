@@ -62,7 +62,9 @@ docker compose up --build -d
 
 Au premier lancement, les secrets internes sont générés, PostgreSQL est
 initialisé et les migrations sont appliquées automatiquement. Le **premier
-compte créé** depuis `/register` devient administrateur.
+compte créé** depuis `/register` devient administrateur. Il peut ensuite ouvrir
+**Configuration** pour renseigner l’identité officielle, les fenêtres de
+rappel, Telegram et le fournisseur e-mail.
 
 Les données restent conservées après un `docker compose down`. Pour arrêter la
 stack :
@@ -88,17 +90,25 @@ sauvegarde et de mise en production est détaillée dans
 
 ## Mise en production
 
-Créez un fichier `.env.docker` hors versionnement, puis démarrez l’instance avec
-ses paramètres :
+Copiez le modèle unique, renseignez les paramètres d’infrastructure, puis
+démarrez l’instance. Docker Compose charge automatiquement `.env` :
 
 ```bash
-docker compose --env-file .env.docker up --build -d
+cp .env.example .env
+docker compose up --build -d
 ```
 
 Caddy peut obtenir automatiquement un certificat TLS dès qu’un domaine public
-pointe vers le serveur. Pour les envois réels, configurez **Resend** depuis le
-tableau de bord ou un relais **SMTP** externe ; Mailpit capture uniquement les
-messages en local.
+pointe vers le serveur. Le choix de **Resend** ou d’un relais **SMTP**, ses
+identifiants et l’expéditeur se règlent exclusivement dans **Tableau de bord →
+Configuration**. Mailpit reste inclus pour les essais locaux ; sélectionnez
+SMTP avec l’hôte `mailpit` et le port `1025`.
+
+Le `.env` ne contient que ce dont l’application a besoin avant de pouvoir lire
+la base : URL publique, accès PostgreSQL, secrets de sessions/chiffrement,
+stockage, orchestration et ports. L’identité, les rappels, Telegram et la
+messagerie se règlent dans l’application. Les mêmes noms d’environnement sont
+utilisés en exécution directe, dans Docker et chez un hébergeur.
 
 Claude.ai doit joindre une URL HTTPS publique. Le connecteur personnalisé
 utilise alors l’adresse :
@@ -114,13 +124,13 @@ la connexion du serveur MCP.
 
 ```bash
 npm ci
-cp .env.example .env.local
-npm run db:push
+cp .env.example .env
+npm run db:migrate
 npm run dev
 ```
 
 Renseignez au minimum `DATABASE_URL`, `AUTH_SECRET` et
-`SETTINGS_ENCRYPTION_KEY` dans `.env.local`. L’application accepte toute base
+`SETTINGS_ENCRYPTION_KEY` dans `.env`. L’application accepte toute base
 PostgreSQL compatible ; le guide Vercel utilise Neon.
 
 ## Documentation

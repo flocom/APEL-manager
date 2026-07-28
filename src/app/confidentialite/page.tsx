@@ -8,21 +8,23 @@ import {
 import Link from "next/link";
 
 import { SiteHeader } from "@/components/site-header";
-import { APP_NAME, CONTACT_EMAIL } from "@/lib/app-config";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Politique de confidentialité" };
 
 const sectionIcons = [ShieldCheck, Database, Target, Clock3, UserRoundCheck];
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const settings = await getAssociationSettings();
   const sections = [
     {
       title: "Responsable",
       content: (
         <>
-          Les données collectées via {APP_NAME} sont traitées par
+          Les données collectées via {settings.associationName} sont traitées par
           l&apos;association APEL qui organise les événements.
-          {CONTACT_EMAIL ? ` Contact : ${CONTACT_EMAIL}.` : ""}
+          {settings.contactEmail ? ` Contact : ${settings.contactEmail}.` : ""}
         </>
       ),
     },
@@ -65,7 +67,7 @@ export default function PrivacyPage() {
           Conformément au RGPD, vous disposez d&apos;un droit d&apos;accès, de
           rectification et de suppression de vos données. Pour l&apos;exercer,
           contactez l&apos;association
-          {CONTACT_EMAIL ? ` à ${CONTACT_EMAIL}` : ""}.
+          {settings.contactEmail ? ` à ${settings.contactEmail}` : ""}.
         </>
       ),
     },

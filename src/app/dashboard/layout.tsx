@@ -1,5 +1,6 @@
 import { DashboardNav } from "@/components/dashboard-nav";
 import { requireUser } from "@/lib/auth/rbac";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -8,11 +9,17 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireUser();
+  const [user, settings] = await Promise.all([
+    requireUser(),
+    getAssociationSettings(),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
-      <DashboardNav user={{ name: user.name, role: user.role }} />
+      <DashboardNav
+        appName={settings.associationName}
+        user={{ name: user.name, role: user.role }}
+      />
       <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:px-10 lg:py-10 xl:px-12">
         <div className="mx-auto max-w-7xl">{children}</div>
       </main>

@@ -2,11 +2,14 @@ import { LayoutDashboard } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export async function SiteHeader() {
-  const user = await getCurrentUser();
+  const [user, settings] = await Promise.all([
+    getCurrentUser(),
+    getAssociationSettings(),
+  ]);
 
   return (
     <header className="sticky top-0 z-30 border-b-2 border-brand-100 bg-white">
@@ -17,7 +20,7 @@ export async function SiteHeader() {
         >
           <Image
             src="/logo-notre-dame-des-flots.png"
-            alt="Notre Dame des Flots"
+            alt={settings.schoolName}
             width={425}
             height={228}
             priority
@@ -25,10 +28,10 @@ export async function SiteHeader() {
           />
           <span className="hidden min-w-0 border-l-2 border-brand-100 pl-3 sm:block">
             <span className="block break-words text-sm font-extrabold tracking-[-0.02em] text-brand-950">
-              {APP_NAME}
+              {settings.associationName}
             </span>
             <span className="mt-0.5 block break-words text-[11px] font-medium text-slate-500">
-              {SCHOOL_NAME}
+              {settings.schoolName}
             </span>
           </span>
         </Link>

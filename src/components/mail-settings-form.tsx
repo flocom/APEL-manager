@@ -7,6 +7,7 @@ import {
   MailCheck,
   Send,
   ServerCog,
+  ShieldCheck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,7 +27,7 @@ import { formatDateTime } from "@/lib/dates";
 export interface MailSettingsView {
   enabled: boolean;
   provider: "resend" | "smtp";
-  environmentManaged: boolean;
+  legacyEnvironment: boolean;
   fromName: string | null;
   fromEmail: string | null;
   replyTo: string | null;
@@ -35,8 +36,9 @@ export interface MailSettingsView {
   smtpHost: string | null;
   smtpPort: number | null;
   smtpSecure: boolean;
+  smtpUsername: string | null;
+  smtpPasswordConfigured: boolean;
   smtpAuthConfigured: boolean;
-  smtpFrom: string | null;
   configurationError: string | null;
   lastTestedAt: string | null;
   lastTestStatus: "untested" | "success" | "failed";
@@ -51,20 +53,50 @@ export function MailSettingsForm({
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [provider, setProvider] = useState<"resend" | "smtp">(
+    settings.provider,
+  );
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     const form = new FormData(event.currentTarget);
     const apiKey = String(form.get("apiKey") ?? "").trim();
+    const smtpPassword = String(form.get("smtpPassword") ?? "");
+    const smtpPort = String(form.get("smtpPort") ?? "").trim();
     const body = {
-      provider: "resend",
+      provider,
       enabled: form.get("enabled") === "on",
       fromName: form.get("fromName") || null,
       fromEmail: form.get("fromEmail") || null,
       replyTo: form.get("replyTo") || null,
-      domain: form.get("domain") || null,
+      domain:
+        provider === "resend"
+          ? form.get("domain") || null
+          : settings.domain,
+      smtpHost:
+        provider === "smtp"
+          ? form.get("smtpHost") || null
+          : settings.smtpHost,
+      smtpPort:
+        provider === "smtp"
+          ? smtpPort
+            ? Number(smtpPort)
+            : null
+          : settings.smtpPort,
+      smtpSecure:
+        provider === "smtp"
+          ? form.get("smtpSecure") === "on"
+          : settings.smtpSecure,
+      smtpUsername:
+        provider === "smtp"
+          ? form.get("smtpUsername") || null
+          : settings.smtpUsername,
+      clearApiKey: !apiKey && form.get("clearApiKey") === "on",
+      clearSmtpPassword:
+        !smtpPassword && form.get("clearSmtpPassword") === "on",
       ...(apiKey ? { apiKey } : {}),
+      ...(smtpPassword ? { smtpPassword } : {}),
     };
 
     try {
@@ -111,8 +143,8 @@ export function MailSettingsForm({
                 Serveur d&apos;envoi
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                {settings.provider === "smtp"
-                  ? "SMTP · configuration Docker / serveur"
+                {provider === "smtp"
+                  ? "SMTP · relais de messagerie personnalisé"
                   : "Resend · courrier transactionnel de l'association"}
               </p>
             </div>
@@ -120,10 +152,26 @@ export function MailSettingsForm({
           <MailStatus settings={settings} />
         </div>
 
-        {settings.environmentManaged ? (
-          <SmtpEnvironmentSettings settings={settings} />
-        ) : (
-          <form onSubmit={save} className="space-y-6 p-5 sm:p-6">
+        <form onSubmit={save} className="space-y-6 p-5 sm:p-6">
+          {settings.legacyEnvironment && (
+            <div className="flex items-start gap-3 rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+              <CircleAlert
+                className="mt-0.5 h-5 w-5 shrink-0 text-amber-700"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="font-bold text-brand-950">
+                  Ancienne configuration détectée
+                </p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Enregistrez ce formulaire pour la migrer vers Configuration.
+                  Elle ne dépendra ensuite plus du conteneur ni du fichier
+                  d&apos;environnement.
+                </p>
+              </div>
+            </div>
+          )}
+
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-sea-200 bg-sea-50 p-4">
             <input
               type="checkbox"
@@ -142,106 +190,244 @@ export function MailSettingsForm({
             </span>
           </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Fournisseur" htmlFor="mail-provider">
+          <div>
+            <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
+              Fournisseur
+            </p>
+            <Field label="Service d'envoi" htmlFor="mail-provider">
               <Select
                 id="mail-provider"
                 name="provider"
-                defaultValue={settings.provider}
-                disabled
+                value={provider}
+                onChange={(event) =>
+                  setProvider(event.target.value as "resend" | "smtp")
+                }
               >
                 <option value="resend">Resend</option>
+                <option value="smtp">Serveur SMTP</option>
               </Select>
-            </Field>
-            <Field
-              label="Domaine d'envoi"
-              htmlFor="mail-domain"
-              hint="À renseigner lorsque le nom de domaine sera configuré dans Resend."
-            >
-              <Input
-                id="mail-domain"
-                name="domain"
-                defaultValue={settings.domain ?? ""}
-                placeholder="apel-notredamedesflots.fr"
-                autoComplete="off"
-              />
-            </Field>
-            <Field label="Nom de l'expéditeur" htmlFor="mail-from-name">
-              <Input
-                id="mail-from-name"
-                name="fromName"
-                defaultValue={
-                  settings.fromName ?? "APEL Notre Dame des Flots"
-                }
-                placeholder="APEL Notre Dame des Flots"
-              />
-            </Field>
-            <Field
-              label="Adresse d'expédition"
-              htmlFor="mail-from-email"
-              hint="Cette adresse devra appartenir au domaine validé."
-            >
-              <Input
-                id="mail-from-email"
-                name="fromEmail"
-                type="email"
-                defaultValue={settings.fromEmail ?? ""}
-                placeholder="contact@apel-notredamedesflots.fr"
-                autoComplete="email"
-              />
-            </Field>
-            <Field
-              label="Adresse de réponse"
-              htmlFor="mail-reply-to"
-              className="sm:col-span-2"
-            >
-              <Input
-                id="mail-reply-to"
-                name="replyTo"
-                type="email"
-                defaultValue={settings.replyTo ?? ""}
-                placeholder="bureau@apel-notredamedesflots.fr"
-                autoComplete="email"
-              />
-            </Field>
-            <Field
-              label="Clé API Resend"
-              htmlFor="mail-api-key"
-              className="sm:col-span-2"
-              hint={
-                settings.keyLastFour
-                  ? `Une clé est déjà enregistrée et se termine par •••• ${settings.keyLastFour}. Laissez vide pour la conserver.`
-                  : "La clé sera chiffrée côté serveur et ne sera plus affichée."
-              }
-            >
-              <div className="relative">
-                <KeyRound
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                />
-                <Input
-                  id="mail-api-key"
-                  name="apiKey"
-                  type="password"
-                  className="pl-10"
-                  placeholder={
-                    settings.keyLastFour
-                      ? "Conserver la clé actuelle"
-                      : "re_…"
-                  }
-                  autoComplete="new-password"
-                />
-              </div>
             </Field>
           </div>
 
-          <div className="flex justify-end border-t-2 border-slate-100 pt-5">
+          {provider === "resend" ? (
+            <div className="grid gap-4 rounded-2xl border-2 border-brand-100 bg-brand-50/70 p-4 sm:grid-cols-2">
+              <Field
+                label="Domaine d'envoi"
+                htmlFor="mail-domain"
+                hint="Le domaine validé dans votre compte Resend."
+              >
+                <Input
+                  id="mail-domain"
+                  name="domain"
+                  defaultValue={settings.domain ?? ""}
+                  placeholder="apel-ndf.fr"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field
+                label="Clé API Resend"
+                htmlFor="mail-api-key"
+                hint={
+                  settings.keyLastFour
+                    ? `Clé enregistrée : •••• ${settings.keyLastFour}. Laissez vide pour la conserver.`
+                    : "Elle sera chiffrée et ne sera plus jamais affichée."
+                }
+              >
+                <div className="relative">
+                  <KeyRound
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  />
+                  <Input
+                    id="mail-api-key"
+                    name="apiKey"
+                    type="password"
+                    className="pl-10"
+                    placeholder={
+                      settings.keyLastFour
+                        ? "Conserver la clé actuelle"
+                        : "re_…"
+                    }
+                    autoComplete="new-password"
+                  />
+                </div>
+                {settings.keyLastFour && (
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold text-coral-700">
+                    <input
+                      type="checkbox"
+                      name="clearApiKey"
+                      className="h-4 w-4 rounded border-2 border-coral-300 accent-[#d95d45]"
+                    />
+                    Supprimer la clé enregistrée
+                  </label>
+                )}
+              </Field>
+            </div>
+          ) : (
+            <div className="space-y-4 rounded-2xl border-2 border-brand-100 bg-brand-50/70 p-4">
+              <div className="grid gap-4 sm:grid-cols-[1fr_9rem]">
+                <Field label="Serveur SMTP" htmlFor="smtp-host">
+                  <Input
+                    id="smtp-host"
+                    name="smtpHost"
+                    defaultValue={settings.smtpHost ?? ""}
+                    placeholder="smtp.resend.com"
+                    autoComplete="off"
+                    required
+                  />
+                </Field>
+                <Field label="Port" htmlFor="smtp-port">
+                  <Input
+                    id="smtp-port"
+                    name="smtpPort"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    defaultValue={settings.smtpPort ?? 587}
+                    required
+                  />
+                </Field>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Identifiant SMTP"
+                  htmlFor="smtp-username"
+                  hint="Laissez les deux champs vides si le relais n'exige pas d'authentification."
+                >
+                  <Input
+                    id="smtp-username"
+                    name="smtpUsername"
+                    defaultValue={settings.smtpUsername ?? ""}
+                    placeholder="Identifiant"
+                    autoComplete="username"
+                  />
+                </Field>
+                <Field
+                  label="Mot de passe SMTP"
+                  htmlFor="smtp-password"
+                  hint={
+                    settings.smtpPasswordConfigured
+                      ? "Un mot de passe est enregistré. Laissez vide pour le conserver."
+                      : "Le mot de passe sera stocké chiffré."
+                  }
+                >
+                  <div className="relative">
+                    <KeyRound
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    />
+                    <Input
+                      id="smtp-password"
+                      name="smtpPassword"
+                      type="password"
+                      className="pl-10"
+                      placeholder={
+                        settings.smtpPasswordConfigured
+                          ? "Conserver le mot de passe"
+                          : "Mot de passe"
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  {settings.smtpPasswordConfigured && (
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold text-coral-700">
+                      <input
+                        type="checkbox"
+                        name="clearSmtpPassword"
+                        className="h-4 w-4 rounded border-2 border-coral-300 accent-[#d95d45]"
+                      />
+                      Supprimer le mot de passe enregistré
+                    </label>
+                  )}
+                </Field>
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-white bg-white p-4">
+                <input
+                  type="checkbox"
+                  name="smtpSecure"
+                  defaultChecked={settings.smtpSecure}
+                  className="mt-0.5 h-5 w-5 rounded border-2 border-slate-300 accent-[#0873ab]"
+                />
+                <span>
+                  <span className="block font-bold text-brand-950">
+                    TLS dès la connexion
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-slate-600">
+                    À activer habituellement sur le port 465. Sur le port 587,
+                    STARTTLS sera négocié automatiquement.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
+              Expéditeur
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Nom de l'expéditeur" htmlFor="mail-from-name">
+                <Input
+                  id="mail-from-name"
+                  name="fromName"
+                  defaultValue={
+                    settings.fromName ?? "APEL Notre Dame des Flots"
+                  }
+                  placeholder="APEL Notre Dame des Flots"
+                />
+              </Field>
+              <Field
+                label="Adresse d'expédition"
+                htmlFor="mail-from-email"
+                hint="Cette adresse devra appartenir au domaine validé."
+              >
+                <Input
+                  id="mail-from-email"
+                  name="fromEmail"
+                  type="email"
+                  defaultValue={settings.fromEmail ?? ""}
+                  placeholder="contact@apel-ndf.fr"
+                  autoComplete="email"
+                  required
+                />
+              </Field>
+              <Field
+                label="Adresse de réponse"
+                htmlFor="mail-reply-to"
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="mail-reply-to"
+                  name="replyTo"
+                  type="email"
+                  defaultValue={settings.replyTo ?? ""}
+                  placeholder="bureau@apel-notredamedesflots.fr"
+                  autoComplete="email"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {settings.configurationError && (
+            <div className="flex items-start gap-3 rounded-xl border-2 border-coral-200 bg-coral-50 p-4 text-sm font-semibold text-coral-800">
+              <CircleAlert
+                className="mt-0.5 h-5 w-5 shrink-0"
+                aria-hidden="true"
+              />
+              {settings.configurationError}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 border-t-2 border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-center gap-2 text-sm text-slate-500">
+              <ShieldCheck className="h-4 w-4 text-sea-600" aria-hidden="true" />
+              Les identifiants sont chiffrés avant leur stockage.
+            </p>
             <Button type="submit" loading={saving} icon={MailCheck}>
               Enregistrer la configuration
             </Button>
           </div>
-          </form>
-        )}
+        </form>
       </Card>
 
       <div className="space-y-6">
@@ -274,14 +460,15 @@ export function MailSettingsForm({
               loading={testing}
               icon={Send}
               className="w-full"
-              disabled={settings.provider === "smtp" && !settings.enabled}
+              disabled={Boolean(settings.configurationError)}
             >
               Envoyer un e-mail de test
             </Button>
           </form>
-          {!settings.enabled && settings.configurationError && (
+          {settings.configurationError && (
             <p className="mt-3 text-sm font-semibold text-coral-700">
-              Corrigez la configuration SMTP avant d&apos;envoyer un test.
+              Enregistrez une configuration complète avant d&apos;envoyer un
+              test.
             </p>
           )}
         </Card>
@@ -302,92 +489,13 @@ export function MailSettingsForm({
                 {settings.provider === "smtp"
                   ? settings.smtpHost?.toLowerCase().includes("mailpit")
                     ? "Mailpit capture les messages dans Docker sans les distribuer sur Internet. Utilisez son interface web pour consulter les e-mails de test."
-                    : "Le transport est défini par les variables d'environnement. Vérifiez que le relais autorise l'expéditeur et configurez les enregistrements DNS de votre domaine pour la distribution publique."
+                    : "Vérifiez que le relais autorise l'expéditeur et configurez les enregistrements DNS de votre domaine pour assurer la distribution des messages."
                   : "Validez le domaine dans Resend, puis ajoutez les enregistrements DNS SPF et DKIM fournis. L'adresse d'expédition doit utiliser ce domaine."}
               </p>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SmtpEnvironmentSettings({
-  settings,
-}: {
-  settings: MailSettingsView;
-}) {
-  return (
-    <div className="space-y-5 p-5 sm:p-6">
-      <div
-        className={
-          settings.configurationError
-            ? "rounded-xl border-2 border-coral-200 bg-coral-50 p-4"
-            : "rounded-xl border-2 border-sea-200 bg-sea-50 p-4"
-        }
-      >
-        <p className="font-bold text-brand-950">
-          Configuration gérée par l&apos;environnement
-        </p>
-        <p className="mt-1 text-sm leading-6 text-slate-600">
-          Les paramètres SMTP sont injectés au démarrage du conteneur. Pour les
-          modifier, mettez à jour les variables <code>SMTP_*</code>, puis
-          redémarrez le service.
-        </p>
-        {settings.configurationError && (
-          <p className="mt-2 text-sm font-semibold text-coral-700">
-            {settings.configurationError}
-          </p>
-        )}
-      </div>
-
-      <dl className="grid gap-3 sm:grid-cols-2">
-        <SmtpSetting
-          label="Serveur"
-          value={
-            settings.smtpHost
-              ? `${settings.smtpHost}:${settings.smtpPort ?? "—"}`
-              : "Non configuré"
-          }
-        />
-        <SmtpSetting
-          label="Sécurité"
-          value={
-            settings.smtpSecure
-              ? "TLS dès la connexion"
-              : "SMTP / STARTTLS si disponible"
-          }
-        />
-        <SmtpSetting
-          label="Authentification"
-          value={
-            settings.smtpAuthConfigured
-              ? "Identifiants configurés"
-              : "Sans authentification"
-          }
-        />
-        <SmtpSetting
-          label="Expéditeur"
-          value={settings.smtpFrom ?? "Non configuré"}
-        />
-      </dl>
-
-      <p className="border-t-2 border-slate-100 pt-4 text-sm leading-6 text-slate-500">
-        Aucun identifiant ni mot de passe SMTP n&apos;est exposé dans cette
-        interface.
-      </p>
-    </div>
-  );
-}
-
-function SmtpSetting({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border-2 border-slate-100 bg-slate-50 p-4">
-      <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
-        {label}
-      </dt>
-      <dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd>
     </div>
   );
 }
