@@ -254,7 +254,11 @@ export const financialAccountSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const financialAccountUpdateSchema = financialAccountSchema.partial();
+export const financialAccountUpdateSchema = financialAccountSchema
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "Aucune modification fournie",
+  });
 
 export const accountingCategorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),

@@ -3,6 +3,7 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  BookOpenText,
   CircleDollarSign,
   FileWarning,
   Landmark,
@@ -12,6 +13,7 @@ import {
   Plus,
   Search,
   Trash2,
+  type LucideIcon,
   WalletCards,
   X,
 } from "lucide-react";
@@ -20,6 +22,10 @@ import { useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FileUploadField } from "@/components/file-upload-field";
+import {
+  FinancialAccountsManager,
+  type FinancialAccountView,
+} from "@/components/financial-accounts-manager";
 import { ModuleStat } from "@/components/module-stat";
 import { useToast } from "@/components/toast";
 import {
@@ -36,11 +42,7 @@ import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
-export interface AccountingAccountView {
-  id: string;
-  name: string;
-  type: "bank" | "cash";
-}
+export type AccountingAccountView = FinancialAccountView;
 
 export interface AccountingCategoryView {
   id: string;
@@ -90,6 +92,9 @@ export function AccountingManager({
   const [status, setStatus] = useState<
     "all" | AccountingEntryView["status"]
   >("all");
+  const [workspace, setWorkspace] = useState<"entries" | "accounts">(
+    "entries",
+  );
   const [editor, setEditor] = useState<"new" | AccountingEntryView | null>(
     null,
   );
@@ -115,6 +120,9 @@ export function AccountingManager({
     .filter((entry) => entry.type === "expense")
     .reduce((sum, entry) => sum + entry.amountCents, 0);
   const draftCount = entries.filter((entry) => entry.status === "draft").length;
+  const activeAccountCount = accounts.filter(
+    (account) => account.isActive,
+  ).length;
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("fr");
@@ -197,10 +205,37 @@ export function AccountingManager({
 
   return (
     <div className="space-y-6">
-      <section
-        aria-label="Synthèse comptable"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-      >
+      <Card className="p-1.5">
+        <div
+          role="tablist"
+          aria-label="Navigation de la comptabilité"
+          className="grid grid-cols-2 gap-1.5"
+        >
+          <AccountingWorkspaceTab
+            active={workspace === "entries"}
+            icon={BookOpenText}
+            label="Écritures"
+            helper={`${entries.length} mouvement${entries.length > 1 ? "s" : ""}`}
+            onClick={() => setWorkspace("entries")}
+          />
+          <AccountingWorkspaceTab
+            active={workspace === "accounts"}
+            icon={WalletCards}
+            label="Comptes"
+            helper={`${activeAccountCount} actif${activeAccountCount > 1 ? "s" : ""}`}
+            onClick={() => setWorkspace("accounts")}
+          />
+        </div>
+      </Card>
+
+      {workspace === "accounts" ? (
+        <FinancialAccountsManager accounts={accounts} entries={entries} />
+      ) : (
+        <>
+          <section
+            aria-label="Synthèse comptable"
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          >
         <ModuleStat
           label="Solde"
           value={euro.format((incomeCents - expenseCents) / 100)}
@@ -229,7 +264,7 @@ export function AccountingManager({
           icon={FileWarning}
           tone="slate"
         />
-      </section>
+          </section>
 
       {editor && (
         <Card className="overflow-hidden">
@@ -509,20 +544,71 @@ export function AccountingManager({
         </>
       )}
 
-      <ConfirmDialog
-        open={Boolean(pendingDelete)}
-        title="Supprimer cette écriture ?"
-        description={
-          pendingDelete
-            ? `L'écriture « ${pendingDelete.label} » sera définitivement supprimée du livre de comptes.`
-            : ""
-        }
-        confirmLabel="Supprimer l'écriture"
-        loading={deleting}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={remove}
-      />
+          <ConfirmDialog
+            open={Boolean(pendingDelete)}
+            title="Supprimer cette écriture ?"
+            description={
+              pendingDelete
+                ? `L'écriture « ${pendingDelete.label} » sera définitivement supprimée du livre de comptes.`
+                : ""
+            }
+            confirmLabel="Supprimer l'écriture"
+            loading={deleting}
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={remove}
+          />
+        </>
+      )}
     </div>
+  );
+}
+
+function AccountingWorkspaceTab({
+  active,
+  icon: Icon,
+  label,
+  helper,
+  onClick,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  helper: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 sm:px-4",
+        active
+          ? "bg-brand-950 text-white"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+      )}
+    >
+      <span
+        className={cn(
+          "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
+          active ? "bg-white/10 text-brand-100" : "bg-slate-100 text-slate-500",
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block font-bold">{label}</span>
+        <span
+          className={cn(
+            "block text-xs",
+            active ? "text-brand-200" : "text-slate-500",
+          )}
+        >
+          {helper}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -632,6 +718,10 @@ function AccountingEntryForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
 }) {
+  const availableAccounts = accounts.filter(
+    (account) => account.isActive || account.id === entry?.accountId,
+  );
+
   return (
     <form onSubmit={onSubmit} className="space-y-6 p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -706,9 +796,10 @@ function AccountingEntryForm({
             defaultValue={entry?.accountId ?? ""}
           >
             <option value="">Sans compte affecté</option>
-            {accounts.map((account) => (
+            {availableAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name} · {account.type === "bank" ? "Banque" : "Caisse"}
+                {!account.isActive ? " · Archivé" : ""}
               </option>
             ))}
           </Select>

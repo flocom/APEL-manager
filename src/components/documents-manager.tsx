@@ -11,6 +11,7 @@ import {
   Plus,
   Printer,
   Search,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -87,6 +88,9 @@ export function DocumentsManager({
   const [pendingDelete, setPendingDelete] =
     useState<AssociationDocumentView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const permanentlyDeleting =
+    pendingDelete?.type === "ag_minutes" &&
+    pendingDelete.status === "archived";
 
   const memberNames = useMemo(
     () => new Map(memberOptions.map((member) => [member.id, member.name])),
@@ -165,8 +169,17 @@ export function DocumentsManager({
     if (!pendingDelete) return;
     setDeleting(true);
     try {
-      await api(`/api/documents/${pendingDelete.id}`, { method: "DELETE" });
-      toast("Document archivé.");
+      await api(
+        `/api/documents/${pendingDelete.id}${
+          permanentlyDeleting ? "?permanent=true" : ""
+        }`,
+        { method: "DELETE" },
+      );
+      toast(
+        permanentlyDeleting
+          ? "Procès-verbal supprimé définitivement."
+          : "Document archivé.",
+      );
       setPendingDelete(null);
       router.refresh();
     } catch (error) {
@@ -396,13 +409,25 @@ export function DocumentsManager({
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
-        title="Archiver ce document ?"
+        title={
+          permanentlyDeleting
+            ? "Supprimer définitivement ce procès-verbal ?"
+            : "Archiver ce document ?"
+        }
         description={
           pendingDelete
-            ? `Le document « ${pendingDelete.title} » restera consultable dans les archives.`
+            ? permanentlyDeleting
+              ? pendingDelete.fileUrl
+                ? `Le procès-verbal « ${pendingDelete.title} » et son fichier joint seront supprimés. Cette action est irréversible.`
+                : `Le procès-verbal « ${pendingDelete.title} » sera supprimé. Cette action est irréversible.`
+              : `Le document « ${pendingDelete.title} » restera consultable dans les archives.`
             : ""
         }
-        confirmLabel="Archiver le document"
+        confirmLabel={
+          permanentlyDeleting
+            ? "Supprimer définitivement"
+            : "Archiver le document"
+        }
         loading={deleting}
         onCancel={() => setPendingDelete(null)}
         onConfirm={remove}
@@ -545,13 +570,33 @@ function DocumentCard({
         <Button
           type="button"
           size="sm"
-          variant="ghost"
-          icon={Archive}
-          className="hover:!bg-coral-50 hover:!text-coral-800"
+          variant={
+            document.type === "ag_minutes" &&
+            document.status === "archived"
+              ? "danger"
+              : "ghost"
+          }
+          icon={
+            document.type === "ag_minutes" &&
+            document.status === "archived"
+              ? Trash2
+              : Archive
+          }
+          className={
+            document.status === "archived"
+              ? undefined
+              : "hover:!bg-coral-50 hover:!text-coral-800"
+          }
           onClick={onDelete}
-          disabled={document.status === "archived"}
+          disabled={
+            document.status === "archived" &&
+            document.type !== "ag_minutes"
+          }
         >
-          Archiver
+          {document.type === "ag_minutes" &&
+          document.status === "archived"
+            ? "Supprimer"
+            : "Archiver"}
         </Button>
       </div>
     </Card>

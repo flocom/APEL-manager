@@ -6,15 +6,17 @@ import { db } from "@/lib/db";
 import {
   accountingCategories,
   associationMembers,
-  financialAccounts,
 } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import {
   createAccountingEntry,
+  createFinancialAccount,
   deleteDraftAccountingEntry,
   getAccountingSummary,
   listAccountingEntries,
+  listFinancialAccounts,
   updateAccountingEntry,
+  updateFinancialAccount,
 } from "@/lib/services/accounting";
 import {
   archiveAssociationMember,
@@ -30,6 +32,7 @@ import { recordAudit } from "@/lib/services/audit";
 import {
   archiveAssociationDocument,
   createAssociationDocument,
+  deleteArchivedAgMinutes,
   getAssociationDocument,
   listAssociationDocuments,
   updateAssociationDocument,
@@ -42,7 +45,6 @@ import {
 import { emptyToNull } from "@/lib/utils";
 import {
   accountingCategorySchema,
-  financialAccountSchema,
 } from "@/lib/validation";
 
 import {
@@ -363,10 +365,7 @@ export function registerAssociationTools(
     },
     async ({ includeInactive }) => {
       requireMcpAccess(principal, "mcp:read", "admin");
-      let items = await db
-        .select()
-        .from(financialAccounts)
-        .orderBy(asc(financialAccounts.name));
+      let items = await listFinancialAccounts();
       if (!includeInactive) items = items.filter((item) => item.isActive);
       return toolResult({ items });
     },
@@ -387,23 +386,37 @@ export function registerAssociationTools(
     },
     async (input) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const data = financialAccountSchema.parse(input);
-      const [account] = await db
-        .insert(financialAccounts)
-        .values({
-          name: data.name,
-          type: data.type,
-          description: emptyToNull(data.description),
-          isActive: data.isActive,
-        })
-        .returning();
-      await recordAudit(
+      const account = await createFinancialAccount(
+        input,
         mcpAuditActor(principal),
-        "accounting.account_create",
-        "financial_account",
-        account.id,
       );
       return toolResult({ account }, "Compte financier créé.");
+    },
+  );
+
+  server.registerTool(
+    "update_financial_account",
+    {
+      title: "Modifier ou archiver un compte financier",
+      description:
+        "Modifie un compte bancaire ou une caisse. Utilisez isActive=false pour l’archiver et true pour le réactiver sans perdre son historique.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(160).optional(),
+        type: z.enum(["bank", "cash"]).optional(),
+        description: optionalNullableString,
+        isActive: z.boolean().optional(),
+      }),
+      annotations: writeTool,
+    },
+    async ({ id, ...updates }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const account = await updateFinancialAccount(
+        id,
+        updates,
+        mcpAuditActor(principal),
+      );
+      return toolResult({ account }, "Compte financier mis à jour.");
     },
   );
 
@@ -577,6 +590,31 @@ export function registerAssociationTools(
         mcpAuditActor(principal),
       );
       return toolResult({ document, archived: true });
+    },
+  );
+
+  server.registerTool(
+    "delete_archived_ag_minutes",
+    {
+      title: "Supprimer un PV archivé",
+      description:
+        "Supprime définitivement un procès-verbal déjà archivé et sa pièce jointe stockée.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        confirm: z.literal(true),
+      }),
+      annotations: destructiveTool,
+    },
+    async ({ id }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const document = await deleteArchivedAgMinutes(
+        id,
+        mcpAuditActor(principal),
+      );
+      return toolResult(
+        { id: document.id, deleted: true },
+        "Procès-verbal supprimé définitivement.",
+      );
     },
   );
 

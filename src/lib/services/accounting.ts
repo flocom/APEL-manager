@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
@@ -11,9 +11,103 @@ import { emptyToNull } from "@/lib/utils";
 import {
   accountingEntrySchema,
   accountingEntryUpdateSchema,
+  financialAccountSchema,
+  financialAccountUpdateSchema,
 } from "@/lib/validation";
 
 import { recordAudit, type AuditActor } from "./audit";
+
+export async function listFinancialAccounts() {
+  return db
+    .select()
+    .from(financialAccounts)
+    .orderBy(asc(financialAccounts.name));
+}
+
+export async function getFinancialAccount(id: string) {
+  const [account] = await db
+    .select()
+    .from(financialAccounts)
+    .where(eq(financialAccounts.id, id))
+    .limit(1);
+  return account ?? null;
+}
+
+export async function createFinancialAccount(
+  input: unknown,
+  actor: AuditActor,
+) {
+  const data = financialAccountSchema.parse(input);
+  const [account] = await db
+    .insert(financialAccounts)
+    .values({
+      name: data.name,
+      type: data.type,
+      description: emptyToNull(data.description),
+      isActive: data.isActive,
+    })
+    .returning();
+
+  await recordAudit(
+    actor,
+    "accounting.account_create",
+    "financial_account",
+    account.id,
+    { type: account.type },
+  );
+  return account;
+}
+
+export async function updateFinancialAccount(
+  id: string,
+  input: unknown,
+  actor: AuditActor,
+) {
+  const data = financialAccountUpdateSchema.parse(input);
+  const current = await getFinancialAccount(id);
+  if (!current) throw new HttpError(404, "Compte de trésorerie introuvable.");
+
+  if (data.type !== undefined && data.type !== current.type) {
+    const [linkedEntry] = await db
+      .select({ id: accountingEntries.id })
+      .from(accountingEntries)
+      .where(eq(accountingEntries.accountId, id))
+      .limit(1);
+    if (linkedEntry) {
+      throw new HttpError(
+        409,
+        "Le type d’un compte déjà utilisé ne peut pas être modifié. Archivez-le puis créez un nouveau compte.",
+      );
+    }
+  }
+
+  const updates: Partial<typeof financialAccounts.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+
+  if (data.name !== undefined) updates.name = data.name;
+  if (data.type !== undefined) updates.type = data.type;
+  if (data.description !== undefined)
+    updates.description = emptyToNull(data.description);
+  if (data.isActive !== undefined) updates.isActive = data.isActive;
+
+  const [account] = await db
+    .update(financialAccounts)
+    .set(updates)
+    .where(eq(financialAccounts.id, id))
+    .returning();
+
+  const action =
+    data.isActive === false && current.isActive
+      ? "accounting.account_archive"
+      : data.isActive === true && !current.isActive
+        ? "accounting.account_reactivate"
+        : "accounting.account_update";
+  await recordAudit(actor, action, "financial_account", account.id, {
+    changedFields: Object.keys(data),
+  });
+  return account;
+}
 
 export async function listAccountingEntries(limit = 200) {
   return db
@@ -167,7 +261,12 @@ export async function updateAccountingEntry(
   const data = accountingEntryUpdateSchema.parse(input);
   await validateReferences({
     type: data.type ?? current.type,
-    accountId: data.accountId,
+    // Un brouillon peut rester rattaché à un compte archivé. Le compte n'est
+    // revalidé que lorsque l'affectation change.
+    accountId:
+      data.accountId !== undefined && data.accountId !== current.accountId
+        ? data.accountId
+        : undefined,
     // Si seul le type change, revalider aussi la catégorie déjà enregistrée :
     // elle doit rester du même type que l'écriture.
     categoryId:

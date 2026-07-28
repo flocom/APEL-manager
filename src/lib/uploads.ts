@@ -72,17 +72,29 @@ export function maxUploadBytes() {
     : 15 * 1024 * 1024;
 }
 
-export function isStoredUploadUrl(value: string) {
+export function storedUploadIdFromUrl(
+  value: string,
+  expectedScope?: UploadScope,
+) {
   const match =
     /^\/api\/uploads\/((?:accounting|document)-[0-9a-f-]{36})\/([A-Za-z0-9._-]+)$/.exec(
       value,
     );
-  return Boolean(
-    match &&
-      uploadScopeFromId(match[1]) &&
-      match[2] === safeFilename(match[2]) &&
-      filePolicy(match[2]),
-  );
+  if (!match) return null;
+  const scope = uploadScopeFromId(match[1]);
+  if (
+    !scope ||
+    (expectedScope && scope !== expectedScope) ||
+    match[2] !== safeFilename(match[2]) ||
+    !filePolicy(match[2])
+  ) {
+    return null;
+  }
+  return match[1];
+}
+
+export function isStoredUploadUrl(value: string) {
+  return Boolean(storedUploadIdFromUrl(value));
 }
 
 export function uploadScopeFromId(id: string): UploadScope | null {
