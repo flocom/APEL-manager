@@ -22,7 +22,9 @@ type Variant =
   | "secondary"
   | "outline"
   | "danger"
-  | "ghost";
+  | "ghost"
+  /** Bouton clair posé sur un fond sombre (en-têtes de section colorés). */
+  | "inverse";
 type Size = "sm" | "md";
 
 export function buttonClasses(
@@ -48,6 +50,8 @@ export function buttonClasses(
       "border-coral-700 bg-coral-700 text-white hover:border-coral-800 hover:bg-coral-800",
     ghost:
       "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+    inverse:
+      "border-white bg-white text-brand-950 hover:border-brand-100 hover:bg-brand-100",
   };
   return cn(base, sizes[size], variants[variant]);
 }

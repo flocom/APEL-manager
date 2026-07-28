@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: Params) {
       valid_order AS (
         SELECT (
           (SELECT count(*) FROM requested) =
-            (SELECT count(*) FROM tasks WHERE event_id = ${eventId})
+            (SELECT count(*) FROM tasks WHERE event_id = ${eventId}::uuid)
           AND
           (SELECT count(DISTINCT id) FROM requested) =
             (SELECT count(*) FROM requested)
@@ -54,7 +54,7 @@ export async function POST(req: Request, { params }: Params) {
             FROM requested
             LEFT JOIN tasks
               ON tasks.id = requested.id
-              AND tasks.event_id = ${eventId}
+              AND tasks.event_id = ${eventId}::uuid
             WHERE tasks.id IS NULL
           )
         ) AS ok
@@ -62,7 +62,7 @@ export async function POST(req: Request, { params }: Params) {
       bumped AS (
         UPDATE events
         SET version = version + 1
-        WHERE id = ${eventId}
+        WHERE id = ${eventId}::uuid
           AND version = ${version}
           AND (SELECT ok FROM valid_order)
         RETURNING id, version

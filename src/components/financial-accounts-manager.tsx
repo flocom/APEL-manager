@@ -182,9 +182,10 @@ export function FinancialAccountsManager({
           </div>
           <Button
             type="button"
+            variant="inverse"
             icon={Plus}
             onClick={() => setEditor("new")}
-            className="w-full border-white bg-white text-brand-950 hover:border-brand-100 hover:bg-brand-100 sm:w-auto"
+            className="w-full sm:w-auto"
           >
             Nouveau compte
           </Button>
