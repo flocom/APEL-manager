@@ -1,9 +1,27 @@
 # Connecter Claude.ai au serveur MCP
 
 L'application expose un serveur MCP distant sécurisé permettant à Claude de
-piloter les événements, tâches, bénévoles, modèles, utilisateurs, adhérents,
-comptabilité, documents et réglages de l'association configurée dans
-l'instance.
+piloter l'association configurée dans l'instance : événements, check-lists,
+bénévoles, modèles, utilisateurs, adhérents, comptabilité, documents,
+messagerie, journal d'audit et suivi des mises à jour.
+
+## Ce que le connecteur couvre
+
+| Domaine | Capacités |
+|---|---|
+| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list |
+| **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables |
+| **Bénévoles** | Créneaux (créer, modifier, supprimer), inscriptions (lister, inscrire manuellement, annuler) |
+| **Communication** | Écrire aux bénévoles d'un événement, aux membres de l'équipe, aux adhérents ; régler Resend/SMTP et envoyer un message de test |
+| **Adhérents** | Lister, créer, modifier, archiver |
+| **Comptabilité** | Synthèse, écritures (créer, modifier, supprimer un brouillon), comptes bancaires et caisses, catégories (créer, modifier, supprimer) |
+| **Documents** | Lister, lire, créer, modifier, archiver ; supprimer un PV archivé |
+| **Comptes** | Lister, changer un rôle, supprimer |
+| **Exploitation** | Identité et réglages de l'association, état du courrier sortant, journal d'audit, version installée et mises à jour disponibles |
+
+Les suppressions et les envois groupés exigent un paramètre `confirm` explicite
+et sont annotés comme destructeurs, pour que Claude demande votre accord avant
+de les exécuter.
 
 ## Architecture
 
