@@ -74,6 +74,12 @@ export async function createAssociationDocument(
   actor: AuditActor,
 ) {
   const data = associationDocumentSchema.parse(input);
+  if (data.status === "archived") {
+    throw new HttpError(
+      400,
+      "Un document doit être créé en brouillon ou finalisé, puis archivé.",
+    );
+  }
   const [document] = await db
     .insert(associationDocuments)
     .values({
@@ -100,6 +106,21 @@ export async function updateAssociationDocument(
   actor: AuditActor,
 ) {
   const data = associationDocumentUpdateSchema.parse(input);
+  const current = await getAssociationDocument(id);
+  if (!current) throw new HttpError(404, "Document introuvable.");
+  if (current.status === "archived") {
+    throw new HttpError(
+      409,
+      "Un document archivé ne peut plus être modifié.",
+    );
+  }
+  if (data.status === "archived") {
+    throw new HttpError(
+      409,
+      "Utilisez l’action « Archiver » avant toute suppression.",
+    );
+  }
+
   const updates: Partial<typeof associationDocuments.$inferInsert> = {
     updatedAt: new Date(),
   };
