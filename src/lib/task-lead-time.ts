@@ -73,12 +73,6 @@ export function splitLeadTimeDays(days: number): {
   return { value: days, unit: "days" };
 }
 
-export function formatLeadTime(days: number): string {
-  if (days === 0) return "le jour de l’événement";
-  const { value, unit } = splitLeadTimeDays(days);
-  return formatLeadTimeDuration(value, unit);
-}
-
 export function formatLeadTimeDuration(
   value: number,
   unit: LeadTimeUnit,

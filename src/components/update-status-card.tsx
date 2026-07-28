@@ -11,17 +11,14 @@ import { useState } from "react";
 
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card } from "@/components/ui";
+import { formatLongDateTime } from "@/lib/dates";
 import type { UpdateStatus } from "@/lib/services/updates";
 
 function formatDate(value: string | null) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "long",
-    timeStyle: "short",
-    timeZone: "Europe/Paris",
-  }).format(date);
+  return formatLongDateTime(date);
 }
 
 function formatInterval(seconds: number) {

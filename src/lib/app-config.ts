@@ -10,9 +10,6 @@ export const APP_NAME =
 export const SCHOOL_NAME =
   process.env.NEXT_PUBLIC_SCHOOL_NAME?.trim() || "Votre établissement";
 
-/** Initiale affichée dans le logo. */
-export const APP_INITIAL = APP_NAME.charAt(0).toUpperCase() || "A";
-
 /** E-mail de contact affiché (mentions, RGPD). */
 export const CONTACT_EMAIL =
   process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "";

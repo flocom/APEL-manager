@@ -9,6 +9,7 @@ import { FileUploadField } from "@/components/file-upload-field";
 import { useToast } from "@/components/toast";
 import { Button, EmptyState, Field, Input } from "@/components/ui";
 import { api } from "@/lib/client";
+import { formatLongDate } from "@/lib/dates";
 
 export interface EventAttachmentView {
   id: string;
@@ -16,13 +17,6 @@ export interface EventAttachmentView {
   fileUrl: string;
   uploaderName: string | null;
   createdAt: string;
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "long",
-    timeZone: "Europe/Paris",
-  }).format(new Date(value));
 }
 
 export function EventAttachmentsManager({
@@ -160,7 +154,7 @@ export function EventAttachmentsManager({
                     {attachment.label}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Ajouté le {formatDate(attachment.createdAt)}
+                    Ajouté le {formatLongDate(attachment.createdAt)}
                     {attachment.uploaderName
                       ? ` par ${attachment.uploaderName}`
                       : ""}

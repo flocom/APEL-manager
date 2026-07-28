@@ -27,6 +27,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
+import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export interface FinancialAccountView {
@@ -43,11 +44,6 @@ interface AccountEntrySummary {
   status: "draft" | "posted";
   amountCents: number;
 }
-
-const euro = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-});
 
 export function FinancialAccountsManager({
   accounts,
@@ -396,7 +392,7 @@ function AccountCard({
                 balanceCents >= 0 ? "text-sea-700" : "text-coral-700",
               )}
             >
-              {euro.format(balanceCents / 100)}
+              {formatEuros(balanceCents)}
             </p>
           </div>
           <div className="border-l-2 border-slate-200 pl-3">
