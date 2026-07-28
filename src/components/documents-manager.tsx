@@ -636,7 +636,7 @@ function DocumentForm({
             name="type"
             defaultValue={document?.type ?? defaultType}
           >
-            <option value="ag_minutes">PV d'assemblée générale</option>
+            <option value="ag_minutes">PV d’assemblée générale</option>
             <option value="attestation">Attestation</option>
             <option value="other">Autre document</option>
           </Select>

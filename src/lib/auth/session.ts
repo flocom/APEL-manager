@@ -23,7 +23,7 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-function useSecureCookies() {
+function shouldUseSecureCookies() {
   const configured =
     process.env.APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -51,7 +51,7 @@ export async function createSession(
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: useSecureCookies(),
+    secure: shouldUseSecureCookies(),
     sameSite: "lax",
     path: "/",
     maxAge: MAX_AGE_SECONDS,

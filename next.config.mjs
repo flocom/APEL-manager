@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
-    // Lint is run separately; do not block production builds on lint warnings.
+    // Le lint tourne dans la CI (.github/workflows/ci.yml), avant la fusion :
+    // une remarque de style ne doit pas faire échouer la construction de
+    // l'image, donc un déploiement.
     ignoreDuringBuilds: true,
   },
   experimental: {

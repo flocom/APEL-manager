@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "db:migrate": "node scripts/migrate.mjs",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
@@ -33,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.17.12",
@@ -41,8 +42,11 @@
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.19",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.65.0"
   }
 }

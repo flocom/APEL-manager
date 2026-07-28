@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { and, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { formatDateTime } from "@/lib/dates";

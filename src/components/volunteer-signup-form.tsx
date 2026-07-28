@@ -138,7 +138,7 @@ export function VolunteerSignupForm({
         </div>
       </div>
       <p className="text-xs text-slate-500">
-        Indiquez au moins un e-mail ou un téléphone. L'e-mail permet de recevoir
+        Indiquez au moins un e-mail ou un téléphone. L’e-mail permet de recevoir
         une confirmation et un rappel.
       </p>
 
@@ -160,7 +160,7 @@ export function VolunteerSignupForm({
           className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
         />
         <span>
-          J'accepte que mes coordonnées soient utilisées par l'association pour
+          J’accepte que mes coordonnées soient utilisées par l’association pour
           organiser cet événement.{" "}
           <Link href="/confidentialite" className="text-brand-600 hover:underline" target="_blank">
             En savoir plus
@@ -169,7 +169,7 @@ export function VolunteerSignupForm({
       </label>
 
       <Button type="submit" loading={loading} className="w-full">
-        Je m'inscris
+        Je m’inscris
       </Button>
     </form>
   );

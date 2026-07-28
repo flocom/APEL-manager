@@ -115,7 +115,7 @@ export function CalendarMonth({
             }}
             className="min-h-10 flex-1 rounded-xl border border-brand-200 bg-white px-3.5 py-2 text-sm font-bold text-brand-700 transition-colors hover:border-brand-400 hover:bg-brand-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:flex-none"
           >
-            Aujourd'hui
+            Aujourd’hui
           </button>
           <button
             type="button"

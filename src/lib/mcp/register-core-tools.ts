@@ -2,7 +2,6 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { HttpError } from "@/lib/auth/guards";
 import { getBaseUrl } from "@/lib/base-url";
 import {
   computeDueAt,

@@ -41,7 +41,7 @@ export default async function MembersPage() {
           </li>
           <li>
             <strong>{ROLE_LABELS.member}</strong> : consulter, gérer ses tâches
-            assignées, s'inscrire comme bénévole.
+            assignées, s’inscrire comme bénévole.
           </li>
         </ul>
       </div>
