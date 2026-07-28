@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
 
@@ -42,24 +43,20 @@ export async function sendEmail({
       return true;
     }
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: config.from,
-        to,
-        subject,
-        html,
-        text,
-        ...(config.replyTo ? { reply_to: config.replyTo } : {}),
-      }),
+    const resend = new Resend(config.apiKey);
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to,
+      subject,
+      html,
+      ...(text ? { text } : {}),
+      ...(config.replyTo ? { replyTo: config.replyTo } : {}),
     });
 
-    if (!res.ok) {
-      console.error("[email] échec de l'envoi:", res.status, await res.text());
+    if (error) {
+      console.error(
+        `[email] échec Resend (${error.statusCode ?? "sans statut"}, ${error.name}) : ${error.message}`,
+      );
       return false;
     }
     return true;

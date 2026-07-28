@@ -465,7 +465,9 @@ function EventDetailNav({
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate text-xs sm:text-sm">{tab.label}</span>
+            <span className="break-words text-center text-xs leading-tight sm:text-sm">
+              {tab.label}
+            </span>
             {"count" in tab && (
               <span
                 className={cn(

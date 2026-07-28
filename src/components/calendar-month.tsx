@@ -149,7 +149,7 @@ export function CalendarMonth({
                   {eventDate.getDate()}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold text-slate-900">
+                  <span className="block break-words text-sm font-bold text-slate-900">
                     {event.title}
                   </span>
                   <span className="mt-0.5 block text-xs capitalize text-slate-500">
@@ -223,7 +223,7 @@ export function CalendarMonth({
                         href={`/dashboard/events/${e.id}`}
                         aria-label={`${e.title} — ${statusLabel[e.status]}`}
                         className={cn(
-                          "flex items-center gap-1.5 truncate rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
+                          "flex items-start gap-1.5 whitespace-normal break-words rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
                           statusCard[e.status],
                         )}
                         title={e.title}
@@ -231,11 +231,11 @@ export function CalendarMonth({
                         <span
                           aria-hidden="true"
                           className={cn(
-                            "h-2 w-2 shrink-0 rounded-sm",
+                            "mt-1 h-2 w-2 shrink-0 rounded-sm",
                             statusDot[e.status],
                           )}
                         />
-                        <span className="truncate">{e.title}</span>
+                        <span className="min-w-0 break-words">{e.title}</span>
                       </Link>
                     ))}
                   </div>

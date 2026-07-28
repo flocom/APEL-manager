@@ -46,14 +46,14 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
       </span>
       <span className="min-w-0">
         <span
-          className={`block truncate text-sm font-extrabold tracking-[-0.02em] ${
+          className={`block break-words text-sm font-extrabold tracking-[-0.02em] ${
             inverse ? "text-white" : "text-brand-950"
           }`}
         >
           {APP_NAME}
         </span>
         <span
-          className={`mt-0.5 block truncate text-xs font-medium ${
+          className={`mt-0.5 block break-words text-xs font-medium ${
             inverse ? "text-brand-200" : "text-slate-500"
           }`}
         >

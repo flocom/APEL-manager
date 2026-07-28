@@ -507,7 +507,7 @@ function DocumentCard({
           </p>
         )}
         {document.content && (
-          <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
+          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
             {document.content}
           </p>
         )}

@@ -227,7 +227,7 @@ export function TemplateManager({ templates }: { templates: Tpl[] }) {
                       {t.name}
                     </p>
                     {t.description && (
-                      <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
+                      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">
                         {t.description}
                       </p>
                     )}
@@ -248,7 +248,7 @@ export function TemplateManager({ templates }: { templates: Tpl[] }) {
                           tone.icon,
                         )}
                       />
-                      <span className="min-w-0 flex-1 line-clamp-1">
+                      <span className="min-w-0 flex-1 break-words">
                         {task.title}
                       </span>
                       <span className="shrink-0 text-xs font-semibold text-brand-700">
