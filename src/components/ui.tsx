@@ -273,47 +273,6 @@ export function EmptyState({
   );
 }
 
-const statTones = {
-  brand: "border-brand-700 bg-brand-700 text-white",
-  slate: "border-slate-200 bg-slate-100 text-slate-700",
-  red: "border-coral-700 bg-coral-700 text-white",
-  green: "border-emerald-700 bg-emerald-700 text-white",
-  sand: "border-sand-400 bg-sand-400 text-brand-950",
-} as const;
-
-export function Stat({
-  label,
-  value,
-  icon: Icon,
-  tone = "slate",
-}: {
-  label: string;
-  value: ReactNode;
-  icon?: LucideIcon;
-  tone?: keyof typeof statTones;
-}) {
-  return (
-    <Card className="flex items-center gap-4 p-5">
-      {Icon && (
-        <span
-          className={cn(
-            "grid h-12 w-12 shrink-0 place-items-center rounded-xl border-2",
-            statTones[tone],
-          )}
-        >
-          <Icon className="h-5 w-5" />
-        </span>
-      )}
-      <div>
-        <p className="text-2xl font-bold leading-none tracking-tight text-slate-950">
-          {value}
-        </p>
-        <p className="mt-1.5 text-sm font-medium text-slate-500">{label}</p>
-      </div>
-    </Card>
-  );
-}
-
 export function Skeleton({ className }: { className?: string }) {
   return (
     <div

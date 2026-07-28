@@ -32,6 +32,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
+import { formatEuros } from "@/lib/money";
 
 export interface AdherentView {
   id: string;
@@ -64,11 +65,6 @@ const STATUS_COLORS = {
   pending: "amber",
   inactive: "slate",
 } as const;
-
-const euro = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-});
 
 function currentSchoolYear() {
   const now = new Date();
@@ -407,7 +403,7 @@ export function AdherentsManager({
                     </td>
                     <td className="px-5 py-4">
                       <p className="font-bold tabular-nums text-slate-950">
-                        {euro.format(member.membershipFeeCents / 100)}
+                        {formatEuros(member.membershipFeeCents)}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {member.feePaidAt
@@ -508,8 +504,8 @@ function AdherentMobileCard({
           <p className="flex items-center gap-2">
             <BadgeCheck className="h-4 w-4 shrink-0 text-sea-600" />
             {member.feePaidAt
-              ? `Cotisation réglée · ${euro.format(member.membershipFeeCents / 100)}`
-              : `Cotisation à régulariser · ${euro.format(member.membershipFeeCents / 100)}`}
+              ? `Cotisation réglée · ${formatEuros(member.membershipFeeCents)}`
+              : `Cotisation à régulariser · ${formatEuros(member.membershipFeeCents)}`}
           </p>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
+import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export type AccountingAccountView = FinancialAccountView;
@@ -76,23 +77,8 @@ export interface AccountingEntryView {
   version: number;
 }
 
-const euro = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-});
-
 function dateInput(value: string | null) {
   return value ? value.slice(0, 10) : "";
-}
-
-/** Date courte servant à distinguer deux éditions d'un même événement. */
-function formatEventDate(value: string) {
-  return new Intl.DateTimeFormat("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: "Europe/Paris",
-  }).format(new Date(value));
 }
 
 export function AccountingManager({
@@ -260,21 +246,21 @@ export function AccountingManager({
           >
         <ModuleStat
           label="Solde"
-          value={euro.format((incomeCents - expenseCents) / 100)}
+          value={formatEuros(incomeCents - expenseCents)}
           helper="Écritures validées"
           icon={WalletCards}
           tone="brand"
         />
         <ModuleStat
           label="Recettes"
-          value={euro.format(incomeCents / 100)}
+          value={formatEuros(incomeCents)}
           helper={`${posted.filter((entry) => entry.type === "income").length} mouvements`}
           icon={ArrowDownLeft}
           tone="sea"
         />
         <ModuleStat
           label="Dépenses"
-          value={euro.format(expenseCents / 100)}
+          value={formatEuros(expenseCents)}
           helper={`${posted.filter((entry) => entry.type === "expense").length} mouvements`}
           icon={ArrowUpRight}
           tone="coral"
@@ -535,7 +521,7 @@ export function AccountingManager({
                       )}
                     >
                       {entry.type === "income" ? "+" : "−"}{" "}
-                      {euro.format(entry.amountCents / 100)}
+                      {formatEuros(entry.amountCents)}
                     </td>
                     <td className="px-5 py-4">
                       {entry.status === "draft" ? (
@@ -686,7 +672,7 @@ function AccountingMobileCard({
           )}
         >
           {entry.type === "income" ? "+" : "−"}{" "}
-          {euro.format(entry.amountCents / 100)}
+          {formatEuros(entry.amountCents)}
         </p>
         <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
           <span>{accountName || "Sans compte"}</span>
@@ -879,7 +865,7 @@ function AccountingEntryForm({
             <option value="">Hors événement</option>
             {events.map((event) => (
               <option key={event.id} value={event.id}>
-                {event.title} · {formatEventDate(event.startAt)}
+                {event.title} · {formatShortDate(event.startAt)}
               </option>
             ))}
           </Select>

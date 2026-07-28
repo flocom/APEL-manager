@@ -39,6 +39,7 @@ import {
   getEventWithDetails,
 } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
+import { formatEurosAbsolute } from "@/lib/money";
 import {
   getAccountingSummary,
   listAccountingEntries,
@@ -397,7 +398,7 @@ export default async function EventDetailPage({
                       )}
                     >
                       {entry.type === "income" ? "+" : "−"}
-                      {formatEuros(entry.amountCents)}
+                      {formatEurosAbsolute(entry.amountCents)}
                     </p>
                   </li>
                 ))}
@@ -697,15 +698,6 @@ function SectionHeading({
   );
 }
 
-const eventEuro = new Intl.NumberFormat("fr-FR", {
-  style: "currency",
-  currency: "EUR",
-});
-
-function formatEuros(cents: number) {
-  return eventEuro.format(Math.abs(cents) / 100);
-}
-
 function BudgetStat({
   label,
   cents,
@@ -727,7 +719,7 @@ function BudgetStat({
       </p>
       <p className="mt-1 text-2xl font-black tabular-nums">
         {cents < 0 ? "−" : ""}
-        {formatEuros(cents)}
+        {formatEurosAbsolute(cents)}
       </p>
     </div>
   );

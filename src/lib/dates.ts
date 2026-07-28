@@ -24,6 +24,23 @@ export function formatShortDate(d: Date | string): string {
   return formatInTimeZone(new Date(d), APP_TIMEZONE, "dd/MM/yyyy", { locale: fr });
 }
 
+/** Date en toutes lettres, sans le jour de la semaine : « 12 janvier 2027 ». */
+export function formatLongDate(d: Date | string): string {
+  return formatInTimeZone(new Date(d), APP_TIMEZONE, "d MMMM yyyy", {
+    locale: fr,
+  });
+}
+
+/** Comme formatLongDate, avec l'heure : « 12 janvier 2027 à 14h30 ». */
+export function formatLongDateTime(d: Date | string): string {
+  return formatInTimeZone(
+    new Date(d),
+    APP_TIMEZONE,
+    "d MMMM yyyy 'à' HH'h'mm",
+    { locale: fr },
+  );
+}
+
 export function formatRelative(d: Date | string): string {
   return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr });
 }

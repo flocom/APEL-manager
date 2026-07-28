@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
+import { formatLongDate } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { associationDocuments, associationMembers } from "@/lib/db/schema";
 import {
@@ -313,10 +314,7 @@ export async function renderPrintableDocument(document: {
     <div class="rna">${escapeHtml(association.schoolName)}${rnaSuffix}</div>
   </header>
   <main>
-    <p class="meta">${typeLabel} · ${new Intl.DateTimeFormat("fr-FR", {
-      dateStyle: "long",
-      timeZone: "Europe/Paris",
-    }).format(document.documentDate)}</p>
+    <p class="meta">${typeLabel} · ${formatLongDate(document.documentDate)}</p>
     <h1>${escapeHtml(document.title)}</h1>
     ${beneficiary}
     <div class="content">${escapeHtml(document.content)}</div>

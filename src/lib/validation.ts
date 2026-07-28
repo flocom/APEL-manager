@@ -293,9 +293,6 @@ export const accountingCategorySchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const accountingCategoryUpdateSchema =
-  accountingCategorySchema.partial();
-
 export const accountingEntrySchema = z.object({
   type: z.enum(["income", "expense"]),
   status: z.enum(["draft", "posted"]).default("draft"),
@@ -436,17 +433,6 @@ export const oauthTokenSchema = z.object({
   expiresAt: z.coerce.date(),
 });
 
-export const auditLogSchema = z.object({
-  actorUserId: nullableUuid,
-  oauthClientId: z.string().uuid().nullable().optional(),
-  action: z.string().trim().min(1).max(160),
-  entityType: z.string().trim().min(1).max(160),
-  entityId: optionalText(200),
-  source: z.string().trim().min(1).max(80).default("web"),
-  ipAddress: optionalText(80),
-  details: z.record(z.unknown()).default({}),
-});
-
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type EventInput = z.infer<typeof eventSchema>;
@@ -471,4 +457,3 @@ export type OAuthAuthorizationCodeInput = z.infer<
   typeof oauthAuthorizationCodeSchema
 >;
 export type OAuthTokenInput = z.infer<typeof oauthTokenSchema>;
-export type AuditLogInput = z.infer<typeof auditLogSchema>;
