@@ -9,6 +9,7 @@ import {
   Landmark,
   LockKeyhole,
   Paperclip,
+  PartyPopper,
   Pencil,
   Plus,
   Search,
@@ -50,12 +51,20 @@ export interface AccountingCategoryView {
   type: "income" | "expense";
 }
 
+export interface AccountingEventView {
+  id: string;
+  title: string;
+  startAt: string;
+}
+
 export interface AccountingEntryView {
   id: string;
   type: "income" | "expense";
   status: "draft" | "posted";
   accountId: string | null;
   categoryId: string | null;
+  eventId: string | null;
+  eventTitle: string | null;
   label: string;
   amountCents: number;
   occurredAt: string;
@@ -76,14 +85,26 @@ function dateInput(value: string | null) {
   return value ? value.slice(0, 10) : "";
 }
 
+/** Date courte servant à distinguer deux éditions d'un même événement. */
+function formatEventDate(value: string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  }).format(new Date(value));
+}
+
 export function AccountingManager({
   entries,
   accounts,
   categories,
+  events,
 }: {
   entries: AccountingEntryView[];
   accounts: AccountingAccountView[];
   categories: AccountingCategoryView[];
+  events: AccountingEventView[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -155,6 +176,7 @@ export function AccountingManager({
       status: form.get("status"),
       accountId: form.get("accountId") || null,
       categoryId: form.get("categoryId") || null,
+      eventId: form.get("eventId") || null,
       label: form.get("label"),
       amountCents: Math.round(amountInEuros * 100),
       occurredAt: form.get("occurredAt"),
@@ -293,6 +315,7 @@ export function AccountingManager({
             entry={editor === "new" ? null : editor}
             accounts={accounts}
             categories={categories}
+            events={events}
             loading={submitting}
             onSubmit={save}
             onCancel={() => setEditor(null)}
@@ -472,6 +495,15 @@ export function AccountingManager({
                           <p className="mt-1 text-xs text-slate-500">
                             {entry.counterparty || entry.reference || "Sans tiers"}
                           </p>
+                          {entry.eventTitle && (
+                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                              <PartyPopper
+                                className="h-3 w-3"
+                                aria-hidden="true"
+                              />
+                              {entry.eventTitle}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -707,6 +739,7 @@ function AccountingEntryForm({
   entry,
   accounts,
   categories,
+  events,
   loading,
   onSubmit,
   onCancel,
@@ -714,6 +747,7 @@ function AccountingEntryForm({
   entry: AccountingEntryView | null;
   accounts: AccountingAccountView[];
   categories: AccountingCategoryView[];
+  events: AccountingEventView[];
   loading: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
@@ -829,6 +863,25 @@ function AccountingEntryForm({
                   </option>
                 ))}
             </optgroup>
+          </Select>
+        </Field>
+        <Field
+          label="Événement"
+          htmlFor="entry-event"
+          className="sm:col-span-2"
+          hint="Rattachez la recette ou la dépense à un événement pour obtenir son bilan."
+        >
+          <Select
+            id="entry-event"
+            name="eventId"
+            defaultValue={entry?.eventId ?? ""}
+          >
+            <option value="">Hors événement</option>
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.title} · {formatEventDate(event.startAt)}
+              </option>
+            ))}
           </Select>
         </Field>
         <Field label="Mode de paiement" htmlFor="paymentMethod">

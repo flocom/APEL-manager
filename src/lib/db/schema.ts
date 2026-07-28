@@ -421,6 +421,14 @@ export const accountingEntries = pgTable(
     categoryId: uuid("category_id").references(() => accountingCategories.id, {
       onDelete: "set null",
     }),
+    /**
+     * Événement financé par l'écriture, pour établir le bilan d'une kermesse ou
+     * d'une vente. Facultatif : les frais courants n'en dépendent pas. La
+     * suppression d'un événement ne supprime jamais l'écriture comptable.
+     */
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
     label: text("label").notNull(),
     amountCents: integer("amount_cents").notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
@@ -449,6 +457,7 @@ export const accountingEntries = pgTable(
     ).on(t.status, t.occurredAt),
     accountIdx: index("accounting_entries_account_idx").on(t.accountId),
     categoryIdx: index("accounting_entries_category_idx").on(t.categoryId),
+    eventIdx: index("accounting_entries_event_idx").on(t.eventId),
     amountCheck: check(
       "accounting_entries_amount_cents_check",
       sql`${t.amountCents} > 0`,
@@ -491,6 +500,28 @@ export const associationDocuments = pgTable(
   }),
 );
 
+/** Pièces jointes d'un événement : devis, affiche, attestation, plan de salle. */
+export const eventAttachments = pgTable(
+  "event_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    fileUrl: text("file_url").notNull(),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    eventIdx: index("event_attachments_event_idx").on(t.eventId),
+  }),
+);
+
 /** Réglages métier modifiables sans reconstruire ni redémarrer l'application. */
 export const associationSettings = pgTable(
   "association_settings",
@@ -504,6 +535,12 @@ export const associationSettings = pgTable(
       .default("Votre établissement"),
     contactEmail: text("contact_email"),
     rna: text("rna").notNull().default(""),
+    /**
+     * Logo affiché sur le site et dans l'espace de travail. Chemin d'un fichier
+     * du scope `branding` ; vide, l'application utilise le logo neutre livré
+     * avec l'image.
+     */
+    logoUrl: text("logo_url"),
     taskReminderWindowDays: integer("task_reminder_window_days")
       .notNull()
       .default(3),
@@ -759,11 +796,27 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const eventsRelations = relations(events, ({ many, one }) => ({
   tasks: many(tasks),
   volunteerSlots: many(volunteerSlots),
+  attachments: many(eventAttachments),
+  accountingEntries: many(accountingEntries),
   creator: one(users, {
     fields: [events.createdBy],
     references: [users.id],
   }),
 }));
+
+export const eventAttachmentsRelations = relations(
+  eventAttachments,
+  ({ one }) => ({
+    event: one(events, {
+      fields: [eventAttachments.eventId],
+      references: [events.id],
+    }),
+    uploader: one(users, {
+      fields: [eventAttachments.uploadedBy],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
   event: one(events, {
@@ -848,6 +901,10 @@ export const accountingEntriesRelations = relations(
     creator: one(users, {
       fields: [accountingEntries.createdBy],
       references: [users.id],
+    }),
+    event: one(events, {
+      fields: [accountingEntries.eventId],
+      references: [events.id],
     }),
   }),
 );

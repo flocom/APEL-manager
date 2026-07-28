@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { LogoUploadField } from "@/components/logo-upload-field";
 import { useToast } from "@/components/toast";
 import { Button, Card, Field, Input } from "@/components/ui";
 import { api } from "@/lib/client";
@@ -21,6 +22,7 @@ export interface AssociationSettingsView {
   schoolName: string;
   contactEmail: string | null;
   rna: string;
+  logoUrl: string | null;
   taskReminderWindowDays: number;
   volunteerReminderWindowDays: number;
   telegramEnabled: boolean;
@@ -54,6 +56,7 @@ export function AssociationSettingsForm({
           schoolName: form.get("schoolName"),
           contactEmail: form.get("contactEmail") || null,
           rna: form.get("rna"),
+          logoUrl: form.get("logoUrl") || null,
           taskReminderWindowDays: Number(
             form.get("taskReminderWindowDays"),
           ),
@@ -176,6 +179,7 @@ export function AssociationSettingsForm({
                   required
                 />
               </Field>
+              <LogoUploadField name="logoUrl" defaultValue={settings.logoUrl} />
             </div>
           </section>
 

@@ -96,7 +96,13 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 
 const roleRank: Record<Role, number> = { member: 1, manager: 2, admin: 3 };
 
-function Logo({ appName }: { appName: string }) {
+function Logo({
+  appName,
+  logoUrl,
+}: {
+  appName: string;
+  logoUrl: string | null;
+}) {
   return (
     <Link
       href="/dashboard"
@@ -104,10 +110,11 @@ function Logo({ appName }: { appName: string }) {
     >
       <span className="flex h-12 w-[5.25rem] shrink-0 items-center justify-center rounded-xl bg-white p-1.5">
         <Image
-          src="/logo.svg"
+          src={logoUrl || "/logo.svg"}
           alt={appName}
           width={96}
           height={96}
+          unoptimized
           className="h-full w-full object-contain"
           priority
         />
@@ -126,9 +133,11 @@ function Logo({ appName }: { appName: string }) {
 
 export function DashboardNav({
   appName,
+  logoUrl,
   user,
 }: {
   appName: string;
+  logoUrl: string | null;
   user: { name: string; role: Role };
 }) {
   const pathname = usePathname();
@@ -279,7 +288,7 @@ export function DashboardNav({
     <>
       {/* Barre supérieure mobile */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-800 bg-brand-950 px-4 py-3 lg:hidden">
-        <Logo appName={appName} />
+        <Logo appName={appName} logoUrl={logoUrl} />
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -307,7 +316,7 @@ export function DashboardNav({
             aria-label="Menu de navigation"
           >
             <div className="flex items-center justify-between border-b border-brand-800 px-4 py-4">
-              <Logo appName={appName} />
+              <Logo appName={appName} logoUrl={logoUrl} />
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -328,7 +337,7 @@ export function DashboardNav({
       {/* Barre latérale desktop */}
       <aside className="hidden border-r border-brand-900 bg-brand-950 lg:flex lg:h-screen lg:w-[18rem] lg:shrink-0 lg:flex-col">
         <div className="border-b border-brand-800 px-5 py-5">
-          <Logo appName={appName} />
+          <Logo appName={appName} logoUrl={logoUrl} />
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-5">
           {navLinks}

@@ -5,12 +5,14 @@ import {
   ChevronRight,
   ClipboardCheck,
   Download,
+  Landmark,
   LayoutDashboard,
   ListChecks,
   Link2,
   type LucideIcon,
   Mail,
   MapPin,
+  Paperclip,
   Pencil,
   UserRoundPlus,
   UsersRound,
@@ -22,6 +24,7 @@ import { notFound } from "next/navigation";
 import { ApplyTemplate } from "@/components/apply-template";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { BroadcastForm } from "@/components/broadcast-form";
+import { EventAttachmentsManager } from "@/components/event-attachments-manager";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { FormattedText } from "@/components/formatted-text";
 import { ShareLink } from "@/components/share-link";
@@ -36,6 +39,11 @@ import {
   getEventWithDetails,
 } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
+import {
+  getAccountingSummary,
+  listAccountingEntries,
+} from "@/lib/services/accounting";
+import { listEventAttachments } from "@/lib/services/event-attachments";
 import { EVENT_STATUS_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
@@ -57,7 +65,9 @@ export default async function EventDetailPage({
   const { id } = await params;
   const requestedTab = (await searchParams).onglet;
   const activeTab =
-    requestedTab === "preparation" || requestedTab === "benevoles"
+    requestedTab === "preparation" ||
+    requestedTab === "benevoles" ||
+    requestedTab === "budget"
       ? requestedTab
       : "apercu";
   // Lectures indépendantes en parallèle (1 RTT au lieu de 3 en série).
@@ -69,10 +79,19 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const canManage = canManageEvents(user);
-  const [memberOptions, templates] = await Promise.all([
-    getMemberOptions(),
-    canManage ? getChecklistTemplates() : Promise.resolve([]),
-  ]);
+  const canSeeBudget = user.role === "admin";
+  const [memberOptions, templates, attachments, budget, budgetEntries] =
+    await Promise.all([
+      getMemberOptions(),
+      canManage ? getChecklistTemplates() : Promise.resolve([]),
+      listEventAttachments(event.id),
+      canSeeBudget
+        ? getAccountingSummary({ eventId: event.id })
+        : Promise.resolve(null),
+      canSeeBudget
+        ? listAccountingEntries(200, { eventId: event.id })
+        : Promise.resolve([]),
+    ]);
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
   const totalSignups = event.volunteerSlots.reduce(
     (sum, s) => sum + s.signups.length,
@@ -200,6 +219,7 @@ export default async function EventDetailPage({
         active={activeTab}
         taskCount={event.tasks.length}
         signupCount={totalSignups}
+        showBudget={canSeeBudget}
       />
 
       {activeTab === "apercu" && (
@@ -297,6 +317,93 @@ export default async function EventDetailPage({
               </div>
             </details>
           )}
+        </div>
+      )}
+
+      {activeTab === "apercu" && (
+        <div className="space-y-5">
+          <SectionHeading
+            icon={Paperclip}
+            title="Pièces jointes"
+            description="Devis, affiches, attestations et plans de salle rattachés à l’événement."
+          />
+          <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
+            <EventAttachmentsManager
+              eventId={event.id}
+              attachments={attachments.map((attachment) => ({
+                id: attachment.id,
+                label: attachment.label,
+                fileUrl: attachment.fileUrl,
+                uploaderName: attachment.uploaderName,
+                createdAt: attachment.createdAt.toISOString(),
+              }))}
+              canManage={canManage}
+            />
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "budget" && budget && (
+        <div className="space-y-5">
+          <SectionHeading
+            icon={Landmark}
+            title="Budget de l’événement"
+            description="Recettes et dépenses validées rattachées à cet événement."
+          />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <BudgetStat label="Recettes" cents={budget.incomeCents} tone="green" />
+            <BudgetStat label="Dépenses" cents={budget.expenseCents} tone="red" />
+            <BudgetStat
+              label="Résultat"
+              cents={budget.balanceCents}
+              tone={budget.balanceCents >= 0 ? "brand" : "red"}
+            />
+          </div>
+          {budget.draftCount > 0 && (
+            <p className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-900">
+              {budget.draftCount} écriture(s) en brouillon ne sont pas comptées
+              dans ce résultat.
+            </p>
+          )}
+          <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
+            {budgetEntries.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Aucune écriture n’est rattachée à cet événement. Depuis
+                Comptabilité, choisissez cet événement dans le champ
+                « Événement » d’une recette ou d’une dépense.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-200">
+                {budgetEntries.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-brand-950">
+                        {entry.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {formatDateTime(entry.occurredAt)}
+                        {entry.status === "draft" ? " · brouillon" : ""}
+                      </p>
+                    </div>
+                    <p
+                      className={cn(
+                        "shrink-0 font-black tabular-nums",
+                        entry.type === "income"
+                          ? "text-emerald-700"
+                          : "text-coral-700",
+                      )}
+                    >
+                      {entry.type === "income" ? "+" : "−"}
+                      {formatEuros(entry.amountCents)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       )}
 
@@ -415,11 +522,13 @@ function EventDetailNav({
   active,
   taskCount,
   signupCount,
+  showBudget,
 }: {
   eventId: string;
-  active: "apercu" | "preparation" | "benevoles";
+  active: "apercu" | "preparation" | "benevoles" | "budget";
   taskCount: number;
   signupCount: number;
+  showBudget: boolean;
 }) {
   const tabs = [
     {
@@ -442,12 +551,25 @@ function EventDetailNav({
       icon: UsersRound,
       count: signupCount,
     },
+    ...(showBudget
+      ? ([
+          {
+            id: "budget",
+            label: "Budget",
+            href: `/dashboard/events/${eventId}?onglet=budget`,
+            icon: Landmark,
+          },
+        ] as const)
+      : []),
   ] as const;
 
   return (
     <nav
       aria-label="Sections de l’événement"
-      className="grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1.5"
+      className={cn(
+        "grid gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1.5",
+        showBudget ? "grid-cols-4" : "grid-cols-3",
+      )}
     >
       {tabs.map((tab) => {
         const Icon = tab.icon;
@@ -571,6 +693,42 @@ function SectionHeading({
         </h2>
         <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
       </div>
+    </div>
+  );
+}
+
+const eventEuro = new Intl.NumberFormat("fr-FR", {
+  style: "currency",
+  currency: "EUR",
+});
+
+function formatEuros(cents: number) {
+  return eventEuro.format(Math.abs(cents) / 100);
+}
+
+function BudgetStat({
+  label,
+  cents,
+  tone,
+}: {
+  label: string;
+  cents: number;
+  tone: "green" | "red" | "brand";
+}) {
+  const tones = {
+    green: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    red: "border-coral-200 bg-coral-50 text-coral-800",
+    brand: "border-brand-200 bg-brand-50 text-brand-800",
+  } as const;
+  return (
+    <div className={cn("rounded-2xl border-2 p-4", tones[tone])}>
+      <p className="text-xs font-extrabold uppercase tracking-[0.14em]">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-black tabular-nums">
+        {cents < 0 ? "−" : ""}
+        {formatEuros(cents)}
+      </p>
     </div>
   );
 }

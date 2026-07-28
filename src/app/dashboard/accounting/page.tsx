@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import {
   accountingCategories,
   accountingEntries,
+  events,
   financialAccounts,
 } from "@/lib/db/schema";
 
@@ -18,14 +19,25 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountingPage() {
   await requireRole("admin");
-  const [entries, accounts, categories] = await Promise.all([
+  const [entries, accounts, categories, eventOptions] = await Promise.all([
     db
       .select()
       .from(accountingEntries)
       .orderBy(desc(accountingEntries.occurredAt)),
     db.select().from(financialAccounts),
     db.select().from(accountingCategories),
+    db
+      .select({
+        id: events.id,
+        title: events.title,
+        startAt: events.startAt,
+      })
+      .from(events)
+      .orderBy(desc(events.startAt)),
   ]);
+  const eventTitles = new Map(
+    eventOptions.map((event) => [event.id, event.title]),
+  );
 
   const serialized: AccountingEntryView[] = entries.map((entry) => ({
     id: entry.id,
@@ -33,6 +45,8 @@ export default async function AccountingPage() {
     status: entry.status,
     accountId: entry.accountId,
     categoryId: entry.categoryId,
+    eventId: entry.eventId,
+    eventTitle: entry.eventId ? eventTitles.get(entry.eventId) ?? null : null,
     label: entry.label,
     amountCents: entry.amountCents,
     occurredAt: entry.occurredAt.toISOString(),
@@ -66,6 +80,11 @@ export default async function AccountingPage() {
           id,
           name,
           type,
+        }))}
+        events={eventOptions.map(({ id, title, startAt }) => ({
+          id,
+          title,
+          startAt: startAt.toISOString(),
         }))}
       />
     </div>

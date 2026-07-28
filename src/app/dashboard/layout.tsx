@@ -18,6 +18,7 @@ export default async function DashboardLayout({
     <div className="min-h-screen bg-slate-50 lg:flex">
       <DashboardNav
         appName={settings.associationName}
+        logoUrl={settings.logoUrl}
         user={{ name: user.name, role: user.role }}
       />
       <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:px-10 lg:py-10 xl:px-12">

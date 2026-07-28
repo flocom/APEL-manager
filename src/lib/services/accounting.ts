@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import {
   accountingCategories,
   accountingEntries,
+  events,
   financialAccounts,
 } from "@/lib/db/schema";
 import { emptyToNull } from "@/lib/utils";
@@ -109,7 +110,10 @@ export async function updateFinancialAccount(
   return account;
 }
 
-export async function listAccountingEntries(limit = 200) {
+export async function listAccountingEntries(
+  limit = 200,
+  { eventId }: { eventId?: string } = {},
+) {
   return db
     .select({
       id: accountingEntries.id,
@@ -127,6 +131,8 @@ export async function listAccountingEntries(limit = 200) {
       accountName: financialAccounts.name,
       categoryId: accountingEntries.categoryId,
       categoryName: accountingCategories.name,
+      eventId: accountingEntries.eventId,
+      eventTitle: events.title,
       version: accountingEntries.version,
       createdAt: accountingEntries.createdAt,
       updatedAt: accountingEntries.updatedAt,
@@ -140,6 +146,8 @@ export async function listAccountingEntries(limit = 200) {
       accountingCategories,
       eq(accountingEntries.categoryId, accountingCategories.id),
     )
+    .leftJoin(events, eq(accountingEntries.eventId, events.id))
+    .where(eventId ? eq(accountingEntries.eventId, eventId) : undefined)
     .orderBy(desc(accountingEntries.occurredAt))
     .limit(Math.min(Math.max(limit, 1), 500));
 }
@@ -153,7 +161,13 @@ export async function getAccountingEntry(id: string) {
   return entry ?? null;
 }
 
-export async function getAccountingSummary() {
+/**
+ * Totaux des écritures validées. Restreindre à un événement donne son bilan :
+ * ce que la kermesse ou la vente a réellement rapporté.
+ */
+export async function getAccountingSummary({
+  eventId,
+}: { eventId?: string } = {}) {
   const [summary] = await db
     .select({
       incomeCents: sql<number>`coalesce(sum(case when ${accountingEntries.type} = 'income' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents} else 0 end), 0)::int`,
@@ -161,7 +175,8 @@ export async function getAccountingSummary() {
       draftCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'draft')::int`,
       missingAttachmentCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'posted' and ${accountingEntries.attachmentUrl} is null)::int`,
     })
-    .from(accountingEntries);
+    .from(accountingEntries)
+    .where(eventId ? eq(accountingEntries.eventId, eventId) : undefined);
 
   const incomeCents = Number(summary?.incomeCents ?? 0);
   const expenseCents = Number(summary?.expenseCents ?? 0);
@@ -178,7 +193,16 @@ async function validateReferences(data: {
   type?: "income" | "expense";
   accountId?: string | null;
   categoryId?: string | null;
+  eventId?: string | null;
 }) {
+  if (data.eventId) {
+    const [event] = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(eq(events.id, data.eventId))
+      .limit(1);
+    if (!event) throw new HttpError(400, "Événement introuvable.");
+  }
   if (data.accountId) {
     const [account] = await db
       .select({ id: financialAccounts.id, isActive: financialAccounts.isActive })
@@ -224,6 +248,7 @@ export async function createAccountingEntry(
       status: data.status,
       accountId: data.accountId ?? null,
       categoryId: data.categoryId ?? null,
+      eventId: data.eventId ?? null,
       label: data.label,
       amountCents: data.amountCents,
       occurredAt: data.occurredAt,
@@ -275,6 +300,10 @@ export async function updateAccountingEntry(
         : data.type !== undefined
           ? current.categoryId
           : undefined,
+    eventId:
+      data.eventId !== undefined && data.eventId !== current.eventId
+        ? data.eventId
+        : undefined,
   });
   const updates: Partial<typeof accountingEntries.$inferInsert> = {
     updatedAt: new Date(),
@@ -284,6 +313,7 @@ export async function updateAccountingEntry(
   if (data.accountId !== undefined) updates.accountId = data.accountId ?? null;
   if (data.categoryId !== undefined)
     updates.categoryId = data.categoryId ?? null;
+  if (data.eventId !== undefined) updates.eventId = data.eventId ?? null;
   if (data.label !== undefined) updates.label = data.label;
   if (data.amountCents !== undefined) updates.amountCents = data.amountCents;
   if (data.occurredAt !== undefined) updates.occurredAt = data.occurredAt;

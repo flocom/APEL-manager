@@ -13,9 +13,11 @@ export async function GET(req: Request) {
     await requireApiRole("admin");
     const url = new URL(req.url);
     const limit = Number(url.searchParams.get("limit") ?? "200");
+    // `eventId` restreint le journal et les totaux au bilan d'un événement.
+    const eventId = url.searchParams.get("eventId") ?? undefined;
     const [items, summary] = await Promise.all([
-      listAccountingEntries(limit),
-      getAccountingSummary(),
+      listAccountingEntries(limit, { eventId }),
+      getAccountingSummary({ eventId }),
     ]);
     return NextResponse.json({ items, summary });
   } catch (error) {

@@ -31,10 +31,12 @@ const highlights = [
 function Brand({
   appName,
   schoolName,
+  logoUrl,
   inverse = false,
 }: {
   appName: string;
   schoolName: string;
+  logoUrl: string | null;
   inverse?: boolean;
 }) {
   return (
@@ -44,11 +46,12 @@ function Brand({
     >
       <span className="flex h-[62px] w-[116px] shrink-0 items-center justify-center rounded-xl bg-white px-2">
         <Image
-          src="/logo.svg"
+          src={logoUrl || "/logo.svg"}
           alt={schoolName}
           width={96}
           height={96}
           priority
+          unoptimized
           className="h-auto w-full object-contain"
         />
       </span>
@@ -105,6 +108,7 @@ export async function AuthShell({
           <Brand
             appName={settings.associationName}
             schoolName={settings.schoolName}
+            logoUrl={settings.logoUrl}
             inverse
           />
         </div>
@@ -171,6 +175,7 @@ export async function AuthShell({
             <Brand
               appName={settings.associationName}
               schoolName={settings.schoolName}
+              logoUrl={settings.logoUrl}
             />
           </div>
 

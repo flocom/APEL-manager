@@ -40,9 +40,11 @@ la base de l’instance déployée et se saisissent depuis l’application.
 - **Membres et adhérents** — rôles administrateur, organisateur et membre,
   coordonnées, année scolaire, statut et suivi des cotisations.
 - **Comptabilité associative** — recettes, dépenses, comptes, catégories,
-  validation des écritures et justificatifs privés.
+  validation des écritures et justificatifs privés. Chaque écriture peut être
+  rattachée à un événement, qui affiche alors son bilan.
 - **Documents officiels** — procès-verbaux d’AG, attestations et archives avec
-  pièces jointes protégées.
+  pièces jointes protégées. Les événements ont leurs propres pièces jointes :
+  devis, affiches, attestations, plans de salle.
 - **Communication** — e-mails via Resend ou SMTP, notifications Telegram et
   rappels automatiques des tâches.
 - **Intégration Claude.ai** — serveur MCP distant sécurisé par OAuth 2.1 et PKCE
@@ -80,11 +82,10 @@ docker compose down
 
 ## Personnaliser l’identité visuelle
 
-Le logo livré (`public/logo.svg`) est volontairement neutre. Pour afficher celui
-de votre association, remplacez ce fichier par le vôtre en conservant le même
-nom : aucune modification de code n’est nécessaire. Si le logo ne doit pas être
-publié, gardez-le hors du dépôt (montez-le en volume ou ajoutez-le à
-`.gitignore` sur votre fork privé).
+Le logo se règle dans **Tableau de bord → Configuration → Logo** : importez une
+image PNG, JPEG ou WebP, elle remplace aussitôt le logo neutre sur le site
+public, dans l’espace de travail et dans l’onglet du navigateur. Le fichier est
+conservé dans le volume des pièces jointes, jamais dans le dépôt.
 
 ## Stack Docker complète
 

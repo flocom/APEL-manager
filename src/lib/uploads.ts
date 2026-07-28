@@ -11,12 +11,29 @@ import path from "node:path";
 
 import { HttpError } from "@/lib/auth/guards";
 
-export type UploadScope = "accounting" | "document";
+/**
+ * `accounting` et `document` sont privés : leur lecture exige un rôle.
+ * `branding` est le seul scope public — il ne contient que le logo affiché sur
+ * le site public, jamais de pièce justificative.
+ */
+export type UploadScope = "accounting" | "document" | "branding";
 
 const UPLOAD_ID_PATTERN =
-  /^(accounting|document)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  /^(accounting|document|branding)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Scopes dont le contenu est servi sans authentification. */
+export function isPublicScope(scope: UploadScope | null) {
+  return scope === "branding";
+}
 
 type FileKind = "pdf" | "jpeg" | "png" | "webp" | "text" | "zip" | "office";
+
+/**
+ * Le logo est servi en ligne depuis l'origine de l'application : on n'accepte
+ * que des images matricielles, dont la signature binaire est vérifiable. Le SVG
+ * est exclu, un fichier téléversé pouvant embarquer du script.
+ */
+const BRANDING_KINDS: FileKind[] = ["png", "jpeg", "webp"];
 
 const FILE_POLICIES: Record<
   string,
@@ -77,7 +94,7 @@ export function storedUploadIdFromUrl(
   expectedScope?: UploadScope,
 ) {
   const match =
-    /^\/api\/uploads\/((?:accounting|document)-[0-9a-f-]{36})\/([A-Za-z0-9._-]+)$/.exec(
+    /^\/api\/uploads\/((?:accounting|document|branding)-[0-9a-f-]{36})\/([A-Za-z0-9._-]+)$/.exec(
       value,
     );
   if (!match) return null;
@@ -161,6 +178,12 @@ export async function saveUpload(scope: UploadScope, file: File) {
     throw new HttpError(
       415,
       "Format non pris en charge. Utilisez un PDF, une image ou un document bureautique.",
+    );
+  }
+  if (scope === "branding" && !BRANDING_KINDS.includes(policy.kind)) {
+    throw new HttpError(
+      415,
+      "Le logo doit être une image PNG, JPEG ou WebP.",
     );
   }
   if (file.size <= 0 || file.size > maxUploadBytes()) {

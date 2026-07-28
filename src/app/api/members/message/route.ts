@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { sendEmail } from "@/lib/notifications/email";
+import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { messageSchema } from "@/lib/validation";
@@ -16,8 +16,8 @@ export async function POST(req: Request) {
     const { subject, message } = messageSchema.parse(await req.json());
 
     const members = await db.select({ email: users.email }).from(users);
-    const emails = members.map((m) => m.email).filter(Boolean);
-    if (emails.length === 0) {
+    const recipients = uniqueRecipients(members.map((member) => member.email));
+    if (recipients.length === 0) {
       throw new HttpError(400, "Aucun membre à contacter.");
     }
 
@@ -32,10 +32,7 @@ export async function POST(req: Request) {
         rna: association.rna,
       },
     });
-    const results = await Promise.all(
-      emails.map((to) => sendEmail({ to, ...mail })),
-    );
-    const sent = results.filter(Boolean).length;
+    const sent = await sendBulkEmail(recipients, mail);
 
     return NextResponse.json({ ok: true, sent });
   } catch (error) {

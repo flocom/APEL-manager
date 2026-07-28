@@ -16,14 +16,21 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const scopeSchema = z.enum(["accounting", "document"]);
+const scopeSchema = z.enum(["accounting", "document", "branding"]);
+
+/** Le logo est public : seul un administrateur peut le remplacer. */
+const scopeRole = {
+  accounting: "admin",
+  branding: "admin",
+  document: "manager",
+} as const;
 
 export async function POST(req: Request) {
   try {
     await requireApiRole("manager");
     const form = await req.formData();
     const scope = scopeSchema.parse(form.get("scope")) as UploadScope;
-    const user = await requireApiRole(scope === "accounting" ? "admin" : "manager");
+    const user = await requireApiRole(scopeRole[scope]);
     const file = form.get("file");
     if (!(file instanceof File)) {
       throw new HttpError(400, "Sélectionnez un fichier.");
