@@ -420,7 +420,9 @@ export function DocumentsManager({
               ? pendingDelete.fileUrl
                 ? `Le procès-verbal « ${pendingDelete.title} » et son fichier joint seront supprimés. Cette action est irréversible.`
                 : `Le procès-verbal « ${pendingDelete.title} » sera supprimé. Cette action est irréversible.`
-              : `Le document « ${pendingDelete.title} » restera consultable dans les archives.`
+              : pendingDelete.type === "ag_minutes"
+                ? `Le procès-verbal « ${pendingDelete.title} » restera consultable dans les archives. Une fois archivé, il pourra être supprimé définitivement.`
+                : `Le document « ${pendingDelete.title} » restera consultable dans les archives.`
             : ""
         }
         confirmLabel={
@@ -489,6 +491,10 @@ function DocumentCard({
   onDelete: () => void;
   onPrint: () => void;
 }) {
+  const isArchived = document.status === "archived";
+  const canDeletePermanently =
+    document.type === "ag_minutes" && isArchived;
+
   return (
     <Card className="flex flex-col overflow-hidden">
       <div
@@ -548,7 +554,16 @@ function DocumentCard({
           </a>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-2 border-t-2 border-slate-100 bg-slate-50 p-4">
+      <div
+        className={cn(
+          "grid gap-2 border-t-2 border-slate-100 bg-slate-50 p-4",
+          canDeletePermanently
+            ? "grid-cols-2"
+            : isArchived
+              ? "grid-cols-1"
+              : "grid-cols-3",
+        )}
+      >
         <Button
           type="button"
           size="sm"
@@ -558,46 +573,40 @@ function DocumentCard({
         >
           Imprimer
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          icon={Pencil}
-          onClick={onEdit}
-        >
-          Modifier
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={
-            document.type === "ag_minutes" &&
-            document.status === "archived"
-              ? "danger"
-              : "ghost"
-          }
-          icon={
-            document.type === "ag_minutes" &&
-            document.status === "archived"
-              ? Trash2
-              : Archive
-          }
-          className={
-            document.status === "archived"
-              ? undefined
-              : "hover:!bg-coral-50 hover:!text-coral-800"
-          }
-          onClick={onDelete}
-          disabled={
-            document.status === "archived" &&
-            document.type !== "ag_minutes"
-          }
-        >
-          {document.type === "ag_minutes" &&
-          document.status === "archived"
-            ? "Supprimer"
-            : "Archiver"}
-        </Button>
+        {!isArchived && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              icon={Pencil}
+              onClick={onEdit}
+            >
+              Modifier
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              icon={Archive}
+              className="hover:!bg-coral-50 hover:!text-coral-800"
+              onClick={onDelete}
+            >
+              Archiver
+            </Button>
+          </>
+        )}
+        {canDeletePermanently && (
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            icon={Trash2}
+            onClick={onDelete}
+          >
+            Supprimer définitivement
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -640,7 +649,6 @@ function DocumentForm({
           >
             <option value="draft">Brouillon</option>
             <option value="final">Finalisé</option>
-            <option value="archived">Archivé</option>
           </Select>
         </Field>
         <Field label="Date du document" htmlFor="documentDate">
