@@ -8,6 +8,8 @@ interface EmailParams {
   subject: string;
   html: string;
   text?: string;
+  /** Autorise uniquement les écrans de test à vérifier un transport désactivé. */
+  allowDisabled?: boolean;
 }
 
 /** Envoie un e-mail via le transport SMTP ou Resend configuré. */
@@ -16,8 +18,9 @@ export async function sendEmail({
   subject,
   html,
   text,
+  allowDisabled = false,
 }: EmailParams): Promise<boolean> {
-  const config = await getOutboundMailRuntimeConfig();
+  const config = await getOutboundMailRuntimeConfig(allowDisabled);
   if (!config) {
     console.warn(
       `[email] fournisseur désactivé ou clé absente — e-mail non envoyé : "${subject}"`,
@@ -39,6 +42,7 @@ export async function sendEmail({
         subject,
         html,
         text,
+        ...(config.replyTo ? { replyTo: config.replyTo } : {}),
       });
       return true;
     }

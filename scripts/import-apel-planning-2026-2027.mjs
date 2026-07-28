@@ -2,6 +2,14 @@ import { randomBytes } from "node:crypto";
 
 import postgres from "postgres";
 
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(".env");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error("DATABASE_URL est requis.");

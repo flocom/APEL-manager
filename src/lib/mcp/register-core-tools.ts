@@ -35,6 +35,7 @@ import {
   requireMcpAccess,
   toolResult,
   writeTool,
+  type McpAssociationProfile,
   type McpPrincipal,
 } from "./types";
 
@@ -57,6 +58,7 @@ async function requireEvent(id: string) {
 export function registerCoreTools(
   server: McpServer,
   principal: McpPrincipal,
+  association: McpAssociationProfile,
 ) {
   server.registerTool(
     "get_association_overview",
@@ -80,9 +82,10 @@ export function registerCoreTools(
         ]);
       return toolResult({
         association: {
-          name: "APEL Notre Dame des Flots",
-          school: "École Notre Dame des Flots",
-          rna: "W853001441",
+          name: association.associationName,
+          school: association.schoolName,
+          contactEmail: association.contactEmail,
+          rna: association.rna,
         },
         counts: {
           events: Number(eventCount?.count ?? 0),

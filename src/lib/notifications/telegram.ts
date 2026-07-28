@@ -1,15 +1,23 @@
+import { getTelegramBotToken } from "@/lib/services/association-settings";
+
 /**
- * Envoie un message Telegram à un chat donné. Si TELEGRAM_BOT_TOKEN n'est pas
- * configuré, l'envoi est ignoré silencieusement (retourne false).
+ * Envoie un message Telegram à un chat donné. Le cron peut fournir le token
+ * déjà chargé afin d'éviter une lecture des réglages pour chaque destinataire.
  */
 export async function sendTelegram(
   chatId: string,
   text: string,
+  configuredToken?: string | null,
 ): Promise<boolean> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token =
+    configuredToken === undefined
+      ? await getTelegramBotToken()
+      : configuredToken;
 
   if (!token) {
-    console.warn("[telegram] TELEGRAM_BOT_TOKEN absent — message non envoyé.");
+    console.warn(
+      "[telegram] canal désactivé ou token absent — message non envoyé.",
+    );
     return false;
   }
 

@@ -2,7 +2,7 @@
 
 L'application expose un serveur MCP distant sécurisé permettant à Claude de
 piloter les événements, tâches, bénévoles, modèles, utilisateurs, adhérents,
-comptabilité, documents et réglages e-mail de l'**APEL Notre Dame des Flots**
+comptabilité, documents et réglages de l'**APEL Notre Dame des Flots**
 (RNA **W853001441**).
 
 ## Architecture
@@ -21,17 +21,21 @@ des prompts pour préparer une AG ou contrôler la comptabilité.
 ## 1. Préparer le déploiement
 
 Le connecteur Claude.ai doit être joignable publiquement en HTTPS. Définir au
-minimum :
+minimum ces noms canoniques dans le même `.env` que celui utilisé par
+l'application et Docker Compose :
 
 ```env
 APP_URL="https://votre-domaine.fr"
 AUTH_SECRET="..."
 OAUTH_SECRET="..."
+SETTINGS_ENCRYPTION_KEY="..."
 DATABASE_URL="postgresql://..."
 ```
 
 `OAUTH_SECRET` doit contenir au moins 32 caractères. `AUTH_SECRET` sert de repli,
-mais un secret distinct est préférable.
+mais un secret distinct est préférable. Ces paramètres sont nécessaires avant
+que l'application puisse lire ses réglages en base ; ils ne peuvent donc pas
+être déplacés dans l'interface.
 
 Si le serveur MCP utilise une autre origine :
 
@@ -46,11 +50,16 @@ chemin `/api/mcp` compris.
 Appliquer ensuite le schéma :
 
 ```bash
-npm run db:push
+npm run db:migrate
 ```
 
-La migration `0007` crée les clients, codes, jetons OAuth et le journal
-d'audit.
+Les migrations créent les clients, codes, jetons OAuth, le journal d’audit et
+les réglages dynamiques.
+
+Les réglages métier ne doivent pas être ajoutés au `.env`. L’identité, les
+rappels, Telegram, le fournisseur Resend/SMTP, ses identifiants et l’expéditeur
+se configurent dans **Tableau de bord → Configuration**. Claude n’a jamais
+besoin de recevoir ces secrets.
 
 ## 2. Ajouter le connecteur dans Claude.ai
 
@@ -116,5 +125,5 @@ La déconnexion du connecteur révoque toute la famille de jetons OAuth associé
 - Sauvegarder Neon avant les migrations.
 - Révoquer un client compromis en passant sa colonne `enabled` à `false`.
 - Examiner régulièrement le journal `audit_logs`.
-- Ne jamais transmettre la clé Resend à Claude : seuls son statut et ses quatre
-  derniers caractères sont exposés.
+- Ne jamais transmettre une clé Resend ou un mot de passe SMTP à Claude :
+  l'interface d'administration est le seul endroit où les saisir.

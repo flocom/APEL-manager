@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { passwordResetTokens, users } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import { passwordResetEmail } from "@/lib/notifications/emails";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { generateToken, hashToken } from "@/lib/tokens";
 import { forgotSchema } from "@/lib/validation";
 
@@ -45,9 +46,15 @@ export async function POST(req: Request) {
           expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 heure
         });
 
+        const association = await getAssociationSettings();
         const mail = passwordResetEmail({
           name: user.name,
           resetUrl: `${baseUrl}/reset/${token}`,
+          identity: {
+            associationName: association.associationName,
+            schoolName: association.schoolName,
+            rna: association.rna,
+          },
         });
         await sendEmail({ to: email, ...mail });
       } catch (err) {

@@ -1,6 +1,6 @@
 /**
- * Identité de l'association. Personnalisable sans toucher au code via les
- * variables d'environnement NEXT_PUBLIC_ASSO_NAME / NEXT_PUBLIC_SCHOOL_NAME.
+ * Valeurs de repli historiques. L'identité active est chargée depuis
+ * association_settings par le service serveur et se modifie dans Configuration.
  */
 export const APP_NAME =
   process.env.NEXT_PUBLIC_ASSO_NAME?.trim() || "APEL Notre Dame des Flots";

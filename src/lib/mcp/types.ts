@@ -12,6 +12,13 @@ export interface McpPrincipal {
   oauthClientId: string | null;
 }
 
+export interface McpAssociationProfile {
+  associationName: string;
+  schoolName: string;
+  contactEmail: string | null;
+  rna: string;
+}
+
 const roleRank: Record<Role, number> = {
   member: 1,
   manager: 2,

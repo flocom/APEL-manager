@@ -12,9 +12,9 @@ import Link from "next/link";
 
 import { FormattedText } from "@/components/formatted-text";
 import { SiteHeader } from "@/components/site-header";
-import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,10 @@ const participationSteps = [
 ];
 
 export default async function HomePage() {
-  const events = await getUpcomingPublishedEvents();
+  const [events, settings] = await Promise.all([
+    getUpcomingPublishedEvents(),
+    getAssociationSettings(),
+  ]);
   const openPlaces = events.reduce(
     (sum, event) =>
       sum +
@@ -75,7 +78,7 @@ export default async function HomePage() {
             <div>
               <span className="inline-flex items-center gap-2 rounded-lg bg-sea-200 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-brand-950">
                 <HeartHandshake className="h-4 w-4" strokeWidth={2.5} />
-                APEL · {SCHOOL_NAME}
+                APEL · {settings.schoolName}
               </span>
               <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-0.05em] sm:text-6xl lg:text-7xl">
                 Les parents font bouger{" "}
@@ -118,7 +121,7 @@ export default async function HomePage() {
                       Association des parents
                     </p>
                     <p className="mt-1 break-words text-lg font-black tracking-[-0.02em] text-brand-950 sm:text-xl">
-                      {SCHOOL_NAME}
+                      {settings.schoolName}
                     </p>
                   </div>
                   <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-950 text-white">
@@ -323,7 +326,7 @@ export default async function HomePage() {
           <div className="flex items-center gap-3">
             <span className="h-3 w-3 rounded-full bg-sea-500" />
             <p className="font-semibold">
-              {APP_NAME} — ensemble, pour nos enfants.
+              {settings.associationName} — ensemble, pour nos enfants.
             </p>
           </div>
           <Link

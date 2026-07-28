@@ -2,30 +2,31 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { getAccountingSummary } from "@/lib/services/accounting";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 import { registerAssociationTools } from "./register-association-tools";
 import { registerCoreTools } from "./register-core-tools";
 import { requireMcpAccess, type McpPrincipal } from "./types";
 
-export function createApelMcpServer(principal: McpPrincipal) {
+export async function createApelMcpServer(principal: McpPrincipal) {
+  const association = await getAssociationSettings();
+  const associationReference = `${association.associationName} (RNA ${association.rna})`;
   const server = new McpServer({
-    name: "apel-notre-dame-des-flots",
-    title: "APEL Notre Dame des Flots",
+    name: "apel-manager",
+    title: association.associationName,
     version: "1.0.0",
-    description:
-      "Pilotage sécurisé de l’APEL Notre Dame des Flots — RNA W853001441.",
+    description: `Pilotage sécurisé de ${associationReference}.`,
   });
 
-  registerCoreTools(server, principal);
-  registerAssociationTools(server, principal);
+  registerCoreTools(server, principal, association);
+  registerAssociationTools(server, principal, association);
 
   server.registerResource(
     "association-profile",
     "apel://association/profile",
     {
       title: "Identité de l’association",
-      description:
-        "Informations officielles de l’APEL Notre Dame des Flots.",
+      description: `Informations officielles de ${association.associationName}.`,
       mimeType: "application/json",
     },
     async (uri) => {
@@ -36,9 +37,10 @@ export function createApelMcpServer(principal: McpPrincipal) {
             uri: uri.href,
             mimeType: "application/json",
             text: JSON.stringify({
-              name: "APEL Notre Dame des Flots",
-              school: "École Notre Dame des Flots",
-              rna: "W853001441",
+              name: association.associationName,
+              school: association.schoolName,
+              contactEmail: association.contactEmail,
+              rna: association.rna,
             }),
           },
         ],
@@ -91,7 +93,7 @@ export function createApelMcpServer(principal: McpPrincipal) {
             role: "user",
             content: {
               type: "text",
-              text: `Prépare l’assemblée générale ${assemblyType} de l’APEL Notre Dame des Flots (RNA W853001441) prévue le ${date}.
+              text: `Prépare l’assemblée générale ${assemblyType} de ${associationReference} prévue le ${date}.
 
 1. Consulte les événements, tâches, adhérents et documents utiles avec les outils MCP disponibles.
 2. Propose un ordre du jour réaliste.
@@ -123,7 +125,7 @@ ${priorities ? `Priorités indiquées : ${priorities}` : ""}`,
             role: "user",
             content: {
               type: "text",
-              text: `Analyse la comptabilité de l’APEL Notre Dame des Flots pour ${period}. Utilise la synthèse et les écritures comptables, signale les brouillons et justificatifs manquants, puis propose les contrôles à effectuer. Ne crée ni ne modifie aucune écriture sans confirmation explicite.`,
+              text: `Analyse la comptabilité de ${association.associationName} pour ${period}. Utilise la synthèse et les écritures comptables, signale les brouillons et justificatifs manquants, puis propose les contrôles à effectuer. Ne crée ni ne modifie aucune écriture sans confirmation explicite.`,
             },
           },
         ],

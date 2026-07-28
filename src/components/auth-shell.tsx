@@ -8,7 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { APP_NAME, SCHOOL_NAME } from "@/lib/app-config";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 const highlights = [
   {
@@ -28,7 +28,15 @@ const highlights = [
   },
 ];
 
-function Brand({ inverse = false }: { inverse?: boolean }) {
+function Brand({
+  appName,
+  schoolName,
+  inverse = false,
+}: {
+  appName: string;
+  schoolName: string;
+  inverse?: boolean;
+}) {
   return (
     <Link
       href="/"
@@ -50,21 +58,21 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
             inverse ? "text-white" : "text-brand-950"
           }`}
         >
-          {APP_NAME}
+          {appName}
         </span>
         <span
           className={`mt-0.5 block break-words text-xs font-medium ${
             inverse ? "text-brand-200" : "text-slate-500"
           }`}
         >
-          {SCHOOL_NAME}
+          {schoolName}
         </span>
       </span>
     </Link>
   );
 }
 
-export function AuthShell({
+export async function AuthShell({
   title,
   description,
   eyebrow = "Espace membre",
@@ -75,6 +83,8 @@ export function AuthShell({
   eyebrow?: string;
   children: ReactNode;
 }) {
+  const settings = await getAssociationSettings();
+
   return (
     <div className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(440px,.95fr)]">
       <aside className="relative hidden min-h-screen overflow-hidden bg-brand-950 px-10 py-9 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col xl:px-14 xl:py-11">
@@ -92,7 +102,11 @@ export function AuthShell({
         />
 
         <div className="relative z-10">
-          <Brand inverse />
+          <Brand
+            appName={settings.associationName}
+            schoolName={settings.schoolName}
+            inverse
+          />
         </div>
 
         <div className="relative z-10 my-auto max-w-2xl py-10">
@@ -154,7 +168,10 @@ export function AuthShell({
 
         <div className="relative w-full max-w-[460px]">
           <div className="mb-7 lg:hidden">
-            <Brand />
+            <Brand
+              appName={settings.associationName}
+              schoolName={settings.schoolName}
+            />
           </div>
 
           <section className="rounded-2xl border-2 border-slate-200 bg-white p-6 sm:p-8">

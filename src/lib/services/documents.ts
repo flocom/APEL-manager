@@ -9,6 +9,7 @@ import {
   associationDocumentUpdateSchema,
 } from "@/lib/validation";
 
+import { getAssociationSettings } from "./association-settings";
 import { recordAudit, type AuditActor } from "./audit";
 
 export async function listAssociationDocuments(limit = 200) {
@@ -169,7 +170,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-export function renderPrintableDocument(document: {
+export async function renderPrintableDocument(document: {
   title: string;
   type: "ag_minutes" | "attestation" | "other";
   documentDate: Date;
@@ -177,6 +178,7 @@ export function renderPrintableDocument(document: {
   memberFirstName: string | null;
   memberLastName: string | null;
 }) {
+  const association = await getAssociationSettings();
   const typeLabel =
     document.type === "ag_minutes"
       ? "Procès-verbal d’assemblée générale"
@@ -211,8 +213,8 @@ export function renderPrintableDocument(document: {
 </head>
 <body>
   <header>
-    <div class="org">APEL Notre Dame des Flots</div>
-    <div class="rna">Association de parents d’élèves · RNA W853001441</div>
+    <div class="org">${escapeHtml(association.associationName)}</div>
+    <div class="rna">${escapeHtml(association.schoolName)} · RNA ${escapeHtml(association.rna)}</div>
   </header>
   <main>
     <p class="meta">${typeLabel} · ${new Intl.DateTimeFormat("fr-FR", {
@@ -223,7 +225,7 @@ export function renderPrintableDocument(document: {
     ${beneficiary}
     <div class="content">${escapeHtml(document.content)}</div>
   </main>
-  <footer>APEL Notre Dame des Flots · RNA W853001441</footer>
+  <footer>${escapeHtml(association.associationName)} · RNA ${escapeHtml(association.rna)}</footer>
   <script>window.addEventListener("load",()=>window.print())</script>
 </body>
 </html>`;

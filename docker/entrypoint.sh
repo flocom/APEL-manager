@@ -20,6 +20,20 @@ load_or_create_secret() {
       echo "Erreur : $variable_name doit contenir au moins $minimum_length caractères." >&2
       exit 1
     fi
+    if [ -s "$secret_path" ]; then
+      persisted_value="$(sed -n '1p' "$secret_path")"
+      if [ "$persisted_value" != "$current_value" ]; then
+        echo "Erreur : $variable_name diffère du secret conservé dans $secret_path." >&2
+        echo "Conservez la valeur existante ou effectuez une rotation contrôlée avant de redémarrer." >&2
+        exit 1
+      fi
+    else
+      temporary_path="$secret_path.tmp.$$"
+      printf '%s\n' "$current_value" > "$temporary_path"
+      chmod 600 "$temporary_path"
+      mv "$temporary_path" "$secret_path"
+      echo "Secret $variable_name fourni et conservé dans le volume de configuration."
+    fi
   elif [ -s "$secret_path" ]; then
     current_value="$(sed -n '1p' "$secret_path")"
   else
@@ -39,7 +53,7 @@ load_or_create_secret() {
   export "$variable_name=$current_value"
 }
 
-# Ces secrets doivent rester stables : sessions, OAuth et clés Resend chiffrées
+# Ces secrets doivent rester stables : sessions, OAuth et identifiants chiffrés
 # deviendraient invalides après une rotation involontaire.
 load_or_create_secret AUTH_SECRET auth-secret 32
 load_or_create_secret OAUTH_SECRET oauth-secret 32

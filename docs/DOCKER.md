@@ -80,83 +80,119 @@ la stratégie de sauvegarde de l'hôte.
 
 ## Configuration
 
-Les valeurs par défaut permettent un démarrage local immédiat. Pour conserver
-une configuration explicite, créer un fichier hors du dépôt, par exemple
-`.env.docker`, puis l'utiliser ainsi :
+Un seul modèle de configuration est utilisé dans toutes les situations :
+`.env.example`. Copiez-le en `.env` à la racine ; Docker Compose le charge
+automatiquement, sans option supplémentaire :
 
 ```bash
-docker compose --env-file .env.docker up --build -d
+cp .env.example .env
+docker compose up --build -d
 ```
 
-Exemple :
+Les noms ne changent pas entre une exécution directe avec Node.js, Docker et un
+hébergeur. Le fichier contient uniquement la configuration indispensable avant
+que l'application puisse accéder à ses réglages en base :
 
-```dotenv
-DOCKER_POSTGRES_DB=apel_manager
-DOCKER_POSTGRES_USER=apel
-DOCKER_POSTGRES_PASSWORD=un-mot-de-passe-long-et-unique
+- `APP_URL` et les éventuelles URL OAuth/MCP ;
+- `DATABASE_URL` ou les paramètres du PostgreSQL inclus ;
+- les secrets de session, OAuth, chiffrement et cron ;
+- les limites de stockage, horaires techniques et ports exposés.
 
-DOCKER_AUTH_SECRET=une-valeur-aleatoire-stable-de-32-caracteres-minimum
-DOCKER_OAUTH_SECRET=une-autre-valeur-aleatoire-stable-de-32-caracteres
-DOCKER_SETTINGS_ENCRYPTION_KEY=une-cle-de-chiffrement-stable-de-32-caracteres
-DOCKER_CRON_SECRET=un-secret-cron-stable-de-32-caracteres-minimum
+Les paramètres métier ne vont pas dans `.env`. L’identité officielle, les
+fenêtres de rappel, Telegram, le fournisseur de courrier, ses identifiants et
+l’expéditeur se règlent dans `/dashboard/settings`.
 
-DOCKER_APP_URL=http://localhost:3000
-DOCKER_CONTACT_EMAIL=contact@example.org
-```
-
-Les noms destinés à Compose commencent volontairement par `DOCKER_`. Le fichier
-`.env` utilisé en développement local ne peut ainsi pas détourner par
-inadvertance le conteneur vers une base Neon ou réutiliser ses secrets. Les
-fichiers `.env*` sont exclus du contexte de construction Docker : les secrets
-ne sont jamais intégrés à l'image. S'ils sont omis, quatre valeurs aléatoires
-sont créées dans `app_config`; elles restent stables tant que ce volume est
+Les fichiers `.env*` sont exclus du contexte de construction Docker : les
+secrets ne sont jamais intégrés à l'image. Si `AUTH_SECRET`, `OAUTH_SECRET`,
+`SETTINGS_ENCRYPTION_KEY` ou `CRON_SECRET` sont vides, le point d'entrée Docker
+les génère dans `app_config`. Ils restent stables tant que ce volume est
 conservé.
 
-`DOCKER_APP_URL` alimente `APP_URL` à l'exécution ainsi que l'ancien nom
-`NEXT_PUBLIC_APP_URL` pour compatibilité. Les valeurs de marque destinées au
-navigateur sont intégrées au bundle lors de la construction ; après leur
-modification, relancer avec `--build`.
+En production, il est préférable de définir explicitement ces quatre secrets
+avec des valeurs aléatoires d'au moins 32 caractères. Il faut impérativement
+conserver `SETTINGS_ENCRYPTION_KEY` : la changer rend les identifiants Resend ou
+SMTP déjà chiffrés illisibles.
+
+Lorsqu’un secret est fourni, le point d’entrée le conserve aussi dans
+`app_config`. S’il diffère ensuite de la valeur persistée, le conteneur refuse
+de démarrer afin d’éviter une rotation involontaire.
+
+### Mise à niveau depuis les variables `DOCKER_*`
+
+Une ancienne installation peut conserver ses valeurs, mais doit renommer les
+clés dans son unique `.env` avant de recréer les conteneurs :
+
+- `DOCKER_APP_URL` → `APP_URL` ;
+- `DOCKER_DATABASE_URL` → `DATABASE_URL` ;
+- `DOCKER_POSTGRES_DB`, `DOCKER_POSTGRES_USER`,
+  `DOCKER_POSTGRES_PASSWORD` → les mêmes noms sans préfixe ;
+- `DOCKER_AUTH_SECRET`, `DOCKER_OAUTH_SECRET`,
+  `DOCKER_SETTINGS_ENCRYPTION_KEY`, `DOCKER_CRON_SECRET` → les mêmes noms sans
+  préfixe, avec **exactement les mêmes valeurs** ;
+- les variables Caddy, ports, stockage et scheduler → les mêmes noms sans
+  préfixe.
+
+Si les quatre secrets étaient laissés vides et générés automatiquement, les
+laisser vides et conserver le volume `app_config`. Sauvegardez PostgreSQL,
+`app_config` et `uploads_data`, puis utilisez `docker compose up -d --build
+--force-recreate`. Ne lancez jamais `docker compose down -v` pendant cette mise
+à niveau.
+
+### Base de données
+
+Avec `DATABASE_URL=""`, le conteneur utilise automatiquement le PostgreSQL
+inclus et construit sa connexion à partir des variables canoniques :
+
+```dotenv
+POSTGRES_DB=apel_manager
+POSTGRES_USER=apel
+POSTGRES_PASSWORD=un-mot-de-passe-long-et-unique
+```
+
+Une `DATABASE_URL` explicite reste prioritaire, par exemple pour utiliser Neon
+ou un PostgreSQL externe. En exécution directe hors Docker, elle doit toujours
+pointer vers une base accessible.
 
 ### Courrier
 
-Par défaut, l'application utilise le SMTP de Mailpit :
+Le courrier sortant ne dépend plus de variables d'environnement. Connectez-vous
+avec un compte administrateur, ouvrez **Tableau de bord → Configuration**, puis
+choisissez :
 
-```dotenv
-DOCKER_MAIL_PROVIDER=smtp
-DOCKER_SMTP_HOST=mailpit
-DOCKER_SMTP_PORT=1025
-DOCKER_SMTP_SECURE=false
-DOCKER_SMTP_FROM=APEL Notre Dame des Flots <noreply@localhost>
-```
+- **Resend** : clé API, expéditeur, adresse de réponse et domaine ;
+- **SMTP** : hôte, port, TLS, identifiant, mot de passe et expéditeur.
 
-Mailpit capture les messages mais ne les remet pas sur Internet. Pour les
-envois réels, renseigner les paramètres d'un relais SMTP externe ou définir
-`DOCKER_MAIL_PROVIDER=resend`, puis configurer Resend depuis le tableau de bord.
-L'interface Mailpit peut être masquée en production en retirant son mapping
-`ports` ou en le limitant à l'adresse `127.0.0.1`.
+Pour un test local entièrement contenu dans Docker, choisissez SMTP avec l'hôte
+`mailpit`, le port `1025`, TLS désactivé et aucun identifiant. Les messages
+apparaissent sur [http://localhost:8025](http://localhost:8025) sans être remis
+sur Internet.
+
+Les secrets saisis dans Configuration sont chiffrés avec
+`SETTINGS_ENCRYPTION_KEY`. L'interface Mailpit peut être masquée en production
+en retirant son mapping `ports` ou en le limitant à l'adresse `127.0.0.1`.
 
 ### Pièces jointes
 
 Les justificatifs et documents signés sont stockés dans `uploads_data` et ne
 sont accessibles qu'après authentification. La limite est de 15 Mo par défaut.
-Si `DOCKER_UPLOAD_MAX_BYTES` est augmenté, adapter aussi
-`DOCKER_CADDY_MAX_UPLOAD_SIZE`. Les imports annulés ou remplacés sont supprimés
+Si `UPLOAD_MAX_BYTES` est augmenté, adapter aussi
+`CADDY_MAX_UPLOAD_SIZE`. Les imports annulés ou remplacés sont supprimés
 par le scheduler après 24 heures, délai configurable avec
-`DOCKER_UPLOAD_ORPHAN_MAX_AGE_HOURS`.
+`UPLOAD_ORPHAN_MAX_AGE_HOURS`.
 
 ### Scheduler
 
 L'heure est exprimée en UTC et peut être modifiée :
 
 ```dotenv
-DOCKER_SCHEDULER_HOUR_UTC=7
-DOCKER_SCHEDULER_MINUTE_UTC=0
+SCHEDULER_HOUR_UTC=7
+SCHEDULER_MINUTE_UTC=0
 ```
 
 Pour un test unique au démarrage du scheduler :
 
 ```dotenv
-DOCKER_RUN_CRON_ON_START=true
+RUN_CRON_ON_START=true
 ```
 
 L'appel est authentifié avec `CRON_SECRET`. Le scheduler réessaie les erreurs
@@ -173,12 +209,12 @@ instance publique :
 4. reconstruire puis redémarrer les services.
 
 ```dotenv
-DOCKER_CADDY_SITE_ADDRESS=apel.example.org
-DOCKER_HTTP_PORT=80
-DOCKER_HTTPS_PORT=443
-DOCKER_APP_URL=https://apel.example.org
-DOCKER_OAUTH_ISSUER=https://apel.example.org
-DOCKER_MCP_RESOURCE_URL=https://apel.example.org/api/mcp
+CADDY_SITE_ADDRESS=apel.example.org
+HTTP_PORT=80
+HTTPS_PORT=443
+APP_URL=https://apel.example.org
+OAUTH_ISSUER=https://apel.example.org
+MCP_RESOURCE_URL=https://apel.example.org/api/mcp
 ```
 
 Sans préfixe `http://` dans `CADDY_SITE_ADDRESS`, Caddy obtient et renouvelle
@@ -204,4 +240,7 @@ docker image prune
 
 Les migrations sont rejouées de manière idempotente avant chaque démarrage de
 l'application. Sauvegarder PostgreSQL et les pièces jointes avant une mise à
-jour importante.
+jour importante. Ne supprimez jamais les volumes `postgres_data`,
+`uploads_data` et `app_config` pendant une mise à jour : ils contiennent
+respectivement les données, les pièces jointes et les secrets capables de
+déchiffrer les réglages enregistrés.

@@ -25,15 +25,13 @@ Après chaque installation ou mise à jour du projet, synchroniser le schéma
 Drizzle avec Neon :
 
 ```bash
-npm install
-npm run db:push
+npm ci
+npm run db:migrate
 ```
 
-Cette commande applique notamment les tables des modules **Adhérents**,
-**Comptabilité**, **Documents**, ainsi que les réglages mail. Les migrations SQL
-versionnées restent disponibles dans [`drizzle/`](../drizzle/) pour audit ou
-application manuelle ; dans ce cas, elles doivent toutes être exécutées dans
-l'ordre, de `0000` à `0008`.
+Cette commande applique dans l’ordre les migrations versionnées des modules
+**Adhérents**, **Comptabilité**, **Documents**, ainsi que les réglages généraux
+et mail. Elles restent disponibles dans [`drizzle/`](../drizzle/) pour audit.
 
 > Effectuer une sauvegarde de la base avant toute migration en production.
 
@@ -54,49 +52,52 @@ l'ordre, de `0000` à `0008`.
 
 ## 3. Variables d'environnement
 
+Les noms ci-dessous sont les mêmes que dans `.env.example` et dans Docker
+Compose. Ils sont réservés à la configuration indispensable au démarrage ; les
+réglages métier et de messagerie sont enregistrés depuis
+`/dashboard/settings`.
+
 | Variable | Obligatoire | Description |
 |---|---|---|
 | `DATABASE_URL` | ✅ | Connection string *pooled* Neon |
 | `AUTH_SECRET` | ✅ | Secret de signature des sessions (≥ 32 caractères). Générer : `openssl rand -base64 32` |
 | `OAUTH_SECRET` | ⭐ recommandé | Secret dédié au consentement OAuth du serveur MCP. Si absent, `AUTH_SECRET` est utilisé |
-| `SETTINGS_ENCRYPTION_KEY` | ✅ | Chiffre les secrets saisis dans l'interface, notamment la clé Resend. Chaîne stable de 32 caractères minimum ; générer avec `openssl rand -base64 32` |
+| `SETTINGS_ENCRYPTION_KEY` | ✅ | Chiffre les secrets saisis dans l'interface, notamment Resend/SMTP. Chaîne stable de 32 caractères minimum ; générer avec `openssl rand -base64 32` |
 | `APP_URL` | ⭐ recommandé | URL publique du site, configurable à l'exécution, ex. `https://apel-manager.vercel.app` |
-| `NEXT_PUBLIC_APP_URL` | ⛔ compatibilité | Ancien nom de l'URL publique ; `APP_URL` est prioritaire |
 | `OAUTH_ISSUER` | ⛔ optionnel | Origine HTTPS de l'autorité OAuth si elle diffère de `APP_URL` |
 | `MCP_RESOURCE_URL` | ⛔ optionnel | URL HTTPS exacte du connecteur, terminée par `/api/mcp`, si elle doit être surchargée |
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
-| `REMINDER_WINDOW_DAYS` | ⛔ optionnel | Nb de jours avant échéance pour envoyer un rappel (défaut : `3`) |
-| `RESEND_API_KEY` | ⛔ optionnel | Configuration de secours de la clé [Resend](https://resend.com), si elle n'est pas enregistrée dans l'interface |
-| `EMAIL_FROM` | ⛔ optionnel | Expéditeur de secours, ex. `APEL Notre Dame des Flots <contact@mondomaine.fr>` |
-| `TELEGRAM_BOT_TOKEN` | ⛔ optionnel | Token du bot Telegram (via @BotFather) |
+| `DATABASE_POOL_MAX` | ⛔ optionnel | Taille du pool par processus ; conserver une valeur faible en serverless |
 
 `SETTINGS_ENCRYPTION_KEY` doit rester **strictement identique** entre les
-déploiements. La changer rendrait illisible la clé Resend déjà enregistrée ; il
-faudrait alors saisir à nouveau cette dernière.
+déploiements. La changer rendrait illisibles les clés et mots de passe déjà
+enregistrés ; il faudrait alors les saisir à nouveau.
 
-Les canaux de notification sont optionnels : sans configuration Resend ni
-`TELEGRAM_BOT_TOKEN`, l'application fonctionne normalement, mais aucun message
-n'est envoyé sur le canal concerné.
+L’identité de l’association, les fenêtres de rappel, Telegram, Resend et SMTP
+se configurent dans **Tableau de bord → Configuration**. Ne copiez jamais leurs
+identifiants dans les variables d’environnement : ils sont chiffrés avant leur
+stockage.
 
 ---
 
-## 4. Courrier sortant avec Resend
+## 4. Courrier sortant
 
 ### Configuration depuis l'interface
 
-1. Définir `SETTINGS_ENCRYPTION_KEY` dans `.env.local` et dans les variables
+1. Définir `SETTINGS_ENCRYPTION_KEY` dans le `.env` local et dans les variables
    Vercel, puis redéployer.
-2. Exécuter `npm run db:push` pour créer la table de réglages.
-3. Créer une clé API dans [Resend](https://resend.com).
-4. Se connecter avec un compte administrateur puis ouvrir
+2. Exécuter `npm run db:migrate` pour appliquer les migrations.
+3. Se connecter avec un compte administrateur puis ouvrir
    **Tableau de bord → Configuration** (`/dashboard/settings`).
-5. Renseigner le nom d'expéditeur, l'adresse d'envoi, l'adresse de réponse et la
-   clé API, puis activer l'envoi.
+4. Choisir **Resend** ou **SMTP**, puis renseigner les champs affichés :
+   clé API Resend ou hôte, port, TLS, identifiant et mot de passe SMTP.
+5. Renseigner le nom d'expéditeur, l'adresse d'envoi et l'adresse de réponse,
+   puis activer l'envoi.
 6. Utiliser le formulaire de test de la page avant d'activer les communications
    réelles.
 
-La clé Resend est chiffrée côté serveur avant son stockage. L'interface ne
-réaffiche ensuite que ses quatre derniers caractères. Ne jamais inscrire la clé
+La clé Resend et le mot de passe SMTP sont chiffrés côté serveur avant leur
+stockage. L'interface ne les réaffiche jamais en clair. Ne jamais les inscrire
 dans Git, les journaux ou une capture d'écran.
 
 ### Passage ultérieur au nom de domaine
@@ -112,9 +113,18 @@ Avant la mise en production :
    `APEL Notre Dame des Flots <contact@votre-domaine.fr>` ;
 5. envoyer un nouveau message de test.
 
-`RESEND_API_KEY` et `EMAIL_FROM` peuvent rester définis comme solution de
-secours, mais les réglages enregistrés et activés dans l'interface sont utilisés
-en priorité.
+Un relais SMTP peut être utilisé à la place de Resend sans modifier ni
+redéployer l'application.
+
+### Telegram
+
+Dans **Configuration**, activez Telegram puis saisissez le token fourni par
+**@BotFather**. Le token est chiffré et n’est jamais réaffiché. Chaque membre
+qui souhaite recevoir les rappels démarre une conversation avec le bot puis
+renseigne son Chat ID dans son compte.
+
+Les délais de rappel des tâches et des créneaux bénévoles se règlent au même
+endroit et prennent effet sans redéploiement.
 
 ## 5. Modules de gestion associative
 
@@ -147,16 +157,7 @@ L'identité à faire apparaître sur les documents officiels est :
 - **APEL Notre Dame des Flots**
 - **N° RNA : W853001441**
 
-## 6. Notifications Telegram
-
-1. Sur Telegram, parler à **@BotFather**, commande `/newbot`, suivre les étapes.
-   Récupérer le **token** → variable `TELEGRAM_BOT_TOKEN`.
-2. Chaque membre qui veut être notifié :
-   - démarre une conversation avec le bot et envoie `/start` ;
-   - récupère son **Chat ID** (par exemple via le bot **@userinfobot**) ;
-   - le renseigne dans **Mon compte → Chat ID Telegram**.
-
-## 7. Le Cron de rappels
+## 6. Le Cron de rappels
 
 - Configuré dans [`vercel.json`](../vercel.json) : exécution quotidienne à 7h00
   UTC sur `/api/cron/notifications`.
@@ -166,7 +167,7 @@ L'identité à faire apparaître sur les documents officiels est :
 
 ---
 
-## 8. Premier compte administrateur
+## 7. Premier compte administrateur
 
 Le **premier compte créé** via `/register` reçoit automatiquement le rôle
 **administrateur**. Il peut ensuite, depuis **Utilisateurs**, promouvoir d'autres

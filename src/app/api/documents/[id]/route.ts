@@ -22,7 +22,7 @@ export async function GET(req: Request, { params }: Params) {
     const document = await getAssociationDocument(id);
     if (!document) throw new HttpError(404, "Document introuvable.");
     if (new URL(req.url).searchParams.get("format") === "print") {
-      return new NextResponse(renderPrintableDocument(document), {
+      return new NextResponse(await renderPrintableDocument(document), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Content-Security-Policy":

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { messageSchema } from "@/lib/validation";
 
 export async function POST(req: Request) {
@@ -20,7 +21,17 @@ export async function POST(req: Request) {
       throw new HttpError(400, "Aucun membre à contacter.");
     }
 
-    const mail = broadcastEmail({ subject, message, senderName: sender.name });
+    const association = await getAssociationSettings();
+    const mail = broadcastEmail({
+      subject,
+      message,
+      senderName: sender.name,
+      identity: {
+        associationName: association.associationName,
+        schoolName: association.schoolName,
+        rna: association.rna,
+      },
+    });
     const results = await Promise.all(
       emails.map((to) => sendEmail({ to, ...mail })),
     );

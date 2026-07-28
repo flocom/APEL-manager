@@ -20,7 +20,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { APP_NAME } from "@/lib/app-config";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { api } from "@/lib/client";
 import type { Role } from "@/lib/db/schema";
@@ -97,7 +96,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 
 const roleRank: Record<Role, number> = { member: 1, manager: 2, admin: 3 };
 
-function Logo() {
+function Logo({ appName }: { appName: string }) {
   return (
     <Link
       href="/dashboard"
@@ -118,7 +117,7 @@ function Logo() {
           Espace APEL
         </span>
         <span className="mt-0.5 block break-words text-sm font-bold leading-tight text-white">
-          {APP_NAME}
+          {appName}
         </span>
       </span>
     </Link>
@@ -126,8 +125,10 @@ function Logo() {
 }
 
 export function DashboardNav({
+  appName,
   user,
 }: {
+  appName: string;
   user: { name: string; role: Role };
 }) {
   const pathname = usePathname();
@@ -278,7 +279,7 @@ export function DashboardNav({
     <>
       {/* Barre supérieure mobile */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-800 bg-brand-950 px-4 py-3 lg:hidden">
-        <Logo />
+        <Logo appName={appName} />
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -306,7 +307,7 @@ export function DashboardNav({
             aria-label="Menu de navigation"
           >
             <div className="flex items-center justify-between border-b border-brand-800 px-4 py-4">
-              <Logo />
+              <Logo appName={appName} />
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -327,7 +328,7 @@ export function DashboardNav({
       {/* Barre latérale desktop */}
       <aside className="hidden border-r border-brand-900 bg-brand-950 lg:flex lg:h-screen lg:w-[18rem] lg:shrink-0 lg:flex-col">
         <div className="border-b border-brand-800 px-5 py-5">
-          <Logo />
+          <Logo appName={appName} />
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-5">
           {navLinks}
