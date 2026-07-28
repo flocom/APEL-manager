@@ -1,11 +1,13 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, like, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
 import {
   accountingCategories,
+  accountingEntries,
   associationMembers,
+  auditLogs,
 } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import {
@@ -42,6 +44,7 @@ import {
   markOutboundMailTest,
   saveOutboundMailSettings,
 } from "@/lib/services/mail-settings";
+import { getUpdateStatus } from "@/lib/services/updates";
 import { emptyToNull } from "@/lib/utils";
 import {
   accountingCategorySchema,
@@ -479,6 +482,93 @@ export function registerAssociationTools(
   );
 
   server.registerTool(
+    "update_accounting_category",
+    {
+      title: "Modifier une catégorie comptable",
+      description:
+        "Renomme une catégorie, change son sens ou la désactive. Une catégorie désactivée reste attachée aux écritures passées mais n’est plus proposée.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(160).optional(),
+        type: z.enum(["income", "expense"]).optional(),
+        description: optionalNullableString,
+        isActive: z.boolean().optional(),
+      }),
+      annotations: writeTool,
+    },
+    async ({ id, ...input }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const [current] = await db
+        .select()
+        .from(accountingCategories)
+        .where(eq(accountingCategories.id, id))
+        .limit(1);
+      if (!current) throw new Error("Catégorie comptable introuvable.");
+
+      const updates: Partial<typeof accountingCategories.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+      if (input.name !== undefined) updates.name = input.name;
+      if (input.type !== undefined) updates.type = input.type;
+      if (input.description !== undefined) {
+        updates.description = emptyToNull(input.description);
+      }
+      if (input.isActive !== undefined) updates.isActive = input.isActive;
+
+      const [category] = await db
+        .update(accountingCategories)
+        .set(updates)
+        .where(eq(accountingCategories.id, id))
+        .returning();
+      await recordAudit(
+        mcpAuditActor(principal),
+        "accounting.category_update",
+        "accounting_category",
+        id,
+      );
+      return toolResult({ category }, "Catégorie comptable mise à jour.");
+    },
+  );
+
+  server.registerTool(
+    "delete_accounting_category",
+    {
+      title: "Supprimer une catégorie comptable",
+      description:
+        "Supprime définitivement une catégorie. Refusée si des écritures y sont rattachées : désactivez-la alors avec update_accounting_category pour préserver l’historique.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        confirm: z.literal(true),
+      }),
+      annotations: destructiveTool,
+    },
+    async ({ id }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(accountingEntries)
+        .where(eq(accountingEntries.categoryId, id));
+      if (Number(count) > 0) {
+        throw new Error(
+          `Cette catégorie est utilisée par ${count} écriture(s). Désactivez-la au lieu de la supprimer.`,
+        );
+      }
+      const [deleted] = await db
+        .delete(accountingCategories)
+        .where(eq(accountingCategories.id, id))
+        .returning({ id: accountingCategories.id });
+      if (!deleted) throw new Error("Catégorie comptable introuvable.");
+      await recordAudit(
+        mcpAuditActor(principal),
+        "accounting.category_delete",
+        "accounting_category",
+        id,
+      );
+      return toolResult({ id, deleted: true });
+    },
+  );
+
+  server.registerTool(
     "list_association_documents",
     {
       title: "Lister les documents",
@@ -854,6 +944,76 @@ export function registerAssociationTools(
         sent,
         failed: recipients.length - sent,
       });
+    },
+  );
+
+  server.registerTool(
+    "list_audit_logs",
+    {
+      title: "Consulter le journal d’audit",
+      description:
+        "Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident.",
+      inputSchema: z.object({
+        action: z
+          .string()
+          .max(80)
+          .optional()
+          .describe(
+            "Filtre par préfixe d’action, par exemple « accounting » ou « mail.broadcast ».",
+          ),
+        entityType: z.string().max(80).optional(),
+        entityId: z.string().max(80).optional(),
+        source: z.enum(["web", "mcp", "system"]).optional(),
+        since: z
+          .string()
+          .datetime()
+          .optional()
+          .describe("Ne garder que les entrées postérieures à cette date ISO."),
+        limit: z.number().int().min(1).max(500).default(100),
+      }),
+      annotations: readOnlyTool,
+    },
+    async ({ action, entityType, entityId, source, since, limit }) => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      const filters = [
+        entityType ? eq(auditLogs.entityType, entityType) : undefined,
+        entityId ? eq(auditLogs.entityId, entityId) : undefined,
+        source ? eq(auditLogs.source, source) : undefined,
+        since ? gte(auditLogs.createdAt, new Date(since)) : undefined,
+        action ? like(auditLogs.action, `${action}%`) : undefined,
+      ].filter(Boolean);
+      const items = await db.query.auditLogs.findMany({
+        where: filters.length ? and(...filters) : undefined,
+        orderBy: [desc(auditLogs.createdAt)],
+        limit,
+        with: {
+          actor: { columns: { id: true, name: true, email: true } },
+        },
+      });
+      return toolResult({ items, count: items.length });
+    },
+  );
+
+  server.registerTool(
+    "get_update_status",
+    {
+      title: "État des mises à jour",
+      description:
+        "Retourne la version installée de l’application, sa révision, sa date de construction, la cadence de la mise à jour automatique et si une version plus récente est publiée.",
+      inputSchema: z.object({
+        refresh: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Forcer un contrôle immédiat au lieu du résultat mis en cache.",
+          ),
+      }),
+      annotations: readOnlyTool,
+    },
+    async ({ refresh }) => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      const status = await getUpdateStatus({ force: refresh });
+      return toolResult({ status });
     },
   );
 }

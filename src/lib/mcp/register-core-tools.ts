@@ -3,7 +3,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { HttpError } from "@/lib/auth/guards";
-import { computeDueAt } from "@/lib/dates";
+import { getBaseUrl } from "@/lib/base-url";
+import {
+  computeDueAt,
+  formatDateTime,
+  parseLocalDateTime,
+} from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
   checklistTemplates,
@@ -15,9 +20,14 @@ import {
   volunteerSlots,
 } from "@/lib/db/schema";
 import { getEventWithDetails } from "@/lib/data";
+import { sendEmail } from "@/lib/notifications/email";
+import {
+  broadcastEmail,
+  volunteerConfirmationEmail,
+} from "@/lib/notifications/emails";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
-import { generateShareToken } from "@/lib/tokens";
+import { generateShareToken, generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import {
   eventSchema,
@@ -894,6 +904,358 @@ export function registerCoreTools(
         id,
       );
       return toolResult({ id, deleted: true });
+    },
+  );
+
+  server.registerTool(
+    "list_tasks",
+    {
+      title: "Lister les tâches",
+      description:
+        "Liste les tâches de tous les événements, filtrables par statut, échéance, événement ou responsable. Complète get_event, qui ne montre qu’un événement.",
+      inputSchema: z.object({
+        status: z.enum(["todo", "in_progress", "done"]).optional(),
+        eventId: z.string().uuid().optional(),
+        assigneeId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe("Ne garder que les tâches confiées à ce compte."),
+        dueBefore: localDateTime
+          .optional()
+          .describe("Ne garder que les tâches à traiter avant cette date."),
+        limit: z.number().int().min(1).max(200).default(50),
+      }),
+      annotations: readOnlyTool,
+    },
+    async ({ status, eventId, assigneeId, dueBefore, limit }) => {
+      requireMcpAccess(principal, "mcp:read", "manager");
+      const filters = [
+        status ? eq(tasks.status, status) : undefined,
+        eventId ? eq(tasks.eventId, eventId) : undefined,
+      ].filter(Boolean);
+      let items = await db.query.tasks.findMany({
+        where: filters.length ? and(...filters) : undefined,
+        orderBy: [asc(tasks.dueAt), asc(tasks.position)],
+        limit: assigneeId || dueBefore ? 500 : limit,
+        with: {
+          event: { columns: { id: true, title: true, startAt: true } },
+          assignees: {
+            with: {
+              user: { columns: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      });
+      if (assigneeId) {
+        items = items.filter((task) =>
+          task.assignees.some((entry) => entry.userId === assigneeId),
+        );
+      }
+      if (dueBefore) {
+        // Comme partout ailleurs, la chaîne est lue en heure de Paris.
+        const limitDate = parseLocalDateTime(dueBefore);
+        items = items.filter(
+          (task) => task.dueAt !== null && task.dueAt <= limitDate,
+        );
+      }
+      items = items.slice(0, limit);
+      return toolResult({ items, count: items.length });
+    },
+  );
+
+  server.registerTool(
+    "reorder_event_tasks",
+    {
+      title: "Réorganiser une check-list",
+      description:
+        "Réordonne les tâches d’un événement. La liste doit contenir chaque tâche de l’événement exactement une fois.",
+      inputSchema: z.object({
+        eventId: z.string().uuid(),
+        orderedTaskIds: z.array(z.string().uuid()).min(1).max(500),
+      }),
+      annotations: writeTool,
+    },
+    async ({ eventId, orderedTaskIds }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      // Contrôle et écriture dans la même transaction : une tâche ajoutée
+      // entre-temps fait échouer la réorganisation au lieu de rester orpheline.
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(eq(tasks.eventId, eventId));
+        const expected = new Set(existing.map((task) => task.id));
+        const requested = new Set(orderedTaskIds);
+        if (
+          requested.size !== orderedTaskIds.length ||
+          requested.size !== expected.size ||
+          orderedTaskIds.some((id) => !expected.has(id))
+        ) {
+          throw new Error(
+            "L’ordre doit contenir chaque tâche de l’événement une seule fois.",
+          );
+        }
+        for (const [position, taskId] of orderedTaskIds.entries()) {
+          await tx
+            .update(tasks)
+            .set({ position })
+            .where(and(eq(tasks.id, taskId), eq(tasks.eventId, eventId)));
+        }
+        await tx
+          .update(events)
+          .set({ version: sql`${events.version} + 1` })
+          .where(eq(events.id, eventId));
+      });
+      await recordAudit(
+        mcpAuditActor(principal),
+        "task.reorder",
+        "event",
+        eventId,
+        { count: orderedTaskIds.length },
+      );
+      return toolResult(
+        { eventId, ordered: orderedTaskIds.length },
+        "Check-list réorganisée.",
+      );
+    },
+  );
+
+  server.registerTool(
+    "create_volunteer_signup",
+    {
+      title: "Inscrire un bénévole",
+      description:
+        "Inscrit manuellement un bénévole sur un créneau, par exemple après une réponse reçue de vive voix. Refuse un créneau complet ou un doublon d’e-mail, et envoie la confirmation si une adresse est fournie.",
+      inputSchema: z.object({
+        slotId: z.string().uuid(),
+        name: z.string().min(2).max(120),
+        email: z.string().email().nullable().optional(),
+        phone: z.string().max(40).nullable().optional(),
+        notify: z
+          .boolean()
+          .default(true)
+          .describe("Envoyer l’e-mail de confirmation au bénévole."),
+      }),
+      annotations: writeTool,
+    },
+    async ({ slotId, name, email, phone, notify }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const slot = await db.query.volunteerSlots.findFirst({
+        where: eq(volunteerSlots.id, slotId),
+        with: { event: true },
+      });
+      if (!slot) throw new Error("Créneau introuvable.");
+      if (!email && !phone) {
+        throw new Error("Indiquez au moins un e-mail ou un téléphone.");
+      }
+
+      const normalizedEmail = emptyToNull(email ?? null)?.toLowerCase() ?? null;
+      // Même longueur que l'inscription publique : ce jeton protège le lien de
+      // désinscription envoyé au bénévole.
+      const cancelToken = generateToken(18);
+
+      // Insertion conditionnée à la capacité restante, comme l'inscription
+      // publique : deux appels simultanés ne peuvent pas dépasser la capacité.
+      let inserted;
+      try {
+        inserted = await db.execute(sql`
+          INSERT INTO volunteer_signups (slot_id, name, email, phone, cancel_token)
+          SELECT
+            ${slot.id}::uuid,
+            ${name},
+            ${normalizedEmail},
+            ${emptyToNull(phone ?? null)},
+            ${cancelToken}
+          WHERE (
+            SELECT count(*) FROM volunteer_signups WHERE slot_id = ${slot.id}::uuid
+          ) < ${slot.capacity}
+          RETURNING id
+        `);
+      } catch (error) {
+        if ((error as { code?: string })?.code === "23505") {
+          throw new Error("Ce bénévole est déjà inscrit à ce créneau.");
+        }
+        throw error;
+      }
+      if (inserted.length === 0) {
+        throw new Error("Ce créneau est complet.");
+      }
+      const signupId = (inserted[0] as { id: string }).id;
+
+      let notified = false;
+      if (notify && normalizedEmail) {
+        const baseUrl = await getBaseUrl();
+        const mail = volunteerConfirmationEmail({
+          name,
+          eventTitle: slot.event.title,
+          eventDate: formatDateTime(slot.event.startAt),
+          slotTitle: slot.title,
+          location: slot.event.location,
+          cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
+          identity: {
+            associationName: association.associationName,
+            schoolName: association.schoolName,
+            rna: association.rna,
+          },
+        });
+        notified = Boolean(await sendEmail({ to: normalizedEmail, ...mail }));
+      }
+
+      await recordAudit(
+        mcpAuditActor(principal),
+        "volunteer_signup.create",
+        "volunteer_signup",
+        signupId,
+        { slotId, notified },
+      );
+      return toolResult(
+        { id: signupId, slotId, notified },
+        "Bénévole inscrit.",
+      );
+    },
+  );
+
+  server.registerTool(
+    "send_event_message",
+    {
+      title: "Écrire aux bénévoles d’un événement",
+      description:
+        "Envoie un e-mail à tous les bénévoles inscrits aux créneaux d’un événement.",
+      inputSchema: z.object({
+        eventId: z.string().uuid(),
+        subject: z.string().min(2).max(160),
+        message: z.string().min(2).max(10_000),
+        confirm: z.literal(true),
+      }),
+      annotations: {
+        ...destructiveTool,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ eventId, subject, message }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const event = await getEventWithDetails(eventId);
+      if (!event) throw new Error("Événement introuvable.");
+
+      const recipients = [
+        ...new Set(
+          event.volunteerSlots
+            .flatMap((slot) => slot.signups)
+            .map((signup) => signup.email?.toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+        ),
+      ].slice(0, 500);
+      if (recipients.length === 0) {
+        throw new Error("Aucun bénévole inscrit avec une adresse e-mail.");
+      }
+
+      const mail = broadcastEmail({
+        subject,
+        message,
+        senderName: principal.name,
+        identity: {
+          associationName: association.associationName,
+          schoolName: association.schoolName,
+          rna: association.rna,
+        },
+      });
+      let sent = 0;
+      const batchSize = 5;
+      for (let index = 0; index < recipients.length; index += batchSize) {
+        const results = await Promise.all(
+          recipients
+            .slice(index, index + batchSize)
+            .map((to) => sendEmail({ to, ...mail })),
+        );
+        sent += results.filter(Boolean).length;
+      }
+
+      await recordAudit(
+        mcpAuditActor(principal),
+        "mail.broadcast_event",
+        "event",
+        eventId,
+        { requested: recipients.length, sent },
+      );
+      return toolResult(
+        { eventId, requested: recipients.length, sent },
+        `Message envoyé à ${sent} bénévole(s).`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "broadcast_to_members",
+    {
+      title: "Écrire aux membres de l’équipe",
+      description:
+        "Envoie un e-mail à tous les comptes applicatifs. Distinct de broadcast_to_adherents, qui vise les adhérents de l’association.",
+      inputSchema: z.object({
+        subject: z.string().min(2).max(160),
+        message: z.string().min(2).max(10_000),
+        role: z
+          .enum(["member", "manager", "admin"])
+          .optional()
+          .describe("Ne viser que les comptes ayant ce rôle."),
+        confirm: z.literal(true),
+      }),
+      annotations: {
+        ...destructiveTool,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ subject, message, role }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const rows = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(role ? eq(users.role, role) : undefined);
+      const recipients = [
+        ...new Set(
+          rows
+            .map((row) => row.email?.toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+        ),
+      ].slice(0, 500);
+      if (recipients.length === 0) {
+        throw new Error("Aucun membre à contacter.");
+      }
+
+      const mail = broadcastEmail({
+        subject,
+        message,
+        senderName: principal.name,
+        identity: {
+          associationName: association.associationName,
+          schoolName: association.schoolName,
+          rna: association.rna,
+        },
+      });
+      let sent = 0;
+      const batchSize = 5;
+      for (let index = 0; index < recipients.length; index += batchSize) {
+        const results = await Promise.all(
+          recipients
+            .slice(index, index + batchSize)
+            .map((to) => sendEmail({ to, ...mail })),
+        );
+        sent += results.filter(Boolean).length;
+      }
+
+      await recordAudit(
+        mcpAuditActor(principal),
+        "mail.broadcast_members",
+        "user",
+        null,
+        { requested: recipients.length, sent, role: role ?? null },
+      );
+      return toolResult(
+        { requested: recipients.length, sent },
+        `Message envoyé à ${sent} membre(s).`,
+      );
     },
   );
 }
