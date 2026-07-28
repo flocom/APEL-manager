@@ -1,0 +1,74 @@
+name: Publier l'image Docker
+
+# Publie l'image sur GHCR à chaque évolution de `main` et à chaque tag `v*`.
+# C'est cette image que le service `updater` (Watchtower) surveille sur les
+# instances déployées : une fois poussée, la mise à jour part toute seule.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Préparer QEMU (construction multi-architecture)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: S'authentifier sur GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculer les tags et métadonnées
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Horodater la construction
+        id: build-time
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Construire et publier
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('main-{0}', github.run_number) }}
+            APP_REVISION=${{ github.sha }}
+            APP_BUILD_TIME=${{ steps.build-time.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

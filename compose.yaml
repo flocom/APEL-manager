@@ -24,6 +24,13 @@ x-app-environment: &app-environment
   UPLOADS_DIR: ${UPLOADS_DIR:-/app/data/uploads}
   UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-15728640}
   UPLOAD_ORPHAN_MAX_AGE_HOURS: ${UPLOAD_ORPHAN_MAX_AGE_HOURS:-24}
+  # Permet à l'écran Configuration d'indiquer si la mise à jour automatique
+  # tourne et à quelle cadence, sans dupliquer le réglage.
+  COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+  WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
+  UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-flocom/APEL-manager}
+  UPDATE_CHANNEL: ${UPDATE_CHANNEL:-main}
+  UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
 
 services:
   db:
@@ -64,11 +71,13 @@ services:
       - no-new-privileges:true
 
   app:
-    image: ${APEL_IMAGE:-apel-manager:local}
+    image: ${APEL_IMAGE:-ghcr.io/flocom/apel-manager:latest}
     build: *app-build
     restart: unless-stopped
     init: true
     environment: *app-environment
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     volumes:
       - app_config:/app/data/config
       - uploads_data:/app/data/uploads
@@ -94,10 +103,11 @@ services:
     stop_grace_period: 30s
 
   scheduler:
-    image: ${APEL_IMAGE:-apel-manager:local}
-    pull_policy: never
+    image: ${APEL_IMAGE:-ghcr.io/flocom/apel-manager:latest}
     restart: unless-stopped
     init: true
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
     environment:
       <<: *app-environment
       SKIP_MIGRATIONS: "1"
@@ -116,6 +126,33 @@ services:
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 30s
+
+  # Mise à jour automatique. Surveille l'image publiée sur GHCR et recrée `app`
+  # et `scheduler` dès qu'une nouvelle version paraît ; l'entrypoint applique
+  # ensuite les migrations. Seuls les conteneurs portant le label
+  # `com.centurylinklabs.watchtower.enable` sont concernés : la base, le proxy
+  # et Mailpit ne sont jamais touchés.
+  #
+  # Service inactif par défaut. Pour l'activer, renseigner dans `.env` :
+  #     COMPOSE_PROFILES="autoupdate"
+  # À laisser vide en développement local, sinon l'image construite depuis les
+  # sources serait remplacée par celle du registre.
+  updater:
+    image: containrrr/watchtower:1.7.1
+    profiles: ["autoupdate"]
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      # Accès nécessaire pour recréer les conteneurs. À n'activer que sur une
+      # machine dont les accès sont maîtrisés.
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
 
   caddy:
     image: caddy:2.11.4-alpine

@@ -1,15 +1,15 @@
 <p align="center">
   <img
-    src="./public/logo-notre-dame-des-flots.png"
-    alt="Logo de l'APEL Notre Dame des Flots"
-    width="220"
+    src="./public/logo.svg"
+    alt="APEL Manager"
+    width="96"
   />
 </p>
 
 <h1 align="center">APEL Manager</h1>
 
 <p align="center">
-  <strong>Le tableau de bord de l’APEL Notre Dame des Flots.</strong><br />
+  <strong>Le tableau de bord d’une association de parents d’élèves.</strong><br />
   Événements, bénévoles, adhérents, comptabilité et documents réunis dans une
   seule application.
 </p>
@@ -21,10 +21,14 @@
   <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" />
 </p>
 
-Application de gestion conçue pour l’**APEL Notre Dame des Flots**, association
-enregistrée sous le numéro RNA **W853001441**. Elle centralise le travail de
-l’équipe, de la préparation d’un événement jusqu’au suivi administratif et
-financier.
+Application de gestion pour une **APEL** (association de parents d’élèves de
+l’enseignement libre) ou toute association scolaire équivalente. Elle centralise
+le travail de l’équipe, de la préparation d’un événement jusqu’au suivi
+administratif et financier.
+
+Le dépôt ne contient **aucune donnée d’association** : identité, coordonnées,
+numéro RNA, événements, adhérents et écritures comptables vivent uniquement dans
+la base de l’instance déployée et se saisissent depuis l’application.
 
 ## Fonctionnalités
 
@@ -63,8 +67,9 @@ docker compose up --build -d
 Au premier lancement, les secrets internes sont générés, PostgreSQL est
 initialisé et les migrations sont appliquées automatiquement. Le **premier
 compte créé** depuis `/register` devient administrateur. Il peut ensuite ouvrir
-**Configuration** pour renseigner l’identité officielle, les fenêtres de
-rappel, Telegram et le fournisseur e-mail.
+**Configuration** pour renseigner l’identité officielle (nom de l’association,
+établissement, e-mail de contact, numéro RNA), les fenêtres de rappel, Telegram
+et le fournisseur e-mail.
 
 Les données restent conservées après un `docker compose down`. Pour arrêter la
 stack :
@@ -72,6 +77,14 @@ stack :
 ```bash
 docker compose down
 ```
+
+## Personnaliser l’identité visuelle
+
+Le logo livré (`public/logo.svg`) est volontairement neutre. Pour afficher celui
+de votre association, remplacez ce fichier par le vôtre en conservant le même
+nom : aucune modification de code n’est nécessaire. Si le logo ne doit pas être
+publié, gardez-le hors du dépôt (montez-le en volume ou ajoutez-le à
+`.gitignore` sur votre fork privé).
 
 ## Stack Docker complète
 
@@ -132,6 +145,9 @@ npm run dev
 Renseignez au minimum `DATABASE_URL`, `AUTH_SECRET` et
 `SETTINGS_ENCRYPTION_KEY` dans `.env`. L’application accepte toute base
 PostgreSQL compatible ; le guide Vercel utilise Neon.
+
+> Ne versionnez jamais de données réelles : dumps de base, exports d’adhérents,
+> plannings internes, pièces comptables ou fichiers `.env` renseignés.
 
 ## Documentation
 

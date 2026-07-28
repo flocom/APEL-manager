@@ -10,7 +10,9 @@ import { requireMcpAccess, type McpPrincipal } from "./types";
 
 export async function createApelMcpServer(principal: McpPrincipal) {
   const association = await getAssociationSettings();
-  const associationReference = `${association.associationName} (RNA ${association.rna})`;
+  const associationReference = association.rna.trim()
+    ? `${association.associationName} (RNA ${association.rna.trim()})`
+    : association.associationName;
   const server = new McpServer({
     name: "apel-manager",
     title: association.associationName,

@@ -16,5 +16,14 @@
 		X-Frame-Options "SAMEORIGIN"
 	}
 
-	reverse_proxy app:3000
+	# Pendant une mise à jour automatique, le conteneur `app` est recréé. Les
+	# requêtes patientent le temps que la nouvelle version réponde au lieu de
+	# renvoyer une erreur 502.
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 10s
+		health_timeout 5s
+		lb_try_duration 30s
+		lb_try_interval 500ms
+	}
 }

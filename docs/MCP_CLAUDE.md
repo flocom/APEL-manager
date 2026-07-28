@@ -2,8 +2,8 @@
 
 L'application expose un serveur MCP distant sécurisé permettant à Claude de
 piloter les événements, tâches, bénévoles, modèles, utilisateurs, adhérents,
-comptabilité, documents et réglages de l'**APEL Notre Dame des Flots**
-(RNA **W853001441**).
+comptabilité, documents et réglages de l'association configurée dans
+l'instance.
 
 ## Architecture
 

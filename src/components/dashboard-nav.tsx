@@ -104,10 +104,10 @@ function Logo({ appName }: { appName: string }) {
     >
       <span className="flex h-12 w-[5.25rem] shrink-0 items-center justify-center rounded-xl bg-white p-1.5">
         <Image
-          src="/logo-notre-dame-des-flots.png"
-          alt="Notre Dame des Flots"
-          width={425}
-          height={228}
+          src="/logo.svg"
+          alt={appName}
+          width={96}
+          height={96}
           className="h-full w-full object-contain"
           priority
         />

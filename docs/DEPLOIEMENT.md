@@ -4,8 +4,9 @@ Ce guide explique comment mettre APEL Manager en ligne sur **Vercel** avec une
 base **Neon Postgres**, activer les modules associatifs et configurer les
 e-mails sortants.
 
-L'instance est prévue pour l'**APEL Notre Dame des Flots**, enregistrée sous le
-numéro RNA **W853001441**.
+L'identité de l'association (nom, établissement, e-mail de contact, numéro RNA)
+n'est pas versionnée : elle se saisit après le déploiement dans **Tableau de
+bord → Configuration**.
 
 ---
 
@@ -110,7 +111,7 @@ Avant la mise en production :
 3. attendre que le domaine soit marqué comme vérifié ;
 4. renseigner ce domaine et une adresse correspondante dans
    **Configuration**, par exemple
-   `APEL Notre Dame des Flots <contact@votre-domaine.fr>` ;
+   `Nom de l'association <contact@votre-domaine.fr>` ;
 5. envoyer un nouveau message de test.
 
 Un relais SMTP peut être utilisé à la place de Resend sans modifier ni
@@ -152,10 +153,10 @@ attestations liées à un adhérent et les autres archives. Les statuts
 **brouillon**, **final** et **archivé** permettent de maîtriser leur cycle de
 vie.
 
-L'identité à faire apparaître sur les documents officiels est :
-
-- **APEL Notre Dame des Flots**
-- **N° RNA : W853001441**
+L'identité imprimée en en-tête et en pied de ces documents (nom de
+l'association, établissement et numéro RNA) provient de **Configuration**. Le
+numéro RNA reste facultatif : s'il est vide, il n'apparaît pas sur les
+documents.
 
 ## 6. Le Cron de rappels
 

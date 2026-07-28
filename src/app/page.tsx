@@ -78,16 +78,17 @@ export default async function HomePage() {
             <div>
               <span className="inline-flex items-center gap-2 rounded-lg bg-sea-200 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-brand-950">
                 <HeartHandshake className="h-4 w-4" strokeWidth={2.5} />
-                APEL · {settings.schoolName}
+                {settings.associationName} · {settings.schoolName}
               </span>
               <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.03] tracking-[-0.05em] sm:text-6xl lg:text-7xl">
                 Les parents font bouger{" "}
                 <span className="text-sea-300">l&apos;école.</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base font-medium leading-7 text-brand-100 sm:text-lg">
-                Découvrez les rendez-vous de l&apos;APEL et choisissez
-                simplement comment donner un coup de main. Un créneau, une
-                mission, un beau moment partagé.
+                Découvrez les rendez-vous de l&apos;association{" "}
+                {settings.associationName} et choisissez simplement comment
+                donner un coup de main. Un créneau, une mission, un beau moment
+                partagé.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <a

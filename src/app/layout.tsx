@@ -17,7 +17,9 @@ const inter = Inter({
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getAssociationSettings();
-  const description = `Agenda des événements, check-lists de préparation et inscriptions des bénévoles de l'APEL de l'${settings.schoolName}.`;
+  const description = `${settings.associationName} — agenda des événements, check-lists de préparation et inscriptions des bénévoles${
+    settings.schoolName ? ` de ${settings.schoolName}` : ""
+  }.`;
 
   return {
     metadataBase: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL
@@ -41,8 +43,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: { card: "summary" },
     icons: {
-      icon: "/site-icon.png",
-      apple: "/site-icon.png",
+      icon: "/logo.svg",
+      apple: "/logo.svg",
     },
   };
 }

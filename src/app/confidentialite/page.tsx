@@ -22,8 +22,10 @@ export default async function PrivacyPage() {
       title: "Responsable",
       content: (
         <>
-          Les données collectées via {settings.associationName} sont traitées par
-          l&apos;association APEL qui organise les événements.
+          Les données collectées sur ce site sont traitées par
+          l&apos;association {settings.associationName}, qui organise les
+          événements.
+          {settings.schoolName ? ` Établissement : ${settings.schoolName}.` : ""}
           {settings.contactEmail ? ` Contact : ${settings.contactEmail}.` : ""}
         </>
       ),
@@ -98,7 +100,8 @@ export default async function PrivacyPage() {
             </h1>
             <p className="mt-4 max-w-xl text-sm font-medium leading-6 text-brand-100">
               Nous collectons uniquement les informations nécessaires à
-              l&apos;organisation des événements de l&apos;APEL.
+              l&apos;organisation des événements de l&apos;association{" "}
+              {settings.associationName}.
             </p>
           </div>
         </section>

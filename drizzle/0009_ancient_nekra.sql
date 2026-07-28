@@ -1,10 +1,10 @@
 ALTER TYPE "public"."outbound_mail_provider" ADD VALUE 'smtp';--> statement-breakpoint
 CREATE TABLE "association_settings" (
 	"id" text PRIMARY KEY DEFAULT 'default' NOT NULL,
-	"association_name" text DEFAULT 'APEL Notre Dame des Flots' NOT NULL,
-	"school_name" text DEFAULT 'École Notre Dame des Flots' NOT NULL,
+	"association_name" text DEFAULT 'APEL Manager' NOT NULL,
+	"school_name" text DEFAULT 'Votre établissement' NOT NULL,
 	"contact_email" text,
-	"rna" text DEFAULT 'W853001441' NOT NULL,
+	"rna" text DEFAULT '' NOT NULL,
 	"task_reminder_window_days" integer DEFAULT 3 NOT NULL,
 	"volunteer_reminder_window_days" integer DEFAULT 2 NOT NULL,
 	"telegram_enabled" boolean DEFAULT false NOT NULL,

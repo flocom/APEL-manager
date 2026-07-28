@@ -33,3 +33,12 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# données réelles de l'association : ne jamais versionner
+# (pièces jointes, dumps de base, exports d'adhérents ou de comptabilité)
+/data
+/uploads
+*.dump
+*.sqlbackup
+export-*.csv
+export-*.json

@@ -10,9 +10,8 @@ import { recordAudit, type AuditActor } from "./audit";
 import { decryptSecret, encryptSecret } from "./settings-secrets";
 
 const SETTINGS_ID = "default";
-const DEFAULT_RESEND_FROM =
-  "APEL Notre Dame des Flots <onboarding@resend.dev>";
-const DEFAULT_SMTP_FROM = "APEL Notre Dame des Flots <noreply@apel.local>";
+const DEFAULT_RESEND_FROM = "APEL Manager <onboarding@resend.dev>";
+const DEFAULT_SMTP_FROM = "APEL Manager <noreply@apel.local>";
 
 export type OutboundMailRuntimeConfig =
   | {

@@ -2,12 +2,14 @@ import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
+import { getRuntimeVersion } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
   const startedAt = Date.now();
+  const version = getRuntimeVersion();
 
   try {
     await db.execute(sql`select 1`);
@@ -16,6 +18,9 @@ export async function GET() {
         status: "ok",
         database: "up",
         latencyMs: Date.now() - startedAt,
+        version: version.version,
+        revision: version.shortRevision || null,
+        buildTime: version.buildTime,
       },
       {
         headers: { "Cache-Control": "no-store" },
@@ -30,6 +35,8 @@ export async function GET() {
       {
         status: "unavailable",
         database: "down",
+        version: version.version,
+        revision: version.shortRevision || null,
       },
       {
         status: 503,

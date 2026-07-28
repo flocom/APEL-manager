@@ -220,7 +220,7 @@ export function MailSettingsForm({
                   id="mail-domain"
                   name="domain"
                   defaultValue={settings.domain ?? ""}
-                  placeholder="apel-ndf.fr"
+                  placeholder="votre-domaine.fr"
                   autoComplete="off"
                 />
               </Field>
@@ -370,10 +370,8 @@ export function MailSettingsForm({
                 <Input
                   id="mail-from-name"
                   name="fromName"
-                  defaultValue={
-                    settings.fromName ?? "APEL Notre Dame des Flots"
-                  }
-                  placeholder="APEL Notre Dame des Flots"
+                  defaultValue={settings.fromName ?? ""}
+                  placeholder="APEL de votre établissement"
                 />
               </Field>
               <Field
@@ -386,7 +384,7 @@ export function MailSettingsForm({
                   name="fromEmail"
                   type="email"
                   defaultValue={settings.fromEmail ?? ""}
-                  placeholder="contact@apel-ndf.fr"
+                  placeholder="contact@votre-domaine.fr"
                   autoComplete="email"
                   required
                 />
@@ -401,7 +399,7 @@ export function MailSettingsForm({
                   name="replyTo"
                   type="email"
                   defaultValue={settings.replyTo ?? ""}
-                  placeholder="bureau@apel-notredamedesflots.fr"
+                  placeholder="bureau@votre-domaine.fr"
                   autoComplete="email"
                 />
               </Field>

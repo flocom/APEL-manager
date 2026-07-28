@@ -159,7 +159,7 @@ export function AssociationSettingsForm({
                   name="contactEmail"
                   type="email"
                   defaultValue={settings.contactEmail ?? ""}
-                  placeholder="contact@apel-ndf.fr"
+                  placeholder="contact@votre-domaine.fr"
                   autoComplete="email"
                 />
               </Field>
