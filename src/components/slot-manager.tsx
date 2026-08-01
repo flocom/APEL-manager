@@ -39,6 +39,37 @@ export function SlotManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  async function saveSlot(
+    slotId: string,
+    e: React.FormEvent<HTMLFormElement>,
+  ) {
+    e.preventDefault();
+    setBusySlotId(slotId);
+    setError(null);
+    const form = new FormData(e.currentTarget);
+    const startRaw = form.get("startAt");
+    const endRaw = form.get("endAt");
+    try {
+      await api(`/api/slots/${slotId}`, {
+        method: "PATCH",
+        body: {
+          title: form.get("title"),
+          description: form.get("description"),
+          capacity: Number(form.get("capacity") || 1),
+          startAt: startRaw ? startRaw : null,
+          endAt: endRaw ? endRaw : null,
+        },
+      });
+      setEditingId(null);
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusySlotId(null);
+    }
+  }
 
   async function addSlot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -46,6 +77,7 @@ export function SlotManager({
     setError(null);
     const form = new FormData(e.currentTarget);
     const startRaw = form.get("startAt");
+    const endRaw = form.get("endAt");
     try {
       await api(`/api/events/${eventId}/slots`, {
         body: {
@@ -53,7 +85,7 @@ export function SlotManager({
           description: form.get("description"),
           capacity: Number(form.get("capacity") || 1),
           startAt: startRaw ? startRaw : null,
-          endAt: null,
+          endAt: endRaw ? endRaw : null,
         },
       });
       setShowAdd(false);
@@ -158,8 +190,12 @@ export function SlotManager({
               />
             </div>
             <div>
-              <Label htmlFor="slot-start">Horaire (facultatif)</Label>
+              <Label htmlFor="slot-start">Début (facultatif)</Label>
               <Input id="slot-start" name="startAt" type="datetime-local" />
+            </div>
+            <div>
+              <Label htmlFor="slot-end">Fin (facultatif)</Label>
+              <Input id="slot-end" name="endAt" type="datetime-local" />
             </div>
           </div>
           <div className="flex gap-2">
@@ -202,6 +238,12 @@ export function SlotManager({
                     {slot.startAt && (
                       <p className="text-xs text-slate-500">
                         {formatDateTime(slot.startAt)}
+                        {slot.endAt && (
+                          <>
+                            <span className="mx-1 text-slate-400">→</span>
+                            {formatDateTime(slot.endAt)}
+                          </>
+                        )}
                       </p>
                     )}
                     {slot.description && (
@@ -218,6 +260,17 @@ export function SlotManager({
                     </Badge>
                     {canManage && (
                       <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingId(
+                              editingId === slot.id ? null : slot.id,
+                            )
+                          }
+                          className="text-xs font-medium text-slate-400 hover:text-brand-700"
+                        >
+                          {editingId === slot.id ? "Fermer" : "Modifier"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => duplicateSlot(slot)}
@@ -237,6 +290,87 @@ export function SlotManager({
                     )}
                   </div>
                 </div>
+
+                {canManage && editingId === slot.id && (
+                  <form
+                    onSubmit={(event) => saveSlot(slot.id, event)}
+                    className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div>
+                      <Label htmlFor={`edit-title-${slot.id}`}>
+                        Intitulé du créneau / mission
+                      </Label>
+                      <Input
+                        id={`edit-title-${slot.id}`}
+                        name="title"
+                        defaultValue={slot.title}
+                        required
+                        maxLength={200}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`edit-desc-${slot.id}`}>
+                        Description (facultatif)
+                      </Label>
+                      <Textarea
+                        id={`edit-desc-${slot.id}`}
+                        name="description"
+                        rows={2}
+                        defaultValue={slot.description ?? ""}
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label htmlFor={`edit-capacity-${slot.id}`}>
+                          Nombre de bénévoles
+                        </Label>
+                        <Input
+                          id={`edit-capacity-${slot.id}`}
+                          name="capacity"
+                          type="number"
+                          min={Math.max(1, slot.signups.length)}
+                          max={1000}
+                          defaultValue={slot.capacity}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`edit-start-${slot.id}`}>Début</Label>
+                        <Input
+                          id={`edit-start-${slot.id}`}
+                          name="startAt"
+                          type="datetime-local"
+                          defaultValue={toDatetimeLocal(slot.startAt)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor={`edit-end-${slot.id}`}>Fin</Label>
+                        <Input
+                          id={`edit-end-${slot.id}`}
+                          name="endAt"
+                          type="datetime-local"
+                          defaultValue={toDatetimeLocal(slot.endAt)}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={busySlotId === slot.id}
+                      >
+                        {busySlotId === slot.id ? "Enregistrement…" : "Enregistrer"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  </form>
+                )}
 
                 <div
                   className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"
