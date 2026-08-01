@@ -170,9 +170,10 @@ services:
       WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
       # Watchtower s'adresse au démon Docker en version d'API 1.25 par défaut,
       # que les moteurs récents refusent (« client version 1.25 is too old ») :
-      # sans cette valeur, aucune mise à jour n'a lieu. 1.41 est acceptée par
-      # tous les démons depuis Docker 20.10.
-      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-1.41}
+      # sans cette valeur, aucune mise à jour n'a lieu. 1.40 est la seule que
+      # tous les moteurs encore en service acceptent : c'est le maximum de
+      # Docker 19.03 et le minimum des versions actuelles.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-1.40}
       # Déclenchement à la demande depuis Configuration. Watchtower remplace la
       # valeur par le contenu du fichier quand elle désigne un fichier existant
       # : le jeton est donc celui que l'application a généré, sans que personne
@@ -180,6 +181,11 @@ services:
       # `.env` impose une valeur à la place.
       WATCHTOWER_HTTP_API_UPDATE: "true"
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-/config/updater-token}
+      # Indispensable : activer l'API ci-dessus suffit à faire disparaître le
+      # contrôle périodique (« Periodic runs are not enabled. » dans les logs).
+      # Sans cette ligne, le bouton fonctionnerait mais plus rien ne
+      # s'installerait tout seul.
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
       TZ: ${TZ:-Europe/Paris}
     # Joignable uniquement depuis le réseau Compose : jamais publié sur l'hôte.
     expose:
