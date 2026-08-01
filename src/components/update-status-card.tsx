@@ -228,15 +228,15 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
               {current.autoUpdate.enabled &&
                 !current.autoUpdate.canTriggerNow && (
                   <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
-                    L’installation immédiate n’est pas activée. Elle demande un
-                    secret partagé entre l’application et le service de mise à
-                    jour, qui autorise le redémarrage demandé depuis cette page
-                    — sans rapport avec l’accès à l’image, publique. Définissez
-                    une valeur au hasard dans{" "}
+                    L’installation immédiate n’est pas disponible : le jeton
+                    qui autorise cette page à demander un redémarrage au
+                    service de mise à jour n’a pas encore été généré. Il l’est
+                    tout seul au démarrage ; relancez la pile sur le serveur
+                    avec{" "}
                     <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">
-                      WATCHTOWER_HTTP_API_TOKEN
-                    </code>{" "}
-                    du .env du serveur, puis relancez la stack.
+                      docker compose pull &amp;&amp; docker compose up -d
+                    </code>
+                    .
                   </p>
                 )}
             </div>

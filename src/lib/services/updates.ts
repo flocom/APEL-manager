@@ -36,10 +36,10 @@ function watchtowerUrl() {
 }
 
 /**
- * Jeton partagé entre l'application et l'`updater`. Sans lui, Watchtower
- * n'écoute aucune demande de déclenchement et le bouton reste indisponible :
- * une mise à jour immédiate redémarre l'application, elle ne doit pas pouvoir
- * être déclenchée sans que l'exploitant l'ait explicitement autorisée.
+ * Jeton partagé entre l'application et l'`updater`, tous deux sur la même
+ * machine. L'entrypoint le génère au premier démarrage et le conserve dans le
+ * volume de configuration, où l'`updater` le relit : il n'y a aucune valeur à
+ * choisir. Il reste vide hors Docker, où aucun `updater` n'existe.
  */
 function watchtowerToken() {
   return process.env.WATCHTOWER_HTTP_API_TOKEN?.trim() || "";
@@ -221,7 +221,7 @@ export async function triggerUpdateNow(): Promise<TriggerOutcome> {
   const token = watchtowerToken();
   if (!token) {
     throw new Error(
-      "Le déclenchement immédiat n'est pas configuré : renseignez WATCHTOWER_HTTP_API_TOKEN.",
+      "Le déclenchement immédiat n'est pas disponible : relancez la pile Docker pour que le jeton partagé avec l'updater soit généré.",
     );
   }
 
@@ -234,7 +234,7 @@ export async function triggerUpdateNow(): Promise<TriggerOutcome> {
     });
     if (response.status === 401) {
       throw new Error(
-        "Jeton refusé par l'updater : la valeur diffère entre les deux conteneurs.",
+        "Jeton refusé par l'updater : il a démarré avant que le jeton ne soit généré. Relancez la pile Docker.",
       );
     }
     if (!response.ok) {
