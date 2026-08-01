@@ -18,11 +18,31 @@ const CHANNEL = process.env.UPDATE_CHANNEL?.trim() || "main";
 const CHECK_ENABLED = process.env.UPDATE_CHECK_ENABLED?.trim() !== "false";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 5000;
+/** Une recréation de conteneur dépasse largement le délai d'une vérification. */
+const TRIGGER_TIMEOUT_MS = 20_000;
 
 /** Cadence de surveillance du conteneur `updater`, en secondes. */
 function pollIntervalSeconds() {
   const raw = Number(process.env.WATCHTOWER_POLL_INTERVAL);
   return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 3600;
+}
+
+/**
+ * Adresse interne de l'`updater`. Elle n'est jamais exposée hors du réseau
+ * Compose : seule l'application peut la joindre.
+ */
+function watchtowerUrl() {
+  return process.env.WATCHTOWER_URL?.trim() || "http://updater:8080";
+}
+
+/**
+ * Jeton partagé entre l'application et l'`updater`. Sans lui, Watchtower
+ * n'écoute aucune demande de déclenchement et le bouton reste indisponible :
+ * une mise à jour immédiate redémarre l'application, elle ne doit pas pouvoir
+ * être déclenchée sans que l'exploitant l'ait explicitement autorisée.
+ */
+function watchtowerToken() {
+  return process.env.WATCHTOWER_HTTP_API_TOKEN?.trim() || "";
 }
 
 /**
@@ -55,6 +75,8 @@ export interface UpdateStatus {
   autoUpdate: {
     enabled: boolean;
     pollIntervalSeconds: number;
+    /** Vrai quand l'`updater` accepte un déclenchement immédiat. */
+    canTriggerNow: boolean;
   };
   repository: string;
   channel: string;
@@ -140,9 +162,11 @@ export async function getUpdateStatus(
   { force = false }: { force?: boolean } = {},
 ): Promise<UpdateStatus> {
   const current = getRuntimeVersion();
+  const enabled = autoUpdateEnabled();
   const autoUpdate = {
-    enabled: autoUpdateEnabled(),
+    enabled,
     pollIntervalSeconds: pollIntervalSeconds(),
+    canTriggerNow: enabled && watchtowerToken().length > 0,
   };
 
   if (!CHECK_ENABLED) {
@@ -180,4 +204,49 @@ export async function getUpdateStatus(
     checkedAt: new Date(checked.fetchedAt).toISOString(),
     error: checked.error,
   };
+}
+
+export type TriggerOutcome = "started" | "restarting";
+
+/**
+ * Demande à l'`updater` de contrôler l'image immédiatement au lieu d'attendre
+ * son prochain passage.
+ *
+ * Si une nouvelle version existe, l'`updater` recrée le conteneur de
+ * l'application — donc la requête en cours meurt avant toute réponse. Cette
+ * coupure est le signe que la mise à jour a commencé, pas une erreur : elle est
+ * distinguée d'un refus explicite, qui lui remonte normalement.
+ */
+export async function triggerUpdateNow(): Promise<TriggerOutcome> {
+  const token = watchtowerToken();
+  if (!token) {
+    throw new Error(
+      "Le déclenchement immédiat n'est pas configuré : renseignez WATCHTOWER_HTTP_API_TOKEN.",
+    );
+  }
+
+  try {
+    const response = await fetch(`${watchtowerUrl()}/v1/update`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(TRIGGER_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (response.status === 401) {
+      throw new Error(
+        "Jeton refusé par l'updater : la valeur diffère entre les deux conteneurs.",
+      );
+    }
+    if (!response.ok) {
+      throw new Error(`L'updater a répondu ${response.status}.`);
+    }
+    // L'updater a répondu : aucune image plus récente à installer.
+    return "started";
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      // La coupure attendue quand le conteneur est en train d'être remplacé.
+      return "restarting";
+    }
+    throw error;
+  }
 }

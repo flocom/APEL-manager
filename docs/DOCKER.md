@@ -252,6 +252,21 @@ WATCHTOWER_POLL_INTERVAL="3600"
 docker compose up -d
 ```
 
+Pour installer sans attendre le prochain contrôle, renseignez aussi un jeton
+partagé entre l'application et l'`updater` :
+
+```env
+WATCHTOWER_HTTP_API_TOKEN="…"   # openssl rand -base64 32
+```
+
+Un bouton **Appliquer maintenant** apparaît alors dans **Configuration →
+Version et mises à jour** dès qu'une version plus récente est publiée. Sans ce
+jeton, l'API de déclenchement de l'`updater` reste fermée et le bouton
+n'apparaît pas : une mise à jour immédiate redémarre l'application, elle ne doit
+pas pouvoir être lancée sans que vous l'ayez explicitement autorisée. Le port de
+l'`updater` n'est jamais publié sur l'hôte, il n'est joignable que depuis le
+réseau Compose.
+
 Déroulé d'une mise à jour : l'`updater` détecte l'image, la télécharge, recrée
 les conteneurs, l'entrypoint applique les migrations, puis Caddy réachemine le
 trafic. Les requêtes reçues pendant la bascule patientent au lieu d'échouer

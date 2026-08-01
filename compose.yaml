@@ -28,6 +28,7 @@ x-app-environment: &app-environment
   # tourne et à quelle cadence, sans dupliquer le réglage.
   COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
   WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
+  WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-}
   UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-flocom/APEL-manager}
   UPDATE_CHANNEL: ${UPDATE_CHANNEL:-main}
   UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
@@ -146,7 +147,14 @@ services:
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_INCLUDE_RESTARTING: "true"
       WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
+      # Déclenchement à la demande depuis Configuration. Sans jeton, l'API
+      # reste fermée et le bouton n'apparaît pas dans l'application.
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-}
       TZ: ${TZ:-Europe/Paris}
+    # Joignable uniquement depuis le réseau Compose : jamais publié sur l'hôte.
+    expose:
+      - "8080"
     volumes:
       # Accès nécessaire pour recréer les conteneurs. À n'activer que sur une
       # machine dont les accès sont maîtrisés.

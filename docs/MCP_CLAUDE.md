@@ -9,8 +9,8 @@ messagerie, journal d'audit et suivi des mises à jour.
 
 | Domaine | Capacités |
 |---|---|
-| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list |
-| **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables |
+| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list ; copier à une autre date |
+| **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables et y verser la check-list d'un événement |
 | **Bénévoles** | Créneaux (créer, modifier, supprimer), inscriptions (lister, inscrire manuellement, annuler) |
 | **Pièces jointes** | Lister, rattacher et retirer les documents d'un événement |
 | **Communication** | Écrire aux bénévoles d'un événement, aux membres de l'équipe, aux adhérents ; régler Resend/SMTP et envoyer un message de test |

@@ -34,6 +34,10 @@ import {
   deleteEventAttachment,
   listEventAttachments,
 } from "@/lib/services/event-attachments";
+import {
+  duplicateEvent,
+  overwriteTemplateFromEvent,
+} from "@/lib/services/events";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { generateShareToken, generateToken } from "@/lib/tokens";
@@ -621,6 +625,65 @@ export function registerCoreTools(
         id,
       );
       return toolResult({ id, deleted: true });
+    },
+  );
+
+  server.registerTool(
+    "duplicate_event",
+    {
+      title: "Copier un événement à une autre date",
+      description:
+        "Crée une copie en brouillon à la date indiquée. Reprend la check-list et les créneaux bénévoles, avec échéances et horaires replacés par rapport à la nouvelle date. Ne copie ni les inscriptions, ni les écritures comptables, ni les pièces jointes.",
+      inputSchema: z.object({
+        id: z.string().uuid(),
+        startAt: localDateTime,
+        title: z
+          .string()
+          .min(2)
+          .max(200)
+          .nullable()
+          .optional()
+          .describe("Titre de la copie ; par défaut celui de l’original."),
+      }),
+      annotations: writeTool,
+    },
+    async ({ id, startAt, title }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const result = await duplicateEvent(
+        { eventId: id, startAt: parseLocalDateTime(startAt), title },
+        mcpAuditActor(principal),
+      );
+      return toolResult(result, "Copie créée en brouillon.");
+    },
+  );
+
+  server.registerTool(
+    "overwrite_template_from_event",
+    {
+      title: "Verser une check-list dans un modèle",
+      description:
+        "Remplace le contenu d’un modèle par la check-list d’un événement, dans son ordre actuel. Sert à renvoyer vers le modèle les corrections découvertes en préparant l’événement. Les événements déjà créés ne changent pas.",
+      inputSchema: z.object({
+        eventId: z.string().uuid(),
+        templateId: z.string().uuid(),
+        confirm: z.literal(true),
+      }),
+      annotations: destructiveTool,
+    },
+    async ({ eventId, templateId }) => {
+      requireMcpAccess(principal, "mcp:write", "manager");
+      const result = await overwriteTemplateFromEvent(
+        { eventId, templateId },
+        mcpAuditActor(principal),
+      );
+      return toolResult(
+        {
+          templateId,
+          previousCount: result.previousCount,
+          taskCount: result.taskCount,
+        },
+        `Modèle mis à jour : ${result.previousCount} → ${result.taskCount} tâches.`,
+      );
     },
   );
 
