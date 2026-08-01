@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { FormattedText } from "@/components/formatted-text";
 import { TaskStatusSelect } from "@/components/task-status-select";
 import {
   Badge,
@@ -588,9 +589,10 @@ export function TaskManager({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900">{task.title}</p>
                     {task.description && (
-                      <p className="mt-0.5 text-sm text-slate-500">
-                        {task.description}
-                      </p>
+                      <FormattedText
+                        text={task.description}
+                        className="mt-0.5 text-sm text-slate-500"
+                      />
                     )}
                     <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
                       <CalendarClock className="h-3.5 w-3.5 text-brand-600" />

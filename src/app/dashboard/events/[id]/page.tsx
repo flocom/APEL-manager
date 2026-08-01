@@ -136,6 +136,7 @@ export default async function EventDetailPage({
     description: s.description,
     capacity: s.capacity,
     startAt: s.startAt ? s.startAt.toISOString() : null,
+    endAt: s.endAt ? s.endAt.toISOString() : null,
     signups: s.signups.map((g) => ({
       id: g.id,
       name: g.name,

@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { FormattedText } from "@/components/formatted-text";
 import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
 import { api } from "@/lib/client";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 
 export interface SignupItemData {
   id: string;
@@ -20,6 +21,7 @@ export interface SlotItemData {
   description: string | null;
   capacity: number;
   startAt: string | null;
+  endAt: string | null;
   signups: SignupItemData[];
 }
 
@@ -36,6 +38,7 @@ export function SlotManager({
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busySlotId, setBusySlotId] = useState<string | null>(null);
 
   async function addSlot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -59,6 +62,35 @@ export function SlotManager({
       setError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Recrée le créneau à l'identique dans le même événement, sans ses
+   * inscriptions : elles appartiennent aux personnes qui se sont engagées sur
+   * l'original. Le titre est suffixé pour que les deux restent distinguables
+   * avant ajustement.
+   */
+  async function duplicateSlot(slot: SlotItemData) {
+    setBusySlotId(slot.id);
+    setError(null);
+    try {
+      await api(`/api/events/${eventId}/slots`, {
+        body: {
+          title: `${slot.title} (copie)`.slice(0, 200),
+          // Le schéma attend une chaîne : un créneau sans description est
+          // envoyé vide, la route la reconvertit en NULL.
+          description: slot.description ?? "",
+          capacity: slot.capacity,
+          startAt: slot.startAt ? toDatetimeLocal(slot.startAt) : null,
+          endAt: slot.endAt ? toDatetimeLocal(slot.endAt) : null,
+        },
+      });
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusySlotId(null);
     }
   }
 
@@ -173,9 +205,10 @@ export function SlotManager({
                       </p>
                     )}
                     {slot.description && (
-                      <p className="mt-0.5 text-sm text-slate-500">
-                        {slot.description}
-                      </p>
+                      <FormattedText
+                        text={slot.description}
+                        className="mt-0.5 text-sm text-slate-500"
+                      />
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -184,13 +217,23 @@ export function SlotManager({
                       {slot.signups.length > 1 ? "s" : ""} sur {slot.capacity}
                     </Badge>
                     {canManage && (
-                      <button
-                        type="button"
-                        onClick={() => deleteSlot(slot.id)}
-                        className="text-xs font-medium text-slate-400 hover:text-red-600"
-                      >
-                        Supprimer
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => duplicateSlot(slot)}
+                          disabled={busySlotId === slot.id}
+                          className="text-xs font-medium text-slate-400 hover:text-brand-700 disabled:opacity-50"
+                        >
+                          {busySlotId === slot.id ? "Copie…" : "Dupliquer"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteSlot(slot.id)}
+                          className="text-xs font-medium text-slate-400 hover:text-red-600"
+                        >
+                          Supprimer
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
