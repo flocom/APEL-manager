@@ -227,9 +227,16 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
               )}
               {current.autoUpdate.enabled &&
                 !current.autoUpdate.canTriggerNow && (
-                  <p className="mt-2 text-xs font-medium text-slate-500">
-                    Pour l’installer sans attendre, renseignez
-                    WATCHTOWER_HTTP_API_TOKEN dans le .env du serveur.
+                  <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                    L’installation immédiate n’est pas activée. Elle demande un
+                    secret partagé entre l’application et le service de mise à
+                    jour, qui autorise le redémarrage demandé depuis cette page
+                    — sans rapport avec l’accès à l’image, publique. Définissez
+                    une valeur au hasard dans{" "}
+                    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">
+                      WATCHTOWER_HTTP_API_TOKEN
+                    </code>{" "}
+                    du .env du serveur, puis relancez la stack.
                   </p>
                 )}
             </div>
