@@ -252,20 +252,19 @@ WATCHTOWER_POLL_INTERVAL="3600"
 docker compose up -d
 ```
 
-Pour installer sans attendre le prochain contrôle, renseignez aussi un jeton
-partagé entre l'application et l'`updater` :
-
-```env
-WATCHTOWER_HTTP_API_TOKEN="…"   # openssl rand -base64 32
-```
-
-Un bouton **Appliquer maintenant** apparaît alors dans **Configuration →
-Version et mises à jour** dès qu'une version plus récente est publiée. Sans ce
-jeton, l'API de déclenchement de l'`updater` reste fermée et le bouton
-n'apparaît pas : une mise à jour immédiate redémarre l'application, elle ne doit
-pas pouvoir être lancée sans que vous l'ayez explicitement autorisée. Le port de
+Un bouton **Appliquer maintenant** apparaît dans **Configuration → Version et
+mises à jour** dès qu'une version plus récente est publiée, pour l'installer
+sans attendre le prochain contrôle. Il n'y a rien à configurer : l'API de
+déclenchement de l'`updater` demande un jeton, que l'entrypoint de
+l'application génère au premier démarrage et conserve dans le volume
+`app_config`. Le conteneur `updater-token`, lancé par le même profil, s'assure
+qu'il existe avant que l'`updater` ne démarre et le relise. Le port de
 l'`updater` n'est jamais publié sur l'hôte, il n'est joignable que depuis le
 réseau Compose.
+
+Renseigner `WATCHTOWER_HTTP_API_TOKEN` dans `.env` impose une valeur à la place
+de celle qui est générée. C'est facultatif et sans effet sur la sécurité du
+déclenchement.
 
 Déroulé d'une mise à jour : l'`updater` détecte l'image, la télécharge, recrée
 les conteneurs, l'entrypoint applique les migrations, puis Caddy réachemine le
@@ -275,6 +274,14 @@ trafic. Les requêtes reçues pendant la bascule patientent au lieu d'échouer
 Seuls `app` et `scheduler` portent le label
 `com.centurylinklabs.watchtower.enable` : PostgreSQL, Caddy et Mailpit ne sont
 jamais remplacés automatiquement.
+
+L'`updater` ne met à jour que des images : `compose.yaml` vit sur le serveur et
+reste tel quel. Après un `git pull` qui le modifie, `docker compose pull &&
+docker compose up -d` applique le nouveau fichier avec la dernière image.
+`DOCKER_API_VERSION` en fait partie : sans elle, Watchtower s'adresse au démon
+Docker dans une version d'API que les moteurs récents refusent, et aucune mise
+à jour n'a lieu. `docker compose logs updater` le dit explicitement
+(« client version 1.25 is too old »).
 
 > L'`updater` a besoin d'accéder à `/var/run/docker.sock`, ce qui équivaut à un
 > accès root sur l'hôte. À réserver à une machine dont les accès sont

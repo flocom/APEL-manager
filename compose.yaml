@@ -28,6 +28,8 @@ x-app-environment: &app-environment
   # tourne et à quelle cadence, sans dupliquer le réglage.
   COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
   WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
+  # Laissée vide, l'entrypoint génère le jeton au premier démarrage et le
+  # conserve dans le volume de configuration, d'où l'`updater` le relit.
   WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-}
   UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-flocom/APEL-manager}
   UPDATE_CHANNEL: ${UPDATE_CHANNEL:-main}
@@ -128,6 +130,25 @@ services:
       - no-new-privileges:true
     stop_grace_period: 30s
 
+  # Prépare le jeton partagé avec l'`updater` avant que celui-ci ne démarre :
+  # l'entrypoint de l'image génère et conserve les secrets manquants, puis ce
+  # conteneur s'arrête aussitôt. Il existe pour que l'`updater` n'ait pas à
+  # attendre que l'application soit saine — il est justement ce qui permet de
+  # rétablir une application cassée.
+  updater-token:
+    image: ${APEL_IMAGE:-ghcr.io/flocom/apel-manager:latest}
+    profiles: ["autoupdate"]
+    restart: "no"
+    init: true
+    environment:
+      <<: *app-environment
+      SKIP_MIGRATIONS: "1"
+    command: ["true"]
+    volumes:
+      - app_config:/app/data/config
+    security_opt:
+      - no-new-privileges:true
+
   # Mise à jour automatique. Surveille l'image publiée sur GHCR et recrée `app`
   # et `scheduler` dès qu'une nouvelle version paraît ; l'entrypoint applique
   # ensuite les migrations. Seuls les conteneurs portant le label
@@ -147,10 +168,18 @@ services:
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_INCLUDE_RESTARTING: "true"
       WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-3600}
-      # Déclenchement à la demande depuis Configuration. Sans jeton, l'API
-      # reste fermée et le bouton n'apparaît pas dans l'application.
+      # Watchtower s'adresse au démon Docker en version d'API 1.25 par défaut,
+      # que les moteurs récents refusent (« client version 1.25 is too old ») :
+      # sans cette valeur, aucune mise à jour n'a lieu. 1.41 est acceptée par
+      # tous les démons depuis Docker 20.10.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-1.41}
+      # Déclenchement à la demande depuis Configuration. Watchtower remplace la
+      # valeur par le contenu du fichier quand elle désigne un fichier existant
+      # : le jeton est donc celui que l'application a généré, sans que personne
+      # ait de valeur à choisir. Renseigner WATCHTOWER_HTTP_API_TOKEN dans le
+      # `.env` impose une valeur à la place.
       WATCHTOWER_HTTP_API_UPDATE: "true"
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-/config/updater-token}
       TZ: ${TZ:-Europe/Paris}
     # Joignable uniquement depuis le réseau Compose : jamais publié sur l'hôte.
     expose:
@@ -159,6 +188,13 @@ services:
       # Accès nécessaire pour recréer les conteneurs. À n'activer que sur une
       # machine dont les accès sont maîtrisés.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Lecture seule, pour le seul fichier `updater-token`. Le volume contient
+      # aussi les secrets de l'application : ce conteneur pouvait déjà les lire
+      # via le socket Docker, qui vaut un accès root sur l'hôte.
+      - app_config:/config:ro
+    depends_on:
+      updater-token:
+        condition: service_completed_successfully
     security_opt:
       - no-new-privileges:true
 
