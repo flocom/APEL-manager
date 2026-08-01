@@ -5,10 +5,12 @@ import {
   DownloadCloud,
   RefreshCw,
   RotateCw,
+  Rocket,
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card } from "@/components/ui";
 import { formatLongDateTime } from "@/lib/dates";
@@ -66,6 +68,8 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
   const toast = useToast();
   const [current, setCurrent] = useState(status);
   const [checking, setChecking] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [confirmApply, setConfirmApply] = useState(false);
 
   async function check() {
     setChecking(true);
@@ -90,6 +94,39 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
       );
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function applyNow() {
+    setConfirmApply(false);
+    setApplying(true);
+    try {
+      const response = await fetch("/api/updates/apply", { method: "POST" });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error || "Mise à jour impossible.");
+      }
+      const { outcome } = (await response.json()) as {
+        outcome: "started" | "restarting";
+      };
+      toast(
+        outcome === "restarting"
+          ? "Mise à jour lancée. L’application redémarre, rechargez la page dans un instant."
+          : "Contrôle effectué : aucune version plus récente à installer.",
+      );
+    } catch (error) {
+      // Le conteneur peut disparaître avant de répondre : la requête échoue
+      // alors côté navigateur alors que la mise à jour est bel et bien partie.
+      toast(
+        error instanceof TypeError
+          ? "Mise à jour lancée. L’application redémarre, rechargez la page dans un instant."
+          : (error as Error).message,
+        error instanceof TypeError ? "success" : "error",
+      );
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -176,6 +213,25 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
                     )}), sans intervention.`
                   : "La mise à jour automatique est désactivée : lancez « docker compose pull && docker compose up -d » sur le serveur."}
               </p>
+              {current.autoUpdate.canTriggerNow && (
+                <Button
+                  type="button"
+                  size="sm"
+                  icon={Rocket}
+                  loading={applying}
+                  onClick={() => setConfirmApply(true)}
+                  className="mt-3"
+                >
+                  Appliquer maintenant
+                </Button>
+              )}
+              {current.autoUpdate.enabled &&
+                !current.autoUpdate.canTriggerNow && (
+                  <p className="mt-2 text-xs font-medium text-slate-500">
+                    Pour l’installer sans attendre, renseignez
+                    WATCHTOWER_HTTP_API_TOKEN dans le .env du serveur.
+                  </p>
+                )}
             </div>
           </div>
         )}
@@ -204,6 +260,16 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmApply}
+        title="Installer la mise à jour maintenant ?"
+        description="L’application va redémarrer pour installer la nouvelle version et appliquer les migrations. La coupure dure quelques dizaines de secondes ; les requêtes en cours patientent au lieu d’échouer."
+        confirmLabel="Installer maintenant"
+        loading={applying}
+        onConfirm={applyNow}
+        onCancel={() => setConfirmApply(false)}
+      />
     </Card>
   );
 }

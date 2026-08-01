@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Download,
+  CopyPlus,
   Landmark,
   LayoutDashboard,
   ListChecks,
@@ -25,6 +26,7 @@ import { ApplyTemplate } from "@/components/apply-template";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { BroadcastForm } from "@/components/broadcast-form";
 import { EventAttachmentsManager } from "@/components/event-attachments-manager";
+import { EventReuseActions } from "@/components/event-reuse-actions";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { FormattedText } from "@/components/formatted-text";
 import { ShareLink } from "@/components/share-link";
@@ -38,7 +40,7 @@ import {
   getChecklistTemplates,
   getEventWithDetails,
 } from "@/lib/data";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 import { formatEurosAbsolute } from "@/lib/money";
 import {
   getAccountingSummary,
@@ -94,6 +96,11 @@ export default async function EventDetailPage({
         : Promise.resolve([]),
     ]);
   const publicUrl = `${baseUrl}/inscription/${event.shareToken}`;
+  // Un événement se rejoue le plus souvent l'année suivante : la copie propose
+  // cette date, modifiable avant validation.
+  const nextYearStart = new Date(event.startAt);
+  nextYearStart.setFullYear(nextYearStart.getFullYear() + 1);
+  const nextYearStartAt = toDatetimeLocal(nextYearStart);
   const totalSignups = event.volunteerSlots.reduce(
     (sum, s) => sum + s.signups.length,
     0,
@@ -341,6 +348,31 @@ export default async function EventDetailPage({
               canManage={canManage}
             />
           </Card>
+
+          {canManage && (
+            <>
+              <SectionHeading
+                icon={CopyPlus}
+                title="Réutiliser cet événement"
+                description="Versez sa check-list dans un modèle, ou rejouez-le à une autre date."
+              />
+              <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
+                <EventReuseActions
+                  eventId={event.id}
+                  eventTitle={event.title}
+                  taskCount={event.tasks.length}
+                  slotCount={event.volunteerSlots.length}
+                  templates={templates.map((template) => ({
+                    id: template.id,
+                    name: template.name,
+                    taskCount: template.tasks.length,
+                    version: template.version,
+                  }))}
+                  defaultStartAt={nextYearStartAt}
+                />
+              </Card>
+            </>
+          )}
         </div>
       )}
 
