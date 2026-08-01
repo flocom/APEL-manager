@@ -180,6 +180,11 @@ services:
       # `.env` impose une valeur à la place.
       WATCHTOWER_HTTP_API_UPDATE: "true"
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-/config/updater-token}
+      # Indispensable : activer l'API ci-dessus suffit à faire disparaître le
+      # contrôle périodique (« Periodic runs are not enabled. » dans les logs).
+      # Sans cette ligne, le bouton fonctionnerait mais plus rien ne
+      # s'installerait tout seul.
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
       TZ: ${TZ:-Europe/Paris}
     # Joignable uniquement depuis le réseau Compose : jamais publié sur l'hôte.
     expose:

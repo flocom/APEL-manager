@@ -277,11 +277,16 @@ jamais remplacés automatiquement.
 
 L'`updater` ne met à jour que des images : `compose.yaml` vit sur le serveur et
 reste tel quel. Après un `git pull` qui le modifie, `docker compose pull &&
-docker compose up -d` applique le nouveau fichier avec la dernière image.
-`DOCKER_API_VERSION` en fait partie : sans elle, Watchtower s'adresse au démon
-Docker dans une version d'API que les moteurs récents refusent, et aucune mise
-à jour n'a lieu. `docker compose logs updater` le dit explicitement
-(« client version 1.25 is too old »).
+docker compose up -d` applique le nouveau fichier avec la dernière image. Deux
+réglages sensibles s'y trouvent, que `docker compose logs updater` permet de
+contrôler :
+
+- `WATCHTOWER_HTTP_API_PERIODIC_POLLS` : activer l'API de déclenchement suffit
+  à supprimer le contrôle périodique. Les logs doivent afficher
+  `Scheduling first run: …` et non `Periodic runs are not enabled.`
+- `DOCKER_API_VERSION` : sans elle, Watchtower s'adresse au démon dans une
+  version d'API que les moteurs récents refusent
+  (« client version 1.25 is too old »).
 
 > L'`updater` a besoin d'accéder à `/var/run/docker.sock`, ce qui équivaut à un
 > accès root sur l'hôte. À réserver à une machine dont les accès sont
