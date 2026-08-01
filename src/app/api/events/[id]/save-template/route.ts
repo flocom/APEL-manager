@@ -3,14 +3,16 @@ import { z } from "zod";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { webAuditActor } from "@/lib/services/audit";
-import { overwriteTemplateFromEvent } from "@/lib/services/events";
+import { saveEventAsTemplate } from "@/lib/services/events";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
 const schema = z.object({
-  templateId: z.string().uuid("Modèle invalide"),
+  /** Absent : un nouveau modèle est créé à partir de l'événement. */
+  templateId: z.string().uuid("Modèle invalide").nullable().optional(),
+  name: z.string().trim().min(2).max(120).nullable().optional(),
   version: z.coerce.number().int().nonnegative().optional(),
 });
 
@@ -18,10 +20,10 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
-    const { templateId, version } = schema.parse(await req.json());
+    const { templateId, name, version } = schema.parse(await req.json());
 
-    const result = await overwriteTemplateFromEvent(
-      { eventId, templateId, expectedVersion: version },
+    const result = await saveEventAsTemplate(
+      { eventId, templateId, name, expectedVersion: version },
       webAuditActor(user.id, req),
     );
 

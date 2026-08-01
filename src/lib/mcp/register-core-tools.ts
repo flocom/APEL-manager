@@ -34,10 +34,7 @@ import {
   deleteEventAttachment,
   listEventAttachments,
 } from "@/lib/services/event-attachments";
-import {
-  duplicateEvent,
-  overwriteTemplateFromEvent,
-} from "@/lib/services/events";
+import { duplicateEvent, saveEventAsTemplate } from "@/lib/services/events";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { generateShareToken, generateToken } from "@/lib/tokens";
@@ -658,31 +655,57 @@ export function registerCoreTools(
   );
 
   server.registerTool(
-    "overwrite_template_from_event",
+    "save_event_as_template",
     {
-      title: "Verser une check-list dans un modèle",
+      title: "Copier un événement dans les modèles",
       description:
-        "Remplace le contenu d’un modèle par la check-list d’un événement, dans son ordre actuel. Sert à renvoyer vers le modèle les corrections découvertes en préparant l’événement. Les événements déjà créés ne changent pas.",
+        "Fait de la check-list d’un événement un modèle réutilisable, dans son ordre actuel. Sans templateId, crée un nouveau modèle reprenant le titre et la description de l’événement. Avec templateId, remplace le contenu du modèle indiqué — utile pour y renvoyer les corrections découvertes en préparant l’événement. Les événements déjà créés ne changent pas.",
       inputSchema: z.object({
         eventId: z.string().uuid(),
-        templateId: z.string().uuid(),
-        confirm: z.literal(true),
+        templateId: z
+          .string()
+          .uuid()
+          .nullable()
+          .optional()
+          .describe(
+            "Modèle à remplacer. Absent : un nouveau modèle est créé.",
+          ),
+        name: z
+          .string()
+          .min(2)
+          .max(120)
+          .nullable()
+          .optional()
+          .describe("Nom du nouveau modèle ; par défaut le titre de l’événement."),
+        confirm: z
+          .literal(true)
+          .optional()
+          .describe("Obligatoire pour remplacer un modèle existant."),
       }),
       annotations: destructiveTool,
     },
-    async ({ eventId, templateId }) => {
+    async ({ eventId, templateId, name, confirm }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const result = await overwriteTemplateFromEvent(
-        { eventId, templateId },
+      // Créer est sans risque ; remplacer détruit le contenu d’un modèle.
+      if (templateId && confirm !== true) {
+        throw new Error(
+          "Remplacer un modèle existant exige confirm: true.",
+        );
+      }
+      const result = await saveEventAsTemplate(
+        { eventId, templateId, name },
         mcpAuditActor(principal),
       );
       return toolResult(
         {
-          templateId,
+          templateId: result.template.id,
+          created: result.created,
           previousCount: result.previousCount,
           taskCount: result.taskCount,
         },
-        `Modèle mis à jour : ${result.previousCount} → ${result.taskCount} tâches.`,
+        result.created
+          ? `Modèle « ${result.template.name} » créé avec ${result.taskCount} tâches.`
+          : `Modèle remplacé : ${result.previousCount} → ${result.taskCount} tâches.`,
       );
     },
   );
