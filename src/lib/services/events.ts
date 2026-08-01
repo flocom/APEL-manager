@@ -18,31 +18,38 @@ import { emptyToNull } from "@/lib/utils";
 import { recordAudit, type AuditActor } from "./audit";
 
 /**
- * Reverse le contenu d'une check-list dans un modèle existant.
+ * Enregistre la check-list d'un événement comme modèle réutilisable.
  *
- * Le modèle sert de point de départ, mais c'est en préparant l'événement qu'on
- * découvre ce qui manquait : cette opération renvoie les corrections vers le
- * modèle, pour que l'édition suivante en profite. Le contenu du modèle est
- * remplacé, pas fusionné — l'état de la check-line fait foi.
+ * Deux usages, une seule opération : créer un modèle à partir d'un événement
+ * qu'on vient de mettre au point, ou remplacer un modèle existant quand la
+ * préparation a révélé ce qui lui manquait. Le contenu est remplacé, jamais
+ * fusionné — l'état de la check-list fait foi.
  */
-export async function overwriteTemplateFromEvent(
+export async function saveEventAsTemplate(
   {
     eventId,
     templateId,
+    name,
     expectedVersion,
-  }: { eventId: string; templateId: string; expectedVersion?: number },
+  }: {
+    eventId: string;
+    /** Modèle à remplacer ; absent, un nouveau modèle est créé. */
+    templateId?: string | null;
+    /** Nom du nouveau modèle ; par défaut le titre de l'événement. */
+    name?: string | null;
+    expectedVersion?: number;
+  },
   actor: AuditActor,
 ) {
-  const [[event], [template], eventTasks] = await Promise.all([
+  const [[event], eventTasks] = await Promise.all([
     db
-      .select({ id: events.id, title: events.title })
+      .select({
+        id: events.id,
+        title: events.title,
+        description: events.description,
+      })
       .from(events)
       .where(eq(events.id, eventId))
-      .limit(1),
-    db
-      .select()
-      .from(checklistTemplates)
-      .where(eq(checklistTemplates.id, templateId))
       .limit(1),
     db
       .select({
@@ -58,18 +65,14 @@ export async function overwriteTemplateFromEvent(
   ]);
 
   if (!event) throw new HttpError(404, "Événement introuvable.");
-  if (!template) throw new HttpError(404, "Modèle de check-list introuvable.");
   if (eventTasks.length === 0) {
     throw new HttpError(
       400,
-      "La check-list de cet événement est vide : il n'y a rien à enregistrer dans le modèle.",
+      "La check-list de cet événement est vide : il n'y a rien à enregistrer.",
     );
   }
   if (eventTasks.length > 100) {
-    throw new HttpError(
-      400,
-      "Un modèle ne peut pas dépasser 100 tâches.",
-    );
+    throw new HttpError(400, "Un modèle ne peut pas dépasser 100 tâches.");
   }
 
   const nextTasks = normalizeTemplateTasks(
@@ -81,6 +84,44 @@ export async function overwriteTemplateFromEvent(
       leadTimeUnit: task.leadTimeUnit,
     })),
   );
+
+  // Création : le modèle hérite du titre et de la description de l'événement,
+  // les deux seuls champs qu'un modèle porte en plus de ses tâches.
+  if (!templateId) {
+    const templateName = (emptyToNull(name ?? null) ?? event.title).slice(
+      0,
+      120,
+    );
+    const [created] = await db
+      .insert(checklistTemplates)
+      .values({
+        name: templateName,
+        description: event.description,
+        tasks: nextTasks,
+      })
+      .returning();
+
+    await recordAudit(
+      actor,
+      "template.create_from_event",
+      "checklist_template",
+      created.id,
+      { eventId, eventTitle: event.title, taskCount: nextTasks.length },
+    );
+    return {
+      template: created,
+      taskCount: nextTasks.length,
+      previousCount: 0,
+      created: true,
+    };
+  }
+
+  const [template] = await db
+    .select()
+    .from(checklistTemplates)
+    .where(eq(checklistTemplates.id, templateId))
+    .limit(1);
+  if (!template) throw new HttpError(404, "Modèle de check-list introuvable.");
 
   const previousCount = template.tasks.length;
   const where =
@@ -123,7 +164,12 @@ export async function overwriteTemplateFromEvent(
     },
   );
 
-  return { template: updated, taskCount: nextTasks.length, previousCount };
+  return {
+    template: updated,
+    taskCount: nextTasks.length,
+    previousCount,
+    created: false,
+  };
 }
 
 /**

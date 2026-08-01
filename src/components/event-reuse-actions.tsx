@@ -17,8 +17,8 @@ export interface ReusableTemplate {
 }
 
 /**
- * Les deux façons de réutiliser le travail fait sur un événement : renvoyer sa
- * check-list dans un modèle, ou rejouer l'événement à une autre date.
+ * Les deux façons de réutiliser le travail fait sur un événement : en faire un
+ * modèle réutilisable, ou rejouer l'événement à une autre date.
  */
 export function EventReuseActions({
   eventId,
@@ -45,18 +45,26 @@ export function EventReuseActions({
   const [selectedTemplate, setSelectedTemplate] =
     useState<ReusableTemplate | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState(eventTitle);
 
-  async function overwriteTemplate(template: ReusableTemplate) {
+  async function saveAsTemplate(target: ReusableTemplate | null) {
     setBusy(true);
     try {
       const result = await api<{ taskCount: number; previousCount: number }>(
         `/api/events/${eventId}/save-template`,
-        { body: { templateId: template.id, version: template.version } },
+        {
+          body: target
+            ? { templateId: target.id, version: target.version }
+            : { name: newTemplateName || null },
+        },
       );
       toast(
-        `Modèle « ${template.name} » mis à jour : ${result.previousCount} → ${result.taskCount} tâches.`,
+        target
+          ? `Modèle « ${target.name} » remplacé : ${result.previousCount} → ${result.taskCount} tâches.`
+          : `Modèle créé avec ${result.taskCount} tâches.`,
       );
       setPanel(null);
+      setSelectedTemplate(null);
       router.refresh();
     } catch (error) {
       toast((error as Error).message, "error");
@@ -98,9 +106,9 @@ export function EventReuseActions({
           size="sm"
           icon={Save}
           onClick={() => setPanel(panel === "template" ? null : "template")}
-          disabled={templates.length === 0 || taskCount === 0}
+          disabled={taskCount === 0}
         >
-          Enregistrer la check-list dans un modèle
+          Copier dans les modèles
         </Button>
         <Button
           type="button"
@@ -115,29 +123,22 @@ export function EventReuseActions({
 
       {taskCount === 0 && (
         <p className="text-sm text-slate-500">
-          La check-list est vide : ajoutez des tâches avant de pouvoir les
-          enregistrer dans un modèle.
-        </p>
-      )}
-      {templates.length === 0 && taskCount > 0 && (
-        <p className="text-sm text-slate-500">
-          Aucun modèle n’existe encore. Créez-en un depuis Événements → Modèles
-          de préparation, puis revenez ici pour y verser cette check-list.
+          La check-list est vide : ajoutez des tâches avant de pouvoir en faire
+          un modèle.
         </p>
       )}
 
-      {panel === "template" && templates.length > 0 && taskCount > 0 && (
+      {panel === "template" && taskCount > 0 && (
         <Card className="!rounded-xl border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <p className="font-bold text-brand-950">
-                Verser cette check-list dans un modèle
+                Copier cet événement dans les modèles
               </p>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                Les {taskCount} tâches de cet événement, dans leur ordre actuel,
-                remplaceront le contenu du modèle choisi. Les événements déjà
-                créés ne bougent pas ; seules les prochaines applications du
-                modèle en profiteront.
+                Ses {taskCount} tâches, dans leur ordre actuel, deviennent un
+                modèle réutilisable. Les événements déjà créés ne bougent pas ;
+                seules les prochaines applications du modèle en profiteront.
               </p>
             </div>
             <button
@@ -149,35 +150,86 @@ export function EventReuseActions({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Field label="Modèle à remplacer" htmlFor="target-template">
-              <Select
-                id="target-template"
-                value={selectedTemplate?.id ?? ""}
-                onChange={(event) =>
-                  setSelectedTemplate(
-                    templates.find(
-                      (template) => template.id === event.currentTarget.value,
-                    ) ?? null,
-                  )
-                }
-              >
-                <option value="">Choisir un modèle…</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} ({template.taskCount} tâches)
-                  </option>
-                ))}
-              </Select>
-            </Field>
+
+          <fieldset className="space-y-3">
+            <legend className="sr-only">Destination du modèle</legend>
+            <label className="flex items-start gap-2.5 text-sm font-semibold text-brand-950">
+              <input
+                type="radio"
+                name="template-target"
+                className="mt-1"
+                checked={selectedTemplate === null}
+                onChange={() => setSelectedTemplate(null)}
+              />
+              Créer un nouveau modèle
+            </label>
+            {selectedTemplate === null && (
+              <div className="pl-6">
+                <Field label="Nom du modèle" htmlFor="new-template-name">
+                  <Input
+                    id="new-template-name"
+                    value={newTemplateName}
+                    onChange={(event) =>
+                      setNewTemplateName(event.currentTarget.value)
+                    }
+                    maxLength={120}
+                    placeholder={eventTitle}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {templates.length > 0 && (
+              <>
+                <label className="flex items-start gap-2.5 text-sm font-semibold text-brand-950">
+                  <input
+                    type="radio"
+                    name="template-target"
+                    className="mt-1"
+                    checked={selectedTemplate !== null}
+                    onChange={() => setSelectedTemplate(templates[0])}
+                  />
+                  Remplacer un modèle existant
+                </label>
+                {selectedTemplate !== null && (
+                  <div className="pl-6">
+                    <Field label="Modèle à remplacer" htmlFor="target-template">
+                      <Select
+                        id="target-template"
+                        value={selectedTemplate.id}
+                        onChange={(event) =>
+                          setSelectedTemplate(
+                            templates.find(
+                              (template) =>
+                                template.id === event.currentTarget.value,
+                            ) ?? templates[0],
+                          )
+                        }
+                      >
+                        {templates.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.name} ({template.taskCount} tâches)
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                )}
+              </>
+            )}
+          </fieldset>
+
+          <div className="mt-4">
             <Button
               type="button"
-              variant="danger"
-              onClick={() => setConfirming(true)}
-              disabled={!selectedTemplate || busy}
+              variant={selectedTemplate ? "danger" : "primary"}
+              onClick={() =>
+                selectedTemplate ? setConfirming(true) : saveAsTemplate(null)
+              }
+              disabled={busy}
               loading={busy}
             >
-              Remplacer
+              {selectedTemplate ? "Remplacer le modèle" : "Créer le modèle"}
             </Button>
           </div>
         </Card>
@@ -259,7 +311,7 @@ export function EventReuseActions({
         }
         confirmLabel="Remplacer le modèle"
         loading={busy}
-        onConfirm={() => selectedTemplate && overwriteTemplate(selectedTemplate)}
+        onConfirm={() => selectedTemplate && saveAsTemplate(selectedTemplate)}
         onCancel={() => setConfirming(false)}
       />
     </div>
