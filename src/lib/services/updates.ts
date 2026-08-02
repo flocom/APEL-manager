@@ -1,5 +1,6 @@
 import "server-only";
 
+import { HttpError } from "@/lib/auth/guards";
 import { getRuntimeVersion, shortRevision } from "@/lib/version";
 
 /**
@@ -209,6 +210,19 @@ export async function getUpdateStatus(
 export type TriggerOutcome = "started" | "restarting";
 
 /**
+ * `fetch` masque la panne réelle derrière « fetch failed » et range l'erreur
+ * système dans `cause`. C'est elle qui a une valeur de diagnostic.
+ */
+function networkCause(error: unknown): string {
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    return code ? `${code} — ${cause.message}` : cause.message;
+  }
+  return error instanceof Error ? error.message : "cause inconnue";
+}
+
+/**
  * Demande à l'`updater` de contrôler l'image immédiatement au lieu d'attendre
  * son prochain passage.
  *
@@ -218,35 +232,50 @@ export type TriggerOutcome = "started" | "restarting";
  * distinguée d'un refus explicite, qui lui remonte normalement.
  */
 export async function triggerUpdateNow(): Promise<TriggerOutcome> {
+  const url = watchtowerUrl();
   const token = watchtowerToken();
   if (!token) {
-    throw new Error(
+    throw new HttpError(
+      409,
       "Le déclenchement immédiat n'est pas disponible : relancez la pile Docker pour que le jeton partagé avec l'updater soit généré.",
     );
   }
 
+  let response: Response;
   try {
-    const response = await fetch(`${watchtowerUrl()}/v1/update`, {
+    response = await fetch(`${url}/v1/update`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(TRIGGER_TIMEOUT_MS),
       cache: "no-store",
     });
-    if (response.status === 401) {
-      throw new Error(
-        "Jeton refusé par l'updater : il a démarré avant que le jeton ne soit généré. Relancez la pile Docker.",
-      );
-    }
-    if (!response.ok) {
-      throw new Error(`L'updater a répondu ${response.status}.`);
-    }
-    // L'updater a répondu : aucune image plus récente à installer.
-    return "started";
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       // La coupure attendue quand le conteneur est en train d'être remplacé.
       return "restarting";
     }
-    throw error;
+    // Toute autre panne réseau est un vrai défaut de configuration : la dire
+    // plutôt que de laisser remonter « une erreur serveur est survenue ». La
+    // cause système distingue le nom introuvable (conteneur absent ou sur un
+    // autre réseau) du refus de connexion (service arrêté).
+    throw new HttpError(
+      502,
+      `Service de mise à jour injoignable sur ${url} (${networkCause(error)}). Vérifiez qu'il tourne : « docker compose ps updater ».`,
+    );
   }
+
+  if (response.status === 401) {
+    throw new HttpError(
+      502,
+      "Jeton refusé par le service de mise à jour : il a démarré avec une autre valeur. Relancez la pile Docker pour les réaligner.",
+    );
+  }
+  if (!response.ok) {
+    throw new HttpError(
+      502,
+      `Le service de mise à jour a répondu ${response.status}.`,
+    );
+  }
+  // L'updater a répondu : aucune image plus récente à installer.
+  return "started";
 }
