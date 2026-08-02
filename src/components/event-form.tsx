@@ -1,5 +1,6 @@
 "use client";
 
+import { Globe, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -24,6 +25,9 @@ export function EventForm({
   const [loading, setLoading] = useState(false);
   const [templateId, setTemplateId] = useState("");
   const [description, setDescription] = useState(event?.description ?? "");
+  const [publicDescription, setPublicDescription] = useState(
+    event?.publicDescription ?? "",
+  );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,6 +38,7 @@ export function EventForm({
     const body = {
       title: form.get("title"),
       description,
+      publicDescription,
       location: form.get("location"),
       startAt: form.get("startAt"),
       endAt: endRaw ? endRaw : null,
@@ -83,7 +88,7 @@ export function EventForm({
       <FormSection
         number="1"
         title="Informations essentielles"
-        description="Donnez un nom clair et ajoutez uniquement les informations utiles à l’équipe."
+        description="Le titre est visible de tous, y compris des visiteurs du site."
       >
         <div>
           <Label htmlFor="title">Titre de l’événement</Label>
@@ -96,13 +101,42 @@ export function EventForm({
           />
         </div>
         <div>
-          <Label htmlFor="description">Description</Label>
+          <div className="flex items-center gap-2">
+            <Lock className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <Label htmlFor="description" className="!mb-0">
+              Notes internes
+            </Label>
+          </div>
+          <p className="mb-2 mt-1 text-xs leading-5 text-slate-500">
+            Lisible uniquement par les membres connectés au tableau de bord.
+            Codes, contacts, consignes d’organisation, points de vigilance.
+          </p>
           <RichTextEditor
             id="description"
             name="description"
             value={description}
             onValueChange={setDescription}
-            placeholder="Détails, organisation, informations pratiques…"
+            placeholder="Organisation interne, contacts, consignes…"
+          />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <Label htmlFor="publicDescription" className="!mb-0">
+              Description publique
+            </Label>
+          </div>
+          <p className="mb-2 mt-1 text-xs leading-5 text-slate-500">
+            Affichée sur l’accueil du site et sur la page d’inscription des
+            bénévoles, dès que l’événement est publié. Ne rien y mettre que
+            vous ne diriez pas devant l’école.
+          </p>
+          <RichTextEditor
+            id="publicDescription"
+            name="publicDescription"
+            value={publicDescription}
+            onValueChange={setPublicDescription}
+            placeholder="Ce que les familles doivent savoir : déroulé, horaires, ce qu’il faut apporter…"
           />
         </div>
       </FormSection>

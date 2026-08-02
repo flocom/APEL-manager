@@ -209,6 +209,7 @@ export async function duplicateEvent(
       .values({
         title: emptyToNull(title ?? null) ?? source.title,
         description: source.description,
+        publicDescription: source.publicDescription,
         location: source.location,
         startAt,
         endAt: shift(source.endAt),

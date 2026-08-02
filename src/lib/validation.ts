@@ -43,7 +43,9 @@ export const loginSchema = z.object({
 
 export const eventSchema = z.object({
   title: z.string().trim().min(2, "Titre trop court").max(200),
+  /** Réservé à l'équipe. Ce qui doit être lu par les visiteurs va dans `publicDescription`. */
   description: z.string().max(5000).optional(),
+  publicDescription: z.string().max(5000).optional(),
   location: z.string().max(300).optional(),
   startAt: localDateTime,
   endAt: localDateTime.nullable().optional(),
