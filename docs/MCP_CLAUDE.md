@@ -9,7 +9,7 @@ messagerie, journal d'audit et suivi des mises à jour.
 
 | Domaine | Capacités |
 |---|---|
-| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list ; copier à une autre date |
+| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list ; copier à une autre date. Deux textes distincts : `description` reste interne à l'équipe, `publicDescription` est affichée aux visiteurs |
 | **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables, en créer un depuis un événement ou en remplacer un |
 | **Bénévoles** | Créneaux (créer, modifier, supprimer), inscriptions (lister, inscrire manuellement, annuler) |
 | **Pièces jointes** | Lister, rattacher et retirer les documents d'un événement |

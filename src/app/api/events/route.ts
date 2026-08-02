@@ -17,6 +17,7 @@ export async function POST(req: Request) {
       .values({
         title: data.title,
         description: emptyToNull(data.description),
+        publicDescription: emptyToNull(data.publicDescription),
         location: emptyToNull(data.location),
         startAt: data.startAt,
         endAt: data.endAt ?? null,

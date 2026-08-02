@@ -111,7 +111,13 @@ export const users = pgTable("users", {
 export const events = pgTable("events", {
   id: uuid("id").defaultRandom().primaryKey(),
   title: text("title").notNull(),
+  /**
+   * Consignes réservées à l'équipe : jamais rendues hors du tableau de bord.
+   * Tout ce qui doit être lu par les visiteurs va dans `publicDescription`.
+   */
   description: text("description"),
+  /** Texte affiché sur l'accueil public et sur la page d'inscription. */
+  publicDescription: text("public_description"),
   location: text("location"),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }),

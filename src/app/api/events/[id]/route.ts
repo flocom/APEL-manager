@@ -23,6 +23,8 @@ export async function PATCH(req: Request, { params }: Params) {
     if (data.title !== undefined) updates.title = data.title;
     if (data.description !== undefined)
       updates.description = emptyToNull(data.description);
+    if (data.publicDescription !== undefined)
+      updates.publicDescription = emptyToNull(data.publicDescription);
     if (data.location !== undefined)
       updates.location = emptyToNull(data.location);
     if (data.startAt !== undefined) updates.startAt = data.startAt;
@@ -41,6 +43,10 @@ export async function PATCH(req: Request, { params }: Params) {
       if (data.title !== undefined) setFragments.push(sql`title = ${data.title}`);
       if (data.description !== undefined)
         setFragments.push(sql`description = ${emptyToNull(data.description)}`);
+      if (data.publicDescription !== undefined)
+        setFragments.push(
+          sql`public_description = ${emptyToNull(data.publicDescription)}`,
+        );
       if (data.location !== undefined)
         setFragments.push(sql`location = ${emptyToNull(data.location)}`);
       if (data.startAt !== undefined)

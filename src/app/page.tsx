@@ -244,9 +244,9 @@ export default async function HomePage() {
                               {event.location}
                             </p>
                           )}
-                          {event.description && (
+                          {event.publicDescription && (
                             <FormattedText
-                              text={event.description}
+                              text={event.publicDescription}
                               className="mt-4 break-words text-sm font-medium leading-6 text-slate-600"
                             />
                           )}

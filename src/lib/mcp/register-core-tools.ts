@@ -174,7 +174,10 @@ export function registerCoreTools(
         "Crée un événement APEL avec un lien public d’inscription bénévole.",
       inputSchema: z.object({
         title: z.string().min(2).max(200),
+        /** Réservé à l'équipe : jamais affiché hors du tableau de bord. */
         description: optionalNullableString,
+        /** Affiché sur l'accueil public et sur la page d'inscription. */
+        publicDescription: optionalNullableString,
         location: optionalNullableString,
         startAt: localDateTime,
         endAt: localDateTime.nullable().optional(),
@@ -190,6 +193,7 @@ export function registerCoreTools(
         .values({
           title: data.title,
           description: emptyToNull(data.description),
+          publicDescription: emptyToNull(data.publicDescription),
           location: emptyToNull(data.location),
           startAt: data.startAt,
           endAt: data.endAt ?? null,
@@ -219,7 +223,10 @@ export function registerCoreTools(
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
         title: z.string().min(2).max(200).optional(),
+        /** Réservé à l'équipe : jamais affiché hors du tableau de bord. */
         description: optionalNullableString,
+        /** Affiché sur l'accueil public et sur la page d'inscription. */
+        publicDescription: optionalNullableString,
         location: optionalNullableString,
         startAt: localDateTime.optional(),
         endAt: localDateTime.nullable().optional(),
@@ -235,6 +242,8 @@ export function registerCoreTools(
       if (data.title !== undefined) updates.title = data.title;
       if (data.description !== undefined)
         updates.description = emptyToNull(data.description);
+      if (data.publicDescription !== undefined)
+        updates.publicDescription = emptyToNull(data.publicDescription);
       if (data.location !== undefined)
         updates.location = emptyToNull(data.location);
       if (data.startAt !== undefined) updates.startAt = data.startAt;

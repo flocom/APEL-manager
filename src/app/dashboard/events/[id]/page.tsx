@@ -6,10 +6,12 @@ import {
   ClipboardCheck,
   Download,
   CopyPlus,
+  Globe,
   Landmark,
   LayoutDashboard,
   ListChecks,
   Link2,
+  Lock,
   type LucideIcon,
   Mail,
   MapPin,
@@ -282,13 +284,16 @@ export default async function EventDetailPage({
 
           <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="font-bold text-slate-950">
-                  Informations utiles
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Le contexte et les consignes visibles par l’équipe.
-                </p>
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600">
+                  <Lock className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="font-bold text-slate-950">Notes internes</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Lisibles uniquement ici, par les membres connectés.
+                  </p>
+                </div>
               </div>
               {canManage && (
                 <Link
@@ -307,7 +312,38 @@ export default async function EventDetailPage({
               />
             ) : (
               <p className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                Aucune description pour le moment.
+                Aucune note interne pour le moment.
+              </p>
+            )}
+          </Card>
+
+          <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-800">
+                  <Globe className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="font-bold text-slate-950">
+                    Description publique
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {event.status === "published"
+                      ? "Visible de tous sur l’accueil du site et sur la page d’inscription."
+                      : "Sera visible de tous dès la publication de l’événement."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            {event.publicDescription ? (
+              <FormattedText
+                text={event.publicDescription}
+                className="mt-5 max-w-4xl rounded-xl bg-brand-50 px-4 py-3 text-sm leading-7 text-slate-700"
+              />
+            ) : (
+              <p className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                Aucune description publique : les visiteurs ne verront que le
+                titre, la date et le lieu.
               </p>
             )}
           </Card>

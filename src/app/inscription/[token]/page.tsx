@@ -155,9 +155,9 @@ export default async function InscriptionPage({
                 )}
               </div>
 
-              {event.description && (
+              {event.publicDescription && (
                 <FormattedText
-                  text={event.description}
+                  text={event.publicDescription}
                   className="mt-7 border-t-2 border-brand-800 pt-6 text-sm font-medium leading-6 text-brand-100"
                 />
               )}
