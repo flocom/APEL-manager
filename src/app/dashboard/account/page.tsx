@@ -4,11 +4,15 @@ import { AccountForm } from "@/components/account-form";
 import { PasswordChangeForm } from "@/components/password-change-form";
 import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireUser } from "@/lib/auth/rbac";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const user = await requireUser();
+  const [user, settings] = await Promise.all([
+    requireUser(),
+    getAssociationSettings(),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -32,7 +36,12 @@ export default async function AccountPage() {
               </dd>
             </div>
           </dl>
-          <AccountForm name={user.name} telegramChatId={user.telegramChatId} />
+          <AccountForm
+            name={user.name}
+            telegramChatId={user.telegramChatId}
+            telegramReady={settings.telegramReady}
+            telegramBotUsername={settings.telegramBotUsername}
+          />
         </Card>
 
         <Card className="p-6">

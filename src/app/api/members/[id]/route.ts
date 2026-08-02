@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { emptyToNull } from "@/lib/utils";
 import { memberUpdateSchema } from "@/lib/validation";
 
@@ -28,7 +29,19 @@ export async function PATCH(req: Request, { params }: Params) {
       updates.role = data.role;
     }
     if (data.telegramChatId !== undefined) {
-      updates.telegramChatId = emptyToNull(data.telegramChatId);
+      const chatId = emptyToNull(data.telegramChatId);
+      // Retirer un identifiant reste toujours possible ; en enregistrer un ne
+      // l'est que si le canal fonctionne, sinon il ne recevrait jamais rien.
+      if (chatId) {
+        const { telegramReady } = await getAssociationSettings();
+        if (!telegramReady) {
+          throw new HttpError(
+            400,
+            "Les notifications Telegram ne sont pas disponibles : un administrateur doit activer le canal avec un token de bot confirmé.",
+          );
+        }
+      }
+      updates.telegramChatId = chatId;
     }
 
     if (Object.keys(updates).length > 0) {

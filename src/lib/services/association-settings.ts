@@ -11,6 +11,7 @@ import {
 } from "@/lib/app-config";
 import { db } from "@/lib/db";
 import { associationSettings } from "@/lib/db/schema";
+import { checkTelegramBotToken } from "@/lib/notifications/telegram";
 import { emptyToNull } from "@/lib/utils";
 import { associationSettingsSchema } from "@/lib/validation";
 
@@ -18,6 +19,16 @@ import { recordAudit, type AuditActor } from "./audit";
 import { decryptSecret, encryptSecret } from "./settings-secrets";
 
 const SETTINGS_ID = "default";
+
+/** Un token illisible (clé de chiffrement changée) doit être retraité comme absent. */
+function safeDecrypt(encrypted: string): string | null {
+  try {
+    return decryptSecret(encrypted);
+  } catch (error) {
+    console.error("[telegram] impossible de déchiffrer le token", error);
+    return null;
+  }
+}
 
 function legacyReminderWindow(name: string, fallback: number) {
   const value = Number(process.env[name]);
@@ -66,6 +77,13 @@ export async function getAssociationSettings() {
       telegramEnabled: settings.telegramEnabled,
       telegramTokenConfigured: Boolean(settings.encryptedTelegramBotToken),
       telegramTokenLastFour: settings.telegramTokenLastFour,
+      telegramBotUsername: settings.telegramBotUsername,
+      telegramTokenVerifiedAt: settings.telegramTokenVerifiedAt,
+      /** Seul état qui autorise à proposer le canal aux membres. */
+      telegramReady:
+        settings.telegramEnabled &&
+        Boolean(settings.encryptedTelegramBotToken) &&
+        Boolean(settings.telegramTokenVerifiedAt),
       legacyEnvironment: false,
       updatedAt: settings.updatedAt,
     };
@@ -83,6 +101,12 @@ export async function getAssociationSettings() {
     telegramEnabled: Boolean(legacyTelegramToken),
     telegramTokenConfigured: Boolean(legacyTelegramToken),
     telegramTokenLastFour: legacyTelegramToken?.slice(-4) ?? null,
+    telegramBotUsername: null,
+    telegramTokenVerifiedAt: null,
+    // Installation d'avant les réglages en base : le token de l'environnement
+    // n'a jamais pu être confirmé, le canal reste donc fermé aux membres tant
+    // qu'un administrateur n'a pas enregistré les réglages une fois.
+    telegramReady: false,
     legacyEnvironment: Boolean(
       process.env.NEXT_PUBLIC_ASSO_NAME ||
         process.env.NEXT_PUBLIC_SCHOOL_NAME ||
@@ -125,6 +149,43 @@ export async function saveAssociationSettings(
     );
   }
 
+  // Le canal n'est proposé aux membres que lorsque Telegram a confirmé le
+  // token : un token seulement enregistré laisserait chacun saisir un chat ID
+  // pour ne jamais rien recevoir. La vérification a lieu à chaque
+  // enregistrement où Telegram est actif, ce qui détecte aussi un token
+  // révoqué depuis.
+  let telegramBotUsername = current?.telegramBotUsername ?? null;
+  let telegramTokenVerifiedAt = current?.telegramTokenVerifiedAt ?? null;
+  if (!encryptedTelegramBotToken) {
+    telegramBotUsername = null;
+    telegramTokenVerifiedAt = null;
+  } else if (telegramBotToken || data.telegramEnabled) {
+    const rawToken = telegramBotToken ?? safeDecrypt(encryptedTelegramBotToken);
+    const check = rawToken
+      ? await checkTelegramBotToken(rawToken)
+      : ({ ok: false, reason: "refused", detail: "token illisible" } as const);
+
+    if (check.ok) {
+      telegramBotUsername = check.username;
+      telegramTokenVerifiedAt = new Date();
+    } else if (check.reason === "refused") {
+      throw new HttpError(
+        400,
+        `Token refusé par Telegram (${check.detail}). Corrigez-le, ou décochez « Activer Telegram » pour enregistrer le reste.`,
+      );
+    } else if (telegramBotToken || !current?.telegramEnabled) {
+      // Panne réseau alors que l'administrateur change justement le token ou
+      // active le canal : mieux vaut refuser que d'annoncer un canal non
+      // confirmé.
+      throw new HttpError(
+        502,
+        `Telegram est injoignable (${check.detail}) : impossible de confirmer le token. Réessayez dans un instant.`,
+      );
+    }
+    // Sinon : le canal était déjà actif et rien de Telegram ne change — une
+    // panne réseau passagère ne doit pas bloquer les autres réglages.
+  }
+
   const values = {
     associationName: data.associationName,
     schoolName: data.schoolName,
@@ -136,6 +197,8 @@ export async function saveAssociationSettings(
     telegramEnabled: data.telegramEnabled,
     encryptedTelegramBotToken,
     telegramTokenLastFour,
+    telegramBotUsername,
+    telegramTokenVerifiedAt,
     updatedBy: actor.userId,
     updatedAt: new Date(),
   };
@@ -181,12 +244,7 @@ export async function getTelegramBotToken() {
     if (!settings.telegramEnabled || !settings.encryptedTelegramBotToken) {
       return null;
     }
-    try {
-      return decryptSecret(settings.encryptedTelegramBotToken);
-    } catch (error) {
-      console.error("[telegram] impossible de déchiffrer le token", error);
-      return null;
-    }
+    return safeDecrypt(settings.encryptedTelegramBotToken);
   }
 
   return process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
