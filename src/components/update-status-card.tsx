@@ -82,11 +82,17 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
       }
       const refreshed = (await response.json()) as UpdateStatus;
       setCurrent(refreshed);
-      toast(
-        refreshed.state === "outdated"
-          ? "Une nouvelle version est disponible."
-          : "Vérification terminée.",
-      );
+      // Un contrôle qui n'a pas abouti ne doit pas s'annoncer comme terminé :
+      // l'état affiché vient alors de la dernière réponse connue.
+      if (refreshed.error) {
+        toast(refreshed.error, "error");
+      } else {
+        toast(
+          refreshed.state === "outdated"
+            ? "Une nouvelle version est disponible."
+            : "Vérification terminée.",
+        );
+      }
     } catch (error) {
       toast(
         error instanceof Error ? error.message : "Vérification impossible.",
@@ -252,8 +258,8 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-medium text-slate-500">
             {checkedAt
-              ? `Dernière vérification : ${checkedAt}`
-              : "Aucune vérification effectuée."}
+              ? `Dernière vérification réussie : ${checkedAt}`
+              : "Aucune vérification aboutie."}
           </p>
           <Button
             type="button"

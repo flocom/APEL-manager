@@ -41,6 +41,11 @@ export function formatLongDateTime(d: Date | string): string {
   );
 }
 
+/** Heure seule : « 14h30 ». */
+export function formatTimeOfDay(d: Date | string): string {
+  return formatInTimeZone(new Date(d), APP_TIMEZONE, "HH'h'mm", { locale: fr });
+}
+
 export function formatRelative(d: Date | string): string {
   return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr });
 }

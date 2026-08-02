@@ -1,6 +1,7 @@
 import "server-only";
 
 import { HttpError } from "@/lib/auth/guards";
+import { formatTimeOfDay } from "@/lib/dates";
 import { getRuntimeVersion, shortRevision } from "@/lib/version";
 
 /**
@@ -85,15 +86,44 @@ export interface UpdateStatus {
   error: string | null;
 }
 
-interface CachedCheck {
-  fetchedAt: number;
+interface CheckResult {
   latest: UpdateStatus["latest"];
   error: string | null;
+  /** Instant avant lequel toute nouvelle requête serait refusée d'office. */
+  retryAfter: number | null;
+}
+
+interface CachedCheck extends CheckResult {
+  /** Dernière tentative, réussie ou non. */
+  fetchedAt: number;
+  /** Dernière réponse exploitable : c'est elle que l'écran doit dater. */
+  succeededAt: number | null;
 }
 
 let cache: CachedCheck | null = null;
 
-async function fetchLatestCommit(): Promise<CachedCheck> {
+/**
+ * L'API publique de GitHub tolère 60 requêtes par heure et par adresse IP sans
+ * authentification, quota partagé avec tout ce qui sort de la même adresse.
+ * Une fois épuisé, elle répond 403 ou 429 en annonçant l'heure de remise à
+ * zéro : la retenir évite d'insister pour rien.
+ */
+function rateLimitError(response: Response): CheckResult | null {
+  if (response.status !== 403 && response.status !== 429) return null;
+  if (response.headers.get("x-ratelimit-remaining") !== "0") return null;
+
+  const reset = Number(response.headers.get("x-ratelimit-reset")) * 1000;
+  const known = Number.isFinite(reset) && reset > Date.now();
+  return {
+    latest: null,
+    error: known
+      ? `Quota de l'API GitHub épuisé pour cette adresse IP (60 requêtes par heure sans authentification). Prochaine vérification possible à ${formatTimeOfDay(new Date(reset))}.`
+      : "Quota de l'API GitHub épuisé pour cette adresse IP (60 requêtes par heure sans authentification).",
+    retryAfter: known ? reset : Date.now() + 15 * 60 * 1000,
+  };
+}
+
+async function fetchLatestCommit(): Promise<CheckResult> {
   const url = `https://api.github.com/repos/${REPOSITORY}/commits/${encodeURIComponent(
     CHANNEL,
   )}`;
@@ -108,11 +138,14 @@ async function fetchLatestCommit(): Promise<CachedCheck> {
       cache: "no-store",
     });
 
+    const limited = rateLimitError(response);
+    if (limited) return limited;
+
     if (!response.ok) {
       return {
-        fetchedAt: Date.now(),
         latest: null,
         error: `GitHub a répondu ${response.status}.`,
+        retryAfter: null,
       };
     }
 
@@ -124,14 +157,13 @@ async function fetchLatestCommit(): Promise<CachedCheck> {
 
     if (!payload.sha) {
       return {
-        fetchedAt: Date.now(),
         latest: null,
         error: "Réponse GitHub inattendue.",
+        retryAfter: null,
       };
     }
 
     return {
-      fetchedAt: Date.now(),
       latest: {
         revision: payload.sha,
         shortRevision: shortRevision(payload.sha),
@@ -141,15 +173,16 @@ async function fetchLatestCommit(): Promise<CachedCheck> {
           `https://github.com/${REPOSITORY}/commit/${payload.sha}`,
       },
       error: null,
+      retryAfter: null,
     };
   } catch (error) {
     return {
-      fetchedAt: Date.now(),
       latest: null,
       error:
         error instanceof Error && error.name === "TimeoutError"
           ? "GitHub n'a pas répondu à temps."
           : "Vérification impossible (réseau indisponible ?).",
+      retryAfter: null,
     };
   }
 }
@@ -184,8 +217,18 @@ export async function getUpdateStatus(
   }
 
   const fresh = cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS;
-  if (force || !fresh) {
-    cache = await fetchLatestCommit();
+  const blocked = cache?.retryAfter != null && Date.now() < cache.retryAfter;
+  if ((force || !fresh) && !blocked) {
+    const result = await fetchLatestCommit();
+    // Un échec ne doit pas effacer la dernière réponse connue : sans elle
+    // l'écran retomberait sur « État inconnu » alors qu'il sait encore quelle
+    // version est publiée. L'erreur est affichée à côté, pas à la place.
+    cache = {
+      ...result,
+      latest: result.latest ?? cache?.latest ?? null,
+      fetchedAt: Date.now(),
+      succeededAt: result.latest ? Date.now() : cache?.succeededAt ?? null,
+    };
   }
 
   const checked = cache!;
@@ -202,7 +245,10 @@ export async function getUpdateStatus(
     autoUpdate,
     repository: REPOSITORY,
     channel: CHANNEL,
-    checkedAt: new Date(checked.fetchedAt).toISOString(),
+    checkedAt:
+      checked.succeededAt === null
+        ? null
+        : new Date(checked.succeededAt).toISOString(),
     error: checked.error,
   };
 }
