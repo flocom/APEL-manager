@@ -28,6 +28,9 @@ export interface AssociationSettingsView {
   telegramEnabled: boolean;
   telegramTokenConfigured: boolean;
   telegramTokenLastFour: string | null;
+  telegramBotUsername: string | null;
+  telegramTokenVerifiedAt: Date | null;
+  telegramReady: boolean;
   legacyEnvironment: boolean;
 }
 
@@ -256,7 +259,9 @@ export function AssociationSettingsForm({
                     Activer Telegram
                   </span>
                   <span className="mt-1 block text-sm leading-5 text-slate-600">
-                    Le canal e-mail reste indépendant.
+                    Le canal e-mail reste indépendant. Le champ « Chat ID » des
+                    comptes n’apparaît qu’une fois le token confirmé par
+                    Telegram.
                   </span>
                 </span>
               </label>
@@ -287,6 +292,25 @@ export function AssociationSettingsForm({
                     autoComplete="new-password"
                   />
                 </div>
+                {settings.telegramTokenConfigured && (
+                  <p
+                    className={`mt-2 text-sm font-semibold ${
+                      settings.telegramReady
+                        ? "text-sea-800"
+                        : "text-coral-700"
+                    }`}
+                  >
+                    {settings.telegramReady
+                      ? `Bot confirmé par Telegram${
+                          settings.telegramBotUsername
+                            ? ` : @${settings.telegramBotUsername}`
+                            : ""
+                        }. Le canal est ouvert aux membres.`
+                      : settings.telegramEnabled
+                      ? "Token pas encore confirmé par Telegram : enregistrez les réglages pour le vérifier."
+                      : "Telegram est désactivé : le canal n’est proposé à personne."}
+                  </p>
+                )}
                 {settings.telegramTokenConfigured && (
                   <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold text-coral-700">
                     <input

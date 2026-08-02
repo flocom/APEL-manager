@@ -3,9 +3,10 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleApiError, requireApiUser } from "@/lib/auth/guards";
+import { handleApiError, HttpError, requireApiUser } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { emptyToNull } from "@/lib/utils";
 
 const selfUpdateSchema = z.object({
@@ -21,7 +22,19 @@ export async function PATCH(req: Request) {
     const updates: Partial<typeof users.$inferInsert> = {};
     if (data.name !== undefined) updates.name = data.name;
     if (data.telegramChatId !== undefined) {
-      updates.telegramChatId = emptyToNull(data.telegramChatId);
+      const chatId = emptyToNull(data.telegramChatId);
+      // Retirer un identifiant reste toujours possible ; en enregistrer un ne
+      // l'est que si le canal fonctionne, sinon il ne recevrait jamais rien.
+      if (chatId) {
+        const { telegramReady } = await getAssociationSettings();
+        if (!telegramReady) {
+          throw new HttpError(
+            400,
+            "Les notifications Telegram ne sont pas disponibles : un administrateur doit activer le canal avec un token de bot confirmé.",
+          );
+        }
+      }
+      updates.telegramChatId = chatId;
     }
 
     if (Object.keys(updates).length > 0) {

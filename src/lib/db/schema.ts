@@ -557,6 +557,15 @@ export const associationSettings = pgTable(
     /** Token du bot chiffré ; jamais exposé par une API de lecture. */
     encryptedTelegramBotToken: text("encrypted_telegram_bot_token"),
     telegramTokenLastFour: text("telegram_token_last_four"),
+    /**
+     * Identité renvoyée par Telegram lors de la vérification du token. Sa
+     * présence atteste que le token a été accepté ; le nom sert à indiquer
+     * aux membres quel bot contacter.
+     */
+    telegramBotUsername: text("telegram_bot_username"),
+    telegramTokenVerifiedAt: timestamp("telegram_token_verified_at", {
+      withTimezone: true,
+    }),
     updatedBy: uuid("updated_by").references(() => users.id, {
       onDelete: "set null",
     }),
