@@ -599,7 +599,7 @@ export function registerCoreTools(
       requireMcpAccess(principal, "mcp:read", "manager");
       const slots = await db.query.volunteerSlots.findMany({
         where: eq(volunteerSlots.eventId, eventId),
-        orderBy: [asc(volunteerSlots.createdAt)],
+        orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
         with: { signups: true },
       });
       return toolResult({ eventId, slots });
