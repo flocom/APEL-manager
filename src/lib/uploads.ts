@@ -246,15 +246,14 @@ export async function removeUpload(id: string) {
   await rm(uploadDirectory(id), { recursive: true, force: true });
 }
 
+/**
+ * Supprime les dépôts qu'aucune donnée ne cite plus. L'inventaire des
+ * références est établi par `collectReferencedUploadIds`, qui balaie la base
+ * entière : cette fonction ne décide de rien, elle applique.
+ */
 export async function cleanupOrphanedUploads(
-  referencedUrls: Iterable<string>,
+  referencedIds: ReadonlySet<string>,
 ) {
-  const referencedIds = new Set<string>();
-  for (const url of referencedUrls) {
-    const match = /^\/api\/uploads\/([^/]+)\//.exec(url);
-    if (match && uploadScopeFromId(match[1])) referencedIds.add(match[1]);
-  }
-
   const configuredHours = Number(process.env.UPLOAD_ORPHAN_MAX_AGE_HOURS);
   const maxAgeHours =
     Number.isFinite(configuredHours) && configuredHours >= 1
