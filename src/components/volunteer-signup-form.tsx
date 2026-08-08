@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button, Input, Label, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import { celebrate } from "@/lib/confetti";
+import { useRecaptcha } from "@/lib/use-recaptcha";
 
 export interface SignupSlotOption {
   id: string;
@@ -18,12 +19,15 @@ export function VolunteerSignupForm({
   slots,
   defaultName = "",
   defaultEmail = "",
+  recaptchaSiteKey = null,
 }: {
   token: string;
   slots: SignupSlotOption[];
   defaultName?: string;
   defaultEmail?: string;
+  recaptchaSiteKey?: string | null;
 }) {
+  const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const available = slots.filter((s) => s.remaining > 0);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +77,7 @@ export function VolunteerSignupForm({
           phone: form.get("phone"),
           consent: form.get("consent") === "on",
           website: form.get("website"), // honeypot
+          recaptchaToken: await executerRecaptcha("inscription"),
         },
       });
       setDone(true);

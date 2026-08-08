@@ -1,4 +1,5 @@
 import {
+  Bot,
   Clock3,
   Database,
   ShieldCheck,
@@ -14,11 +15,18 @@ import { getAssociationSettings } from "@/lib/services/association-settings";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Politique de confidentialité" };
 
-const sectionIcons = [ShieldCheck, Database, Target, Clock3, UserRoundCheck];
+const sectionIcons = [
+  ShieldCheck,
+  Database,
+  Target,
+  Clock3,
+  UserRoundCheck,
+  Bot,
+];
 
 export default async function PrivacyPage() {
   const settings = await getAssociationSettings();
-  const sections = [
+  const sections: { title: string; content: React.ReactNode }[] = [
     {
       title: "Responsable",
       content: (
@@ -75,6 +83,38 @@ export default async function PrivacyPage() {
       ),
     },
   ];
+
+  if (settings.recaptchaReady) {
+    sections.push({
+      title: "Protection anti-robot",
+      content: (
+        <>
+          Les formulaires publics sont protégés par reCAPTCHA v3, un service de
+          Google qui analyse votre navigation sur la page pour distinguer un
+          visiteur d&apos;un robot. Google peut à cette occasion déposer des
+          cookies et collecter des données techniques, soumis à sa{" "}
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold text-brand-800 underline"
+          >
+            politique de confidentialité
+          </a>{" "}
+          et à ses{" "}
+          <a
+            href="https://policies.google.com/terms"
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold text-brand-800 underline"
+          >
+            conditions d&apos;utilisation
+          </a>
+          . Ce contrôle sert uniquement à écarter les envois automatisés.
+        </>
+      ),
+    });
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">

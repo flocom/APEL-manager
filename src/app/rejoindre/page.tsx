@@ -181,7 +181,12 @@ export default async function RejoindrePage() {
               )}
             </p>
             <div className="mt-8 rounded-2xl border-2 border-slate-200 bg-white p-6 sm:p-8">
-              <JoinForm contactEmail={settings.contactEmail} />
+              <JoinForm
+                contactEmail={settings.contactEmail}
+                recaptchaSiteKey={
+                  settings.recaptchaReady ? settings.recaptchaSiteKey : null
+                }
+              />
             </div>
           </div>
         </section>

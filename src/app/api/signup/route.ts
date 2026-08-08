@@ -10,7 +10,11 @@ import { db } from "@/lib/db";
 import { events, volunteerSignups } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
 import { volunteerConfirmationEmail } from "@/lib/notifications/emails";
-import { getAssociationSettings } from "@/lib/services/association-settings";
+import {
+  getAssociationSettings,
+  getRecaptchaRuntimeConfig,
+} from "@/lib/services/association-settings";
+import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import { signupSchema } from "@/lib/validation";
@@ -33,6 +37,17 @@ export async function POST(req: Request) {
     // Bot détecté (honeypot rempli) : on répond OK sans rien enregistrer.
     if (data.website && data.website.trim().length > 0) {
       return NextResponse.json({ ok: true });
+    }
+
+    const recaptcha = await getRecaptchaRuntimeConfig();
+    if (recaptcha) {
+      await verifyRecaptcha({
+        secret: recaptcha.secret,
+        token: data.recaptchaToken,
+        action: "inscription",
+        minScore: recaptcha.minScore,
+        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+      });
     }
 
     const event = await db.query.events.findFirst({

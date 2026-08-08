@@ -578,6 +578,16 @@ export const associationSettings = pgTable(
     telegramTokenVerifiedAt: timestamp("telegram_token_verified_at", {
       withTimezone: true,
     }),
+    /**
+     * reCAPTCHA v3 sur les formulaires publics. La clé de site est publique par
+     * nature — elle part dans la page — la clé secrète ne quitte jamais le
+     * serveur et reste chiffrée. Le score minimal est retenu en pourcentage
+     * pour rester un entier : Google renvoie une note de 0,0 à 1,0.
+     */
+    recaptchaEnabled: boolean("recaptcha_enabled").notNull().default(false),
+    recaptchaSiteKey: text("recaptcha_site_key"),
+    encryptedRecaptchaSecret: text("encrypted_recaptcha_secret"),
+    recaptchaMinScore: integer("recaptcha_min_score").notNull().default(50),
     updatedBy: uuid("updated_by").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -593,6 +603,10 @@ export const associationSettings = pgTable(
     taskReminderWindowCheck: check(
       "association_settings_task_reminder_window_check",
       sql`${t.taskReminderWindowDays} >= 0 and ${t.taskReminderWindowDays} <= 30`,
+    ),
+    recaptchaMinScoreCheck: check(
+      "association_settings_recaptcha_min_score_check",
+      sql`${t.recaptchaMinScore} >= 0 and ${t.recaptchaMinScore} <= 100`,
     ),
     volunteerReminderWindowCheck: check(
       "association_settings_volunteer_reminder_window_check",

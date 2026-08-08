@@ -12,6 +12,7 @@ import Link from "next/link";
 import { FormattedText } from "@/components/formatted-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import {
   VolunteerSignupForm,
   type SignupSlotOption,
@@ -76,7 +77,10 @@ export default async function InscriptionPage({
     );
   }
 
-  const currentUser = await getCurrentUser();
+  const [currentUser, association] = await Promise.all([
+    getCurrentUser(),
+    getAssociationSettings(),
+  ]);
 
   const slotOptions: SignupSlotOption[] = event.volunteerSlots.map((slot) => {
     const remaining = Math.max(0, slot.capacity - slot.signups.length);
@@ -193,6 +197,9 @@ export default async function InscriptionPage({
               <VolunteerSignupForm
                 token={token}
                 slots={slotOptions}
+                recaptchaSiteKey={
+                  association.recaptchaReady ? association.recaptchaSiteKey : null
+                }
                 defaultName={currentUser?.name ?? ""}
                 defaultEmail={currentUser?.email ?? ""}
               />

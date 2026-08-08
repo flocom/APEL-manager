@@ -39,6 +39,11 @@ export default async function SettingsPage() {
     telegramBotUsername: associationStatus.telegramBotUsername,
     telegramTokenVerifiedAt: associationStatus.telegramTokenVerifiedAt,
     telegramReady: associationStatus.telegramReady,
+    recaptchaEnabled: associationStatus.recaptchaEnabled,
+    recaptchaSiteKey: associationStatus.recaptchaSiteKey,
+    recaptchaSecretConfigured: associationStatus.recaptchaSecretConfigured,
+    recaptchaMinScore: associationStatus.recaptchaMinScore,
+    recaptchaReady: associationStatus.recaptchaReady,
     legacyEnvironment: associationStatus.legacyEnvironment,
   };
   const settings: MailSettingsView = {
