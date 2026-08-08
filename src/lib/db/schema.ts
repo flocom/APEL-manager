@@ -66,7 +66,17 @@ export const accountingEntryStatusEnum = pgEnum("accounting_entry_status", [
 
 export const associationDocumentTypeEnum = pgEnum(
   "association_document_type",
-  ["ag_minutes", "attestation", "other"],
+  [
+    "ag_minutes",
+    "attestation",
+    // Documents de la vie de l'association : ceux qu'on ressort à la demande
+    // d'une mairie, d'une banque ou de l'école.
+    "statutes",
+    "internal_rules",
+    "insurance",
+    "agreement",
+    "other",
+  ],
 );
 
 export const associationDocumentStatusEnum = pgEnum(
@@ -103,6 +113,8 @@ export const users = pgTable("users", {
   telegramChatId: text("telegram_chat_id"),
   /** Incrémenté à chaque changement de mot de passe pour invalider les sessions émises avant. */
   sessionEpoch: integer("session_epoch").notNull().default(0),
+  /** Date à laquelle le guide de première connexion a été suivi ou passé. */
+  onboardingSeenAt: timestamp("onboarding_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -471,7 +483,7 @@ export const accountingEntries = pgTable(
   }),
 );
 
-/** PV d'AG, attestation ou document libre de l'association. */
+/** PV d'AG, attestation nominative, ou document officiel de l'association. */
 export const associationDocuments = pgTable(
   "association_documents",
   {

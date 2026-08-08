@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import {
   accountingCategories,
   accountingEntries,
@@ -592,7 +593,7 @@ export function registerAssociationTools(
       description:
         "Liste les procès-verbaux d’AG, attestations et documents de l’association.",
       inputSchema: z.object({
-        type: z.enum(["ag_minutes", "attestation", "other"]).optional(),
+        type: z.enum(ASSOCIATION_DOCUMENT_TYPES).optional(),
         status: z.enum(["draft", "final", "archived"]).optional(),
         limit: z.number().int().min(1).max(500).default(100),
       }),
@@ -630,7 +631,7 @@ export function registerAssociationTools(
       description:
         "Crée un PV d’AG, une attestation ou un document interne imprimable.",
       inputSchema: z.object({
-        type: z.enum(["ag_minutes", "attestation", "other"]),
+        type: z.enum(ASSOCIATION_DOCUMENT_TYPES),
         status: z.enum(["draft", "final", "archived"]).default("draft"),
         title: z.string().min(1).max(300),
         documentDate: localDateTime,
@@ -658,7 +659,7 @@ export function registerAssociationTools(
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
-        type: z.enum(["ag_minutes", "attestation", "other"]).optional(),
+        type: z.enum(ASSOCIATION_DOCUMENT_TYPES).optional(),
         status: z.enum(["draft", "final", "archived"]).optional(),
         title: z.string().min(1).max(300).optional(),
         documentDate: localDateTime.optional(),

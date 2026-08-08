@@ -65,7 +65,11 @@ export const getEventWithDetails = cache(async (id: string) => {
         with: { assignees: { columns: { userId: true } } },
       },
       volunteerSlots: {
-        orderBy: [asc(volunteerSlots.createdAt)],
+        // Heure de début d'abord : un tableau de créneaux se lit dans l'ordre
+        // de la journée. PostgreSQL range les valeurs nulles en dernier, donc
+        // les créneaux sans horaire ferment la liste, dans leur ordre de
+        // création.
+        orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
         with: {
           signups: {
             columns: {
@@ -91,7 +95,11 @@ export const getEventByShareToken = cache(async (token: string) => {
     where: eq(events.shareToken, token),
     with: {
       volunteerSlots: {
-        orderBy: [asc(volunteerSlots.createdAt)],
+        // Heure de début d'abord : un tableau de créneaux se lit dans l'ordre
+        // de la journée. PostgreSQL range les valeurs nulles en dernier, donc
+        // les créneaux sans horaire ferment la liste, dans leur ordre de
+        // création.
+        orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
         with: { signups: true },
       },
     },

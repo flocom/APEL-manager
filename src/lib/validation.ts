@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { parseLocalDateTime } from "@/lib/dates";
+import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import {
   LEAD_TIME_MAX,
   type LeadTimeUnit,
@@ -129,6 +130,23 @@ export const signupSchema = z.object({
   consent: z.boolean().refine((v) => v === true, {
     message: "Vous devez accepter la politique de confidentialité.",
   }),
+});
+
+/** Message public envoyé depuis la page « Rejoindre l'association ». */
+export const joinRequestSchema = z.object({
+  name: z.string().trim().min(2, "Votre nom est requis").max(120),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  phone: z.string().trim().max(40).optional(),
+  message: z
+    .string()
+    .trim()
+    .min(10, "Dites-nous en quelques mots ce qui vous intéresse")
+    .max(4000),
+  consent: z.boolean().refine((value) => value === true, {
+    message: "Vous devez accepter la politique de confidentialité.",
+  }),
+  // Honeypot anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
 });
 
 export const forgotSchema = z.object({
@@ -319,7 +337,7 @@ export const accountingEntrySchema = z.object({
 export const accountingEntryUpdateSchema = accountingEntrySchema.partial();
 
 export const associationDocumentSchema = z.object({
-  type: z.enum(["ag_minutes", "attestation", "other"]),
+  type: z.enum(ASSOCIATION_DOCUMENT_TYPES),
   status: z.enum(["draft", "final", "archived"]).default("draft"),
   title: z.string().trim().min(1, "Titre requis").max(300),
   documentDate: localDateTime,

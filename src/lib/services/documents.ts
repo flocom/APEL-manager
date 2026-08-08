@@ -3,6 +3,10 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { HttpError } from "@/lib/auth/guards";
 import { formatLongDate } from "@/lib/dates";
 import { db } from "@/lib/db";
+import {
+  ASSOCIATION_DOCUMENT_TYPE_LABELS,
+  type AssociationDocumentType,
+} from "@/lib/labels";
 import { associationDocuments, associationMembers } from "@/lib/db/schema";
 import {
   removeUpload,
@@ -266,7 +270,7 @@ function escapeHtml(value: string) {
 
 export async function renderPrintableDocument(document: {
   title: string;
-  type: "ag_minutes" | "attestation" | "other";
+  type: AssociationDocumentType;
   documentDate: Date;
   content: string;
   memberFirstName: string | null;
@@ -276,9 +280,7 @@ export async function renderPrintableDocument(document: {
   const typeLabel =
     document.type === "ag_minutes"
       ? "Procès-verbal d’assemblée générale"
-      : document.type === "attestation"
-        ? "Attestation"
-        : "Document";
+      : ASSOCIATION_DOCUMENT_TYPE_LABELS[document.type];
   const beneficiary =
     document.memberFirstName || document.memberLastName
       ? `<p><strong>Bénéficiaire :</strong> ${escapeHtml(

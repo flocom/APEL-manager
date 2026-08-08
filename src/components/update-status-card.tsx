@@ -103,32 +103,43 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
     }
   }
 
+  const REDEMARRAGE =
+    "Mise à jour lancée. L’application redémarre, rechargez la page dans un instant.";
+
   async function applyNow() {
     setConfirmApply(false);
     setApplying(true);
     try {
       const response = await fetch("/api/updates/apply", { method: "POST" });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as {
+        const payload = (await response.json().catch(() => null)) as {
           error?: string;
-        };
-        throw new Error(payload.error || "Mise à jour impossible.");
+        } | null;
+        if (payload?.error) throw new Error(payload.error);
+        // Réponse sans explication : c'est le proxy qui parle, pas
+        // l'application. Une passerelle en défaut pendant que le conteneur est
+        // justement remplacé annonce la mise à jour, elle ne l'infirme pas.
+        if (response.status >= 502 && response.status <= 504) {
+          toast(REDEMARRAGE);
+          return;
+        }
+        throw new Error(
+          `Mise à jour impossible (réponse ${response.status} du serveur).`,
+        );
       }
       const { outcome } = (await response.json()) as {
         outcome: "started" | "restarting";
       };
       toast(
         outcome === "restarting"
-          ? "Mise à jour lancée. L’application redémarre, rechargez la page dans un instant."
+          ? REDEMARRAGE
           : "Contrôle effectué : aucune version plus récente à installer.",
       );
     } catch (error) {
       // Le conteneur peut disparaître avant de répondre : la requête échoue
       // alors côté navigateur alors que la mise à jour est bel et bien partie.
       toast(
-        error instanceof TypeError
-          ? "Mise à jour lancée. L’application redémarre, rechargez la page dans un instant."
-          : (error as Error).message,
+        error instanceof TypeError ? REDEMARRAGE : (error as Error).message,
         error instanceof TypeError ? "success" : "error",
       );
     } finally {

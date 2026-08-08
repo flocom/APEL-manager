@@ -193,7 +193,9 @@ export async function duplicateEvent(
     where: eq(events.id, eventId),
     with: {
       tasks: { orderBy: [asc(tasks.dueAt), asc(tasks.position)] },
-      volunteerSlots: { orderBy: [asc(volunteerSlots.createdAt)] },
+      volunteerSlots: {
+        orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
+      },
     },
   });
   if (!source) throw new HttpError(404, "Événement introuvable.");

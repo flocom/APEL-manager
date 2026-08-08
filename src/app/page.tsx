@@ -6,7 +6,6 @@ import {
   HeartHandshake,
   MapPin,
   MousePointerClick,
-  Users,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -98,6 +97,13 @@ export default async function HomePage() {
                   Voir les événements
                   <ArrowRight className="h-4 w-4" />
                 </a>
+                <Link
+                  href="/rejoindre"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-white px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-white hover:text-brand-950 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
+                >
+                  <HeartHandshake className="h-4 w-4" />
+                  Rejoindre l&apos;association
+                </Link>
                 <span className="inline-flex min-h-12 items-center gap-2 px-2 text-sm font-semibold text-brand-100">
                   <CheckCircle2 className="h-5 w-5 text-sea-200" />
                   Inscription sans compte
@@ -131,25 +137,33 @@ export default async function HomePage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 py-5">
-                  <div className="rounded-2xl bg-brand-50 p-4">
+                  <a
+                    href="#evenements"
+                    className="group rounded-2xl bg-brand-50 p-4 transition-colors hover:bg-brand-100 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+                  >
                     <CalendarDays className="h-5 w-5 text-brand-700" />
                     <p className="mt-5 text-4xl font-black tracking-[-0.04em] text-brand-950">
                       {events.length}
                     </p>
-                    <p className="mt-1 text-sm font-bold text-slate-600">
+                    <p className="mt-1 flex items-center gap-1 text-sm font-bold text-slate-600">
                       événement{events.length > 1 ? "s" : ""} à venir
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
                     </p>
-                  </div>
-                  <div className="rounded-2xl bg-sea-200 p-4">
-                    <Users className="h-5 w-5 text-brand-950" />
+                  </a>
+                  <a
+                    href="#evenements"
+                    className="group rounded-2xl bg-sea-200 p-4 transition-colors hover:bg-sea-300 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+                  >
+                    <Hand className="h-5 w-5 text-brand-950" />
                     <p className="mt-5 text-4xl font-black tracking-[-0.04em] text-brand-950">
                       {openPlaces}
                     </p>
-                    <p className="mt-1 text-sm font-bold text-brand-950">
-                      place{openPlaces > 1 ? "s" : ""} bénévole
+                    <p className="mt-1 flex items-center gap-1 text-sm font-bold text-brand-950">
+                      coup{openPlaces > 1 ? "s" : ""} de main recherché
                       {openPlaces > 1 ? "s" : ""}
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
                     </p>
-                  </div>
+                  </a>
                 </div>
 
                 <div className="flex items-center gap-3 rounded-2xl bg-brand-950 p-4 text-white">
