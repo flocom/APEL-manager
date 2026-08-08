@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
@@ -143,6 +144,8 @@ export default async function PrivacyPage() {
           ← Retour à l&apos;accueil
         </Link>
       </main>
+
+      <SiteFooter />
     </div>
   );
 }

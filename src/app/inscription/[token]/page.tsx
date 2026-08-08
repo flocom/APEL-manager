@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 
 import { FormattedText } from "@/components/formatted-text";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import {
   VolunteerSignupForm,
@@ -199,6 +200,8 @@ export default async function InscriptionPage({
           </section>
         </div>
       </main>
+
+      <SiteFooter />
     </div>
   );
 }
