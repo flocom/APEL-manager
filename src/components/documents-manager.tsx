@@ -7,6 +7,7 @@ import {
   FilePenLine,
   FileText,
   Files,
+  Landmark,
   Pencil,
   Plus,
   Printer,
@@ -34,6 +35,11 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
+import {
+  ASSOCIATION_DOCUMENT_TYPE_LABELS,
+  OFFICIAL_DOCUMENT_TYPES,
+  type AssociationDocumentType,
+} from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 export interface DocumentMemberOption {
@@ -43,7 +49,7 @@ export interface DocumentMemberOption {
 
 export interface AssociationDocumentView {
   id: string;
-  type: "ag_minutes" | "attestation" | "other";
+  type: AssociationDocumentType;
   status: "draft" | "final" | "archived";
   title: string;
   documentDate: string;
@@ -53,7 +59,17 @@ export interface AssociationDocumentView {
   version: number;
 }
 
-type DocumentTab = "ag_minutes" | "attestation";
+/**
+ * Le troisième onglet regroupe le classeur officiel — statuts, assurance,
+ * conventions — au lieu d'un type unique : ces documents se cherchent
+ * ensemble, et « Autre document » y trouve enfin une place, alors qu'il était
+ * enregistrable sans être affiché nulle part.
+ */
+type DocumentTab = "ag_minutes" | "attestation" | "association";
+
+function tabOf(type: AssociationDocumentType): DocumentTab {
+  return type === "ag_minutes" || type === "attestation" ? type : "association";
+}
 
 const STATUS_LABELS: Record<AssociationDocumentView["status"], string> = {
   draft: "Brouillon",
@@ -102,6 +118,9 @@ export function DocumentsManager({
   const attestationCount = documents.filter(
     (document) => document.type === "attestation",
   ).length;
+  const officialCount = documents.filter(
+    (document) => tabOf(document.type) === "association",
+  ).length;
   const finalCount = documents.filter(
     (document) => document.status === "final",
   ).length;
@@ -116,7 +135,7 @@ export function DocumentsManager({
         ? memberNames.get(document.memberId)
         : "";
       return (
-        document.type === tab &&
+        tabOf(document.type) === tab &&
         (status === "all" || document.status === status) &&
         (!normalizedQuery ||
           `${document.title} ${document.content} ${memberName ?? ""}`
@@ -147,7 +166,9 @@ export function DocumentsManager({
         toast(
           tab === "ag_minutes"
             ? "Procès-verbal ajouté."
-            : "Attestation ajoutée.",
+            : tab === "attestation"
+              ? "Attestation ajoutée."
+              : "Document ajouté.",
         );
       } else if (editor) {
         await api(`/api/documents/${editor.id}`, {
@@ -212,7 +233,7 @@ export function DocumentsManager({
     <div className="space-y-6">
       <section
         aria-label="Indicateurs des documents"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
       >
         <ModuleStat
           label="PV d'AG"
@@ -227,6 +248,13 @@ export function DocumentsManager({
           helper="Documents nominatifs"
           icon={BadgeCheck}
           tone="sea"
+        />
+        <ModuleStat
+          label="Documents de l’association"
+          value={officialCount}
+          helper="Statuts, assurance, conventions"
+          icon={Landmark}
+          tone="brand"
         />
         <ModuleStat
           label="Finalisés"
@@ -247,7 +275,7 @@ export function DocumentsManager({
       <div
         role="tablist"
         aria-label="Type de documents"
-        className="grid rounded-2xl border-2 border-slate-200 bg-slate-100 p-1 sm:w-fit sm:grid-cols-2"
+        className="grid rounded-2xl border-2 border-slate-200 bg-slate-100 p-1 sm:w-fit sm:grid-cols-3"
       >
         <DocumentTabButton
           active={tab === "ag_minutes"}
@@ -263,6 +291,13 @@ export function DocumentsManager({
           count={attestationCount}
           onClick={() => changeTab("attestation")}
         />
+        <DocumentTabButton
+          active={tab === "association"}
+          icon={Landmark}
+          label="Documents de l’association"
+          count={officialCount}
+          onClick={() => changeTab("association")}
+        />
       </div>
 
       {editor && (
@@ -276,7 +311,9 @@ export function DocumentsManager({
                 {editor === "new"
                   ? tab === "ag_minutes"
                     ? "Ajouter un procès-verbal"
-                    : "Créer une attestation"
+                    : tab === "attestation"
+                      ? "Créer une attestation"
+                      : "Ajouter un document de l’association"
                   : "Modifier le document"}
               </h2>
             </div>
@@ -292,7 +329,10 @@ export function DocumentsManager({
           </div>
           <DocumentForm
             document={editor === "new" ? null : editor}
-            defaultType={tab}
+            defaultType={
+              tab === "association" ? "statutes" : (tab as AssociationDocumentType)
+            }
+            tab={tab}
             memberOptions={memberOptions}
             loading={submitting}
             onSubmit={save}
@@ -346,27 +386,41 @@ export function DocumentsManager({
             onClick={() => setEditor("new")}
             className="w-full lg:w-auto"
           >
-            {tab === "ag_minutes" ? "Ajouter un PV" : "Créer une attestation"}
+            {tab === "ag_minutes"
+              ? "Ajouter un PV"
+              : tab === "attestation"
+                ? "Créer une attestation"
+                : "Ajouter un document"}
           </Button>
         </div>
       </Card>
 
       {filtered.length === 0 ? (
         <EmptyState
-          icon={tab === "ag_minutes" ? FileText : BadgeCheck}
+          icon={
+            tab === "ag_minutes"
+              ? FileText
+              : tab === "attestation"
+                ? BadgeCheck
+                : Landmark
+          }
           title={
             query || status !== "all"
               ? "Aucun document trouvé"
               : tab === "ag_minutes"
                 ? "Aucun procès-verbal"
-                : "Aucune attestation"
+                : tab === "attestation"
+                  ? "Aucune attestation"
+                  : "Aucun document de l’association"
           }
           description={
             query || status !== "all"
               ? "Modifiez la recherche ou le filtre de statut."
               : tab === "ag_minutes"
                 ? "Ajoutez le premier PV d'assemblée générale de l'association."
-                : "Créez une attestation à partir de l'identité officielle de l'APEL."
+                : tab === "attestation"
+                  ? "Créez une attestation à partir de l'identité officielle de l'APEL."
+                  : "Déposez les statuts, l'attestation d'assurance ou une convention : ce qu'on vous réclame et qu'il faut retrouver vite."
           }
           action={
             !query && status === "all" ? (
@@ -378,7 +432,9 @@ export function DocumentsManager({
               >
                 {tab === "ag_minutes"
                   ? "Ajouter le premier PV"
-                  : "Créer la première attestation"}
+                  : tab === "attestation"
+                    ? "Créer la première attestation"
+                    : "Ajouter le premier document"}
               </Button>
             ) : undefined
           }
@@ -501,7 +557,11 @@ function DocumentCard({
         aria-hidden="true"
         className={cn(
           "h-1.5",
-          document.type === "ag_minutes" ? "bg-brand-600" : "bg-sea-500",
+          document.type === "ag_minutes"
+            ? "bg-brand-600"
+            : document.type === "attestation"
+              ? "bg-sea-500"
+              : "bg-slate-400",
         )}
       />
       <div className="flex-1 p-5">
@@ -512,13 +572,17 @@ function DocumentCard({
               "grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white",
               document.type === "ag_minutes"
                 ? "bg-brand-700"
-                : "bg-sea-600",
+                : document.type === "attestation"
+                  ? "bg-sea-600"
+                  : "bg-slate-600",
             )}
           >
             {document.type === "ag_minutes" ? (
               <FileText className="h-5 w-5" />
-            ) : (
+            ) : document.type === "attestation" ? (
               <BadgeCheck className="h-5 w-5" />
+            ) : (
+              <Landmark className="h-5 w-5" />
             )}
           </span>
           <Badge color={STATUS_COLORS[document.status]}>
@@ -529,6 +593,7 @@ function DocumentCard({
           {document.title}
         </h3>
         <p className="mt-1 text-sm font-medium text-slate-500">
+          {ASSOCIATION_DOCUMENT_TYPE_LABELS[document.type]} ·{" "}
           {formatShortDate(document.documentDate)}
         </p>
         {memberName && (
@@ -615,13 +680,15 @@ function DocumentCard({
 function DocumentForm({
   document,
   defaultType,
+  tab,
   memberOptions,
   loading,
   onSubmit,
   onCancel,
 }: {
   document: AssociationDocumentView | null;
-  defaultType: DocumentTab;
+  defaultType: AssociationDocumentType;
+  tab: DocumentTab;
   memberOptions: DocumentMemberOption[];
   loading: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -636,9 +703,19 @@ function DocumentForm({
             name="type"
             defaultValue={document?.type ?? defaultType}
           >
-            <option value="ag_minutes">PV d’assemblée générale</option>
-            <option value="attestation">Attestation</option>
-            <option value="other">Autre document</option>
+            <option value="ag_minutes">
+              {ASSOCIATION_DOCUMENT_TYPE_LABELS.ag_minutes}
+            </option>
+            <option value="attestation">
+              {ASSOCIATION_DOCUMENT_TYPE_LABELS.attestation}
+            </option>
+            <optgroup label="Documents de l’association">
+              {OFFICIAL_DOCUMENT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {ASSOCIATION_DOCUMENT_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </optgroup>
           </Select>
         </Field>
         <Field label="Statut" htmlFor="document-status">
@@ -688,9 +765,11 @@ function DocumentForm({
             required
             defaultValue={document?.title}
             placeholder={
-              defaultType === "ag_minutes"
+              tab === "ag_minutes"
                 ? "PV de l'assemblée générale du…"
-                : "Attestation de…"
+                : tab === "attestation"
+                  ? "Attestation de…"
+                  : "Statuts de l'association, attestation d'assurance 2026-2027…"
             }
           />
         </Field>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { parseLocalDateTime } from "@/lib/dates";
+import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import {
   LEAD_TIME_MAX,
   type LeadTimeUnit,
@@ -319,7 +320,7 @@ export const accountingEntrySchema = z.object({
 export const accountingEntryUpdateSchema = accountingEntrySchema.partial();
 
 export const associationDocumentSchema = z.object({
-  type: z.enum(["ag_minutes", "attestation", "other"]),
+  type: z.enum(ASSOCIATION_DOCUMENT_TYPES),
   status: z.enum(["draft", "final", "archived"]).default("draft"),
   title: z.string().trim().min(1, "Titre requis").max(300),
   documentDate: localDateTime,
