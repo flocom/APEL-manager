@@ -113,6 +113,8 @@ export const users = pgTable("users", {
   telegramChatId: text("telegram_chat_id"),
   /** Incrémenté à chaque changement de mot de passe pour invalider les sessions émises avant. */
   sessionEpoch: integer("session_epoch").notNull().default(0),
+  /** Date à laquelle le guide de première connexion a été suivi ou passé. */
+  onboardingSeenAt: timestamp("onboarding_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

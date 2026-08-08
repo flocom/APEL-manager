@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 
 import { AccountForm } from "@/components/account-form";
 import { PasswordChangeForm } from "@/components/password-change-form";
+import { ReplayTourButton } from "@/components/replay-tour-button";
 import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireUser } from "@/lib/auth/rbac";
 import { getAssociationSettings } from "@/lib/services/association-settings";
@@ -47,6 +48,15 @@ export default async function AccountPage() {
         <Card className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
           <PasswordChangeForm />
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Découverte</h2>
+          <p className="mb-4 mt-1 text-sm leading-6 text-slate-500">
+            Le petit guide qui présente chaque page du tableau de bord, une
+            bulle à la fois.
+          </p>
+          <ReplayTourButton />
         </Card>
       </div>
     </div>
