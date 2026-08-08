@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 
 import { FormattedText } from "@/components/formatted-text";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
@@ -336,22 +337,7 @@ export default async function HomePage() {
         </section>
       </main>
 
-      <footer className="bg-brand-950 py-8 text-sm text-brand-200">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-center sm:flex-row sm:px-6 sm:text-left">
-          <div className="flex items-center gap-3">
-            <span className="h-3 w-3 rounded-full bg-sea-500" />
-            <p className="font-semibold">
-              {settings.associationName} — ensemble, pour nos enfants.
-            </p>
-          </div>
-          <Link
-            href="/confidentialite"
-            className="rounded-md font-bold text-white transition-colors hover:text-sea-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-700"
-          >
-            Politique de confidentialité
-          </Link>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

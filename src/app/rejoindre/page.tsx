@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { JoinForm } from "@/components/join-form";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
@@ -185,6 +186,8 @@ export default async function RejoindrePage() {
           </div>
         </section>
       </main>
+
+      <SiteFooter />
     </div>
   );
 }

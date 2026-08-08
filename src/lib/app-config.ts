@@ -20,3 +20,13 @@ export const CONTACT_EMAIL =
  */
 export const ASSOCIATION_RNA =
   process.env.NEXT_PUBLIC_ASSOCIATION_RNA?.trim() || "";
+
+/**
+ * Dépôt du projet, au format `organisation/dépôt`. Même valeur que celle
+ * surveillée par l'indicateur de version : une instance dérivée renvoie ainsi
+ * vers son propre code, pas vers celui d'origine.
+ */
+export const PROJECT_REPOSITORY =
+  process.env.UPDATE_REPOSITORY?.trim() || "flocom/APEL-manager";
+
+export const PROJECT_REPOSITORY_URL = `https://github.com/${PROJECT_REPOSITORY}`;
