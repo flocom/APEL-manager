@@ -265,9 +265,24 @@ export function TaskManager({
     }
   }
 
+  /**
+   * La liste est classée par échéance : ranger une tâche à la main n'a de sens
+   * qu'entre celles qui tombent le même jour, sinon le tri la remettrait
+   * aussitôt à sa place.
+   */
+  function sameDueDate(a?: TaskItemData, b?: TaskItemData) {
+    return Boolean(a && b && a.dueAt === b.dueAt);
+  }
+
+  function canMove(index: number, dir: "up" | "down") {
+    const j = dir === "up" ? index - 1 : index + 1;
+    return sameDueDate(orderedTasks[index], orderedTasks[j]);
+  }
+
   async function move(index: number, dir: "up" | "down") {
     const j = dir === "up" ? index - 1 : index + 1;
     if (orderSaving || j < 0 || j >= orderedTasks.length) return;
+    if (!canMove(index, dir)) return;
     const nextTasks = [...orderedTasks];
     const movedTask = nextTasks[index];
     if (!movedTask) return;
@@ -295,6 +310,9 @@ export function TaskManager({
     targetId: string,
   ) {
     if (!draggedTaskId || draggedTaskId === targetId || orderSaving) return;
+    const dragged = orderedTasks.find((task) => task.id === draggedTaskId);
+    const target = orderedTasks.find((task) => task.id === targetId);
+    if (!sameDueDate(dragged, target)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -326,7 +344,8 @@ export function TaskManager({
 
     if (!sourceId || !target || sourceId === target.id || orderSaving) return;
     const movedTask = orderedTasks.find((task) => task.id === sourceId);
-    if (!movedTask) return;
+    const targetTask = orderedTasks.find((task) => task.id === target.id);
+    if (!movedTask || !sameDueDate(movedTask, targetTask)) return;
 
     const nextTasks = orderedTasks.filter((task) => task.id !== sourceId);
     const targetIndex = nextTasks.findIndex((task) => task.id === target.id);
@@ -490,7 +509,8 @@ export function TaskManager({
       {canManage && orderedTasks.length > 1 && (
         <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
           <GripVertical className="h-4 w-4 text-brand-600" />
-          Saisissez la poignée d’une tâche pour la déplacer par glisser-déposer.
+          Les tâches sont classées par échéance. Saisissez la poignée d’une
+          tâche pour la ranger parmi celles du même jour.
         </p>
       )}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
@@ -566,7 +586,7 @@ export function TaskManager({
                         <button
                           type="button"
                           onClick={() => move(index, "up")}
-                          disabled={orderSaving || index === 0}
+                          disabled={orderSaving || !canMove(index, "up")}
                           aria-label="Monter la tâche"
                           className="rounded p-0.5 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                         >
@@ -575,9 +595,7 @@ export function TaskManager({
                         <button
                           type="button"
                           onClick={() => move(index, "down")}
-                          disabled={
-                            orderSaving || index === orderedTasks.length - 1
-                          }
+                          disabled={orderSaving || !canMove(index, "down")}
                           aria-label="Descendre la tâche"
                           className="rounded p-0.5 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                         >

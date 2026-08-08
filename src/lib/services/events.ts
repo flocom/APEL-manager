@@ -61,7 +61,7 @@ export async function saveEventAsTemplate(
       })
       .from(tasks)
       .where(eq(tasks.eventId, eventId))
-      .orderBy(asc(tasks.position), asc(tasks.dueAt)),
+      .orderBy(asc(tasks.dueAt), asc(tasks.position)),
   ]);
 
   if (!event) throw new HttpError(404, "Événement introuvable.");
@@ -192,7 +192,7 @@ export async function duplicateEvent(
   const source = await db.query.events.findFirst({
     where: eq(events.id, eventId),
     with: {
-      tasks: { orderBy: [asc(tasks.position), asc(tasks.dueAt)] },
+      tasks: { orderBy: [asc(tasks.dueAt), asc(tasks.position)] },
       volunteerSlots: { orderBy: [asc(volunteerSlots.createdAt)] },
     },
   });
