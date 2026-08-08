@@ -12,6 +12,7 @@ import {
 import { db } from "@/lib/db";
 import { associationSettings } from "@/lib/db/schema";
 import { checkTelegramBotToken } from "@/lib/notifications/telegram";
+import { checkRecaptchaSecret } from "@/lib/services/recaptcha";
 import { emptyToNull } from "@/lib/utils";
 import { associationSettingsSchema } from "@/lib/validation";
 
@@ -84,6 +85,15 @@ export async function getAssociationSettings() {
         settings.telegramEnabled &&
         Boolean(settings.encryptedTelegramBotToken) &&
         Boolean(settings.telegramTokenVerifiedAt),
+      recaptchaEnabled: settings.recaptchaEnabled,
+      recaptchaSiteKey: settings.recaptchaSiteKey,
+      recaptchaSecretConfigured: Boolean(settings.encryptedRecaptchaSecret),
+      recaptchaMinScore: settings.recaptchaMinScore,
+      /** Seul état où les formulaires publics présentent une vérification. */
+      recaptchaReady:
+        settings.recaptchaEnabled &&
+        Boolean(settings.recaptchaSiteKey) &&
+        Boolean(settings.encryptedRecaptchaSecret),
       legacyEnvironment: false,
       updatedAt: settings.updatedAt,
     };
@@ -107,6 +117,11 @@ export async function getAssociationSettings() {
     // n'a jamais pu être confirmé, le canal reste donc fermé aux membres tant
     // qu'un administrateur n'a pas enregistré les réglages une fois.
     telegramReady: false,
+    recaptchaEnabled: false,
+    recaptchaSiteKey: null,
+    recaptchaSecretConfigured: false,
+    recaptchaMinScore: 50,
+    recaptchaReady: false,
     legacyEnvironment: Boolean(
       process.env.NEXT_PUBLIC_ASSO_NAME ||
         process.env.NEXT_PUBLIC_SCHOOL_NAME ||
@@ -186,6 +201,46 @@ export async function saveAssociationSettings(
     // panne réseau passagère ne doit pas bloquer les autres réglages.
   }
 
+  // Clé secrète reCAPTCHA : même traitement que le token Telegram — chiffrée,
+  // jamais relue par une API de lecture, et confirmée auprès de Google avant
+  // d'ouvrir la vérification sur les formulaires publics.
+  let encryptedRecaptchaSecret = current?.encryptedRecaptchaSecret ?? null;
+  const recaptchaSecret = data.recaptchaSecret?.trim() || null;
+  if (data.clearRecaptchaSecret) {
+    encryptedRecaptchaSecret = null;
+  } else if (recaptchaSecret) {
+    encryptedRecaptchaSecret = encryptSecret(recaptchaSecret);
+  }
+
+  const recaptchaSiteKey = emptyToNull(data.recaptchaSiteKey);
+  if (data.recaptchaEnabled && (!recaptchaSiteKey || !encryptedRecaptchaSecret)) {
+    throw new HttpError(
+      400,
+      "Renseignez la clé de site et la clé secrète avant d’activer reCAPTCHA.",
+    );
+  }
+
+  if (recaptchaSecret || (data.recaptchaEnabled && !current?.recaptchaEnabled)) {
+    const brut =
+      recaptchaSecret ??
+      (encryptedRecaptchaSecret ? safeDecrypt(encryptedRecaptchaSecret) : null);
+    const controle = brut
+      ? await checkRecaptchaSecret(brut)
+      : ({ ok: false, reason: "refused" } as const);
+    if (!controle.ok && controle.reason === "refused") {
+      throw new HttpError(
+        400,
+        "Clé secrète refusée par Google. Vérifiez qu’il s’agit bien de la clé secrète du même site reCAPTCHA.",
+      );
+    }
+    if (!controle.ok) {
+      throw new HttpError(
+        502,
+        "Google est injoignable : impossible de confirmer la clé. Réessayez dans un instant.",
+      );
+    }
+  }
+
   const values = {
     associationName: data.associationName,
     schoolName: data.schoolName,
@@ -199,6 +254,10 @@ export async function saveAssociationSettings(
     telegramTokenLastFour,
     telegramBotUsername,
     telegramTokenVerifiedAt,
+    recaptchaEnabled: data.recaptchaEnabled,
+    recaptchaSiteKey,
+    encryptedRecaptchaSecret,
+    recaptchaMinScore: data.recaptchaMinScore,
     updatedBy: actor.userId,
     updatedAt: new Date(),
   };
@@ -248,4 +307,26 @@ export async function getTelegramBotToken() {
   }
 
   return process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
+}
+
+/**
+ * Configuration reCAPTCHA côté serveur : la clé secrète déchiffrée n'est
+ * rendue qu'ici, jamais par une API de lecture.
+ */
+export async function getRecaptchaRuntimeConfig() {
+  const settings = await getAssociationSettingsRecord().catch(() => null);
+  if (
+    !settings?.recaptchaEnabled ||
+    !settings.recaptchaSiteKey ||
+    !settings.encryptedRecaptchaSecret
+  ) {
+    return null;
+  }
+  const secret = safeDecrypt(settings.encryptedRecaptchaSecret);
+  if (!secret) return null;
+  return {
+    siteKey: settings.recaptchaSiteKey,
+    secret,
+    minScore: settings.recaptchaMinScore / 100,
+  };
 }

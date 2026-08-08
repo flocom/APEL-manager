@@ -14,7 +14,7 @@ import { useState } from "react";
 
 import { LogoUploadField } from "@/components/logo-upload-field";
 import { useToast } from "@/components/toast";
-import { Button, Card, Field, Input } from "@/components/ui";
+import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 
 export interface AssociationSettingsView {
@@ -31,6 +31,11 @@ export interface AssociationSettingsView {
   telegramBotUsername: string | null;
   telegramTokenVerifiedAt: Date | null;
   telegramReady: boolean;
+  recaptchaEnabled: boolean;
+  recaptchaSiteKey: string | null;
+  recaptchaSecretConfigured: boolean;
+  recaptchaMinScore: number;
+  recaptchaReady: boolean;
   legacyEnvironment: boolean;
 }
 
@@ -50,6 +55,7 @@ export function AssociationSettingsForm({
     const telegramBotToken = String(
       form.get("telegramBotToken") ?? "",
     ).trim();
+    const recaptchaSecret = String(form.get("recaptchaSecret") ?? "").trim();
 
     try {
       await api("/api/settings/association", {
@@ -71,6 +77,12 @@ export function AssociationSettingsForm({
             !telegramBotToken &&
             form.get("clearTelegramBotToken") === "on",
           ...(telegramBotToken ? { telegramBotToken } : {}),
+          recaptchaEnabled: form.get("recaptchaEnabled") === "on",
+          recaptchaSiteKey: form.get("recaptchaSiteKey") || null,
+          recaptchaMinScore: Number(form.get("recaptchaMinScore")),
+          clearRecaptchaSecret:
+            !recaptchaSecret && form.get("clearRecaptchaSecret") === "on",
+          ...(recaptchaSecret ? { recaptchaSecret } : {}),
         },
       });
       toast("Réglages de l’association enregistrés.");
@@ -322,6 +334,118 @@ export function AssociationSettingsForm({
                   </label>
                 )}
               </Field>
+            </div>
+          </section>
+
+          <section className="border-t-2 border-slate-100 pt-7">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-coral-100 text-coral-800">
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="font-bold text-brand-950">
+                  Protection anti-robot
+                </h3>
+                <p className="text-sm text-slate-500">
+                  reCAPTCHA v3 sur l’inscription des bénévoles et le formulaire
+                  de contact. Les deux clés se créent sur{" "}
+                  <a
+                    href="https://www.google.com/recaptcha/admin"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-brand-700 underline"
+                  >
+                    google.com/recaptcha/admin
+                  </a>{" "}
+                  en choisissant « v3 ».
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-[.75fr_1.25fr]">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-coral-200 bg-coral-50 p-4">
+                <input
+                  type="checkbox"
+                  name="recaptchaEnabled"
+                  defaultChecked={settings.recaptchaEnabled}
+                  className="mt-0.5 h-5 w-5 rounded border-2 border-slate-300 accent-[#d95d45]"
+                />
+                <span>
+                  <span className="block font-bold text-brand-950">
+                    Activer reCAPTCHA
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-slate-600">
+                    {settings.recaptchaReady
+                      ? "Actif : les formulaires publics sont vérifiés."
+                      : "Sans clé valide, les formulaires restent protégés par le seul champ piège."}
+                  </span>
+                </span>
+              </label>
+              <div className="space-y-4">
+                <Field label="Clé de site" htmlFor="recaptcha-site">
+                  <Input
+                    id="recaptcha-site"
+                    name="recaptchaSiteKey"
+                    defaultValue={settings.recaptchaSiteKey ?? ""}
+                    placeholder="6Lc…"
+                    autoComplete="off"
+                  />
+                </Field>
+                <Field
+                  label="Clé secrète"
+                  htmlFor="recaptcha-secret"
+                  hint={
+                    settings.recaptchaSecretConfigured
+                      ? "Clé enregistrée. Laissez vide pour la conserver."
+                      : "Stockée chiffrée, jamais renvoyée au navigateur."
+                  }
+                >
+                  <div className="relative">
+                    <KeyRound
+                      className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      id="recaptcha-secret"
+                      name="recaptchaSecret"
+                      type="password"
+                      className="pl-10"
+                      placeholder={
+                        settings.recaptchaSecretConfigured
+                          ? "Conserver la clé actuelle"
+                          : "6Lc…"
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  {settings.recaptchaSecretConfigured && (
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold text-coral-700">
+                      <input
+                        type="checkbox"
+                        name="clearRecaptchaSecret"
+                        className="h-4 w-4 rounded border-2 border-coral-300 accent-[#d95d45]"
+                      />
+                      Supprimer la clé enregistrée
+                    </label>
+                  )}
+                </Field>
+                <Field
+                  label="Exigence"
+                  htmlFor="recaptcha-score"
+                  hint="Google note chaque envoi de 0 à 1. Plus l’exigence est haute, plus un visiteur pressé risque d’être pris pour un robot."
+                >
+                  <Select
+                    id="recaptcha-score"
+                    name="recaptchaMinScore"
+                    defaultValue={String(settings.recaptchaMinScore)}
+                  >
+                    <option value="30">Souple — accepte à partir de 0,3</option>
+                    <option value="50">
+                      Équilibrée — accepte à partir de 0,5
+                    </option>
+                    <option value="70">Stricte — accepte à partir de 0,7</option>
+                  </Select>
+                </Field>
+              </div>
             </div>
           </section>
 

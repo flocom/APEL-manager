@@ -5,8 +5,16 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { api } from "@/lib/client";
+import { useRecaptcha } from "@/lib/use-recaptcha";
 
-export function JoinForm({ contactEmail }: { contactEmail: string | null }) {
+export function JoinForm({
+  contactEmail,
+  recaptchaSiteKey = null,
+}: {
+  contactEmail: string | null;
+  recaptchaSiteKey?: string | null;
+}) {
+  const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +33,7 @@ export function JoinForm({ contactEmail }: { contactEmail: string | null }) {
           message: form.get("message"),
           consent: form.get("consent") === "on",
           website: form.get("website"),
+          recaptchaToken: await executerRecaptcha("contact"),
         },
       });
       setSent(true);

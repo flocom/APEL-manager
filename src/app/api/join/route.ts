@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { sendEmail } from "@/lib/notifications/email";
 import { joinRequestEmail } from "@/lib/notifications/emails";
-import { getAssociationSettings } from "@/lib/services/association-settings";
+import {
+  getAssociationSettings,
+  getRecaptchaRuntimeConfig,
+} from "@/lib/services/association-settings";
+import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { joinRequestSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +25,17 @@ export async function POST(req: Request) {
     // rien envoyer.
     if (data.website && data.website.trim().length > 0) {
       return NextResponse.json({ ok: true });
+    }
+
+    const recaptcha = await getRecaptchaRuntimeConfig();
+    if (recaptcha) {
+      await verifyRecaptcha({
+        secret: recaptcha.secret,
+        token: data.recaptchaToken,
+        action: "contact",
+        minScore: recaptcha.minScore,
+        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+      });
     }
 
     const settings = await getAssociationSettings();

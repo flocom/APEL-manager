@@ -130,6 +130,8 @@ export const signupSchema = z.object({
   consent: z.boolean().refine((v) => v === true, {
     message: "Vous devez accepter la politique de confidentialité.",
   }),
+  /** Jeton reCAPTCHA v3, présent uniquement si la protection est activée. */
+  recaptchaToken: z.string().max(5000).optional(),
 });
 
 /** Message public envoyé depuis la page « Rejoindre l'association ». */
@@ -147,6 +149,8 @@ export const joinRequestSchema = z.object({
   }),
   // Honeypot anti-robot : champ caché qui doit rester vide.
   website: z.string().optional(),
+  /** Jeton reCAPTCHA v3, présent uniquement si la protection est activée. */
+  recaptchaToken: z.string().max(5000).optional(),
 });
 
 export const forgotSchema = z.object({
@@ -380,6 +384,12 @@ export const associationSettingsSchema = z.object({
     .optional()
     .or(z.literal("")),
   clearTelegramBotToken: z.boolean().default(false),
+  recaptchaEnabled: z.boolean().default(false),
+  recaptchaSiteKey: optionalText(200),
+  recaptchaSecret: z.string().trim().min(10).max(500).optional().or(z.literal("")),
+  clearRecaptchaSecret: z.boolean().default(false),
+  /** Note minimale acceptée, en pourcentage : Google note de 0 à 1. */
+  recaptchaMinScore: z.coerce.number().int().min(0).max(100).default(50),
 });
 
 /**
