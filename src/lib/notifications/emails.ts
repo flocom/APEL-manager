@@ -165,3 +165,38 @@ export function mailSettingsTestEmail(
       .join("\n"),
   };
 }
+
+/** Message envoyé à l'association depuis la page « Rejoindre l'APEL ». */
+export function joinRequestEmail(ctx: {
+  name: string;
+  email: string;
+  phone?: string | null;
+  message: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const association = ctx.identity?.associationName || APP_NAME;
+  const contact = [
+    `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
+    `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`,
+    ctx.phone?.trim()
+      ? `<li>Téléphone : <strong>${esc(ctx.phone.trim())}</strong></li>`
+      : "",
+  ].join("");
+
+  return {
+    subject: `Nouveau contact depuis le site — ${ctx.name}`,
+    html: layout(
+      "Quelqu’un souhaite rejoindre l’association",
+      `<ul>${contact}</ul>
+       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;">${esc(ctx.message)}</p>
+       <p>${button(`mailto:${esc(ctx.email)}`, "Répondre")}</p>`,
+      ctx.identity,
+    ),
+    text: `Nouveau contact depuis le site de ${association}.
+
+Nom : ${ctx.name}
+E-mail : ${ctx.email}${ctx.phone?.trim() ? `\nTéléphone : ${ctx.phone.trim()}` : ""}
+
+${ctx.message}`,
+  };
+}

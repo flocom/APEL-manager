@@ -8,6 +8,11 @@ interface EmailParams {
   subject: string;
   html: string;
   text?: string;
+  /**
+   * Adresse de réponse propre à ce message, prioritaire sur celle des
+   * réglages : un message transmis au nom d'un tiers doit se répondre à lui.
+   */
+  replyTo?: string;
   /** Autorise uniquement les écrans de test à vérifier un transport désactivé. */
   allowDisabled?: boolean;
 }
@@ -18,6 +23,7 @@ export async function sendEmail({
   subject,
   html,
   text,
+  replyTo,
   allowDisabled = false,
 }: EmailParams): Promise<boolean> {
   const config = await getOutboundMailRuntimeConfig(allowDisabled);
@@ -42,7 +48,9 @@ export async function sendEmail({
         subject,
         html,
         text,
-        ...(config.replyTo ? { replyTo: config.replyTo } : {}),
+        ...(replyTo ?? config.replyTo
+          ? { replyTo: replyTo ?? config.replyTo }
+          : {}),
       });
       return true;
     }
@@ -54,7 +62,9 @@ export async function sendEmail({
       subject,
       html,
       ...(text ? { text } : {}),
-      ...(config.replyTo ? { replyTo: config.replyTo } : {}),
+      ...(replyTo ?? config.replyTo
+        ? { replyTo: replyTo ?? config.replyTo }
+        : {}),
     });
 
     if (error) {

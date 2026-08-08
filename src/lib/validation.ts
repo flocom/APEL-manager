@@ -132,6 +132,23 @@ export const signupSchema = z.object({
   }),
 });
 
+/** Message public envoyé depuis la page « Rejoindre l'association ». */
+export const joinRequestSchema = z.object({
+  name: z.string().trim().min(2, "Votre nom est requis").max(120),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  phone: z.string().trim().max(40).optional(),
+  message: z
+    .string()
+    .trim()
+    .min(10, "Dites-nous en quelques mots ce qui vous intéresse")
+    .max(4000),
+  consent: z.boolean().refine((value) => value === true, {
+    message: "Vous devez accepter la politique de confidentialité.",
+  }),
+  // Honeypot anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
+});
+
 export const forgotSchema = z.object({
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
 });
