@@ -111,8 +111,10 @@ export function Select({
   className,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
+  // `champ-select` déclenche l'affichage sur plusieurs lignes des libellés
+  // longs, là où le navigateur sait rendre la liste (voir globals.css).
   return (
-    <select className={cn(fieldClasses, className)} {...props} />
+    <select className={cn(fieldClasses, "champ-select", className)} {...props} />
   );
 }
 

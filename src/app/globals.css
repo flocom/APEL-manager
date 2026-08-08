@@ -89,3 +89,79 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     animation: none !important;
   }
 }
+
+/*
+ * Menus déroulants : afficher en entier les libellés longs.
+ *
+ * Un <select> natif tronque ses options — ni le contrôle fermé ni la liste ne
+ * savent revenir à la ligne. Les navigateurs qui prennent en charge le select
+ * personnalisable (`appearance: base-select`) rendent la liste dans le DOM :
+ * on peut alors l'autoriser à passer à la ligne. Ailleurs, le comportement
+ * natif reste inchangé — c'est une amélioration progressive, pas un
+ * remplacement du composant.
+ */
+@supports (appearance: base-select) {
+  select.champ-select,
+  select.champ-select::picker(select) {
+    appearance: base-select;
+  }
+
+  select.champ-select {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
+  }
+
+  /* Le libellé retenu occupe la place disponible et passe à la ligne ; la
+     flèche du navigateur reste à droite, sans doublon de notre part. */
+  select.champ-select selectedcontent,
+  select.champ-select::selectedcontent {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    text-align: left;
+  }
+
+  select.champ-select::picker-icon {
+    flex: none;
+    color: #64748b;
+  }
+
+  select.champ-select::picker(select) {
+    border: 2px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #fff;
+    box-shadow: 0 12px 32px -12px rgb(8 42 64 / 0.35);
+    padding: 0.25rem;
+    max-height: 20rem;
+    overflow-y: auto;
+    /* La liste ne se limite plus à la largeur du champ, sans déborder. */
+    min-width: anchor-size(width);
+    max-width: min(32rem, 90vw);
+  }
+
+  select.champ-select option {
+    white-space: normal;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    line-height: 1.4;
+  }
+
+  select.champ-select option:hover,
+  select.champ-select option:focus {
+    background: #e8f2f8;
+  }
+
+  select.champ-select option:checked {
+    font-weight: 700;
+  }
+
+  select.champ-select optgroup {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+}
