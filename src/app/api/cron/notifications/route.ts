@@ -6,8 +6,6 @@ import { NextResponse } from "next/server";
 import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
-  accountingEntries,
-  associationDocuments,
   notificationsLog,
   tasks,
   volunteerSignups,
@@ -19,6 +17,7 @@ import {
   getAssociationSettings,
   getTelegramBotToken,
 } from "@/lib/services/association-settings";
+import { collectReferencedUploadIds } from "@/lib/services/uploads-references";
 import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
@@ -209,20 +208,10 @@ export async function GET(req: Request) {
 
   let orphanedUploadsRemoved = 0;
   try {
-    const [accountingFiles, documentFiles] = await Promise.all([
-      db
-        .select({ url: accountingEntries.attachmentUrl })
-        .from(accountingEntries)
-        .where(isNotNull(accountingEntries.attachmentUrl)),
-      db
-        .select({ url: associationDocuments.fileUrl })
-        .from(associationDocuments)
-        .where(isNotNull(associationDocuments.fileUrl)),
-    ]);
+    // Une erreur ici abandonne le nettoyage : mieux vaut garder des fichiers
+    // inutiles que d'en supprimer un qui servait encore.
     orphanedUploadsRemoved = await cleanupOrphanedUploads(
-      [...accountingFiles, ...documentFiles]
-        .map((item) => item.url)
-        .filter((url): url is string => Boolean(url)),
+      await collectReferencedUploadIds(),
     );
   } catch (error) {
     console.error(

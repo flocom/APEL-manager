@@ -10,9 +10,15 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Une publication en cours n'est jamais interrompue. Avec l'annulation, deux
+# fusions séparées de moins que la durée d'une construction suffisaient à tuer
+# la publication précédente avant qu'elle n'ait poussé son image : `latest`
+# restait alors plusieurs versions en arrière, et les instances déployées avec.
+# Les arrivées suivantes attendent leur tour ; un commit intermédiaire peut
+# être sauté, mais il est de toute façon un ancêtre de celui qui sera publié.
 concurrency:
   group: docker-publish-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
