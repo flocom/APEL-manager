@@ -5,6 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useToast } from "@/components/toast";
 import { api } from "@/lib/client";
+import {
+  abonnementLocal,
+  activerCetAppareil,
+  desactiverCetAppareil,
+  pushDisponible,
+  signalerChangementPush,
+} from "@/lib/push-device";
 
 /**
  * Notifications sur appareil : deux niveaux, volontairement distincts.
@@ -15,37 +22,6 @@ import { api } from "@/lib/client";
  * son téléphone sans l'être sur l'ordinateur familial.
  */
 
-function base64UrlVersUint8(base64: string) {
-  const rembourre = (base64 + "=".repeat((4 - (base64.length % 4)) % 4))
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  const brut = atob(rembourre);
-  return Uint8Array.from([...brut].map((c) => c.charCodeAt(0)));
-}
-
-function nomAppareil() {
-  const ua = navigator.userAgent;
-  const systeme = /Android/i.test(ua)
-    ? "Android"
-    : /iPhone|iPad|iPod/i.test(ua)
-      ? "iOS"
-      : /Mac/i.test(ua)
-        ? "Mac"
-        : /Windows/i.test(ua)
-          ? "Windows"
-          : "Appareil";
-  const navigateur = /Edg\//.test(ua)
-    ? "Edge"
-    : /Chrome\//.test(ua)
-      ? "Chrome"
-      : /Firefox\//.test(ua)
-        ? "Firefox"
-        : /Safari\//.test(ua)
-          ? "Safari"
-          : "navigateur";
-  return `${systeme} · ${navigateur}`;
-}
-
 export function PushToggle({ enabled }: { enabled: boolean }) {
   const toast = useToast();
   const [compteActif, setCompteActif] = useState(enabled);
@@ -54,16 +30,10 @@ export function PushToggle({ enabled }: { enabled: boolean }) {
   const [supporte, setSupporte] = useState(true);
 
   useEffect(() => {
-    const ok =
-      typeof window !== "undefined" &&
-      "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window;
+    const ok = pushDisponible();
     setSupporte(ok);
     if (!ok) return setAbonne(false);
-    navigator.serviceWorker
-      .getRegistration()
-      .then((r) => r?.pushManager.getSubscription() ?? null)
+    abonnementLocal()
       .then((s) => setAbonne(Boolean(s)))
       .catch(() => setAbonne(false));
   }, []);
@@ -71,36 +41,9 @@ export function PushToggle({ enabled }: { enabled: boolean }) {
   const activerAppareil = useCallback(async () => {
     setOccupe(true);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        throw new Error(
-          "Votre navigateur a refusé les notifications. Autorisez-les dans ses réglages, puis réessayez.",
-        );
-      }
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      await navigator.serviceWorker.ready;
-      const { publicKey } = (await fetch("/api/push/key", {
-        cache: "no-store",
-      }).then((r) => r.json())) as { publicKey: string | null };
-      if (!publicKey) throw new Error("Clé du serveur indisponible.");
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: base64UrlVersUint8(publicKey),
-      });
-      const brut = subscription.toJSON() as {
-        endpoint: string;
-        keys: { p256dh: string; auth: string };
-      };
-      await api("/api/push/subscribe", {
-        body: {
-          endpoint: brut.endpoint,
-          p256dh: brut.keys.p256dh,
-          auth: brut.keys.auth,
-          deviceLabel: nomAppareil(),
-        },
-      });
+      await activerCetAppareil();
       setAbonne(true);
+      signalerChangementPush({ compteActif: true });
       toast("Cet appareil recevra les notifications.");
     } catch (error) {
       toast((error as Error).message, "error");
@@ -112,28 +55,22 @@ export function PushToggle({ enabled }: { enabled: boolean }) {
   const desactiverAppareil = useCallback(async () => {
     setOccupe(true);
     try {
-      const registration = await navigator.serviceWorker.getRegistration();
-      const subscription = await registration?.pushManager.getSubscription();
-      if (subscription) {
-        await api("/api/push/subscribe", {
-          method: "DELETE",
-          body: { endpoint: subscription.endpoint },
-        });
-        await subscription.unsubscribe();
-      }
+      await desactiverCetAppareil();
       setAbonne(false);
+      signalerChangementPush({ compteActif });
       toast("Cet appareil ne recevra plus de notifications.");
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
       setOccupe(false);
     }
-  }, [toast]);
+  }, [toast, compteActif]);
 
   async function changerCompte(valeur: boolean) {
     setCompteActif(valeur);
     try {
       await api("/api/me", { method: "PATCH", body: { pushEnabled: valeur } });
+      signalerChangementPush({ compteActif: valeur });
       toast(
         valeur
           ? "Vous recevrez de nouveau les notifications."
@@ -168,7 +105,8 @@ export function PushToggle({ enabled }: { enabled: boolean }) {
       {!supporte ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
           Ce navigateur ne gère pas les notifications. Sur iPhone, ajoutez
-          d’abord le site à l’écran d’accueil depuis Safari.
+          d’abord le site à l’écran d’accueil depuis Safari : touchez Partager,
+          puis « Sur l’écran d’accueil », et rouvrez le site depuis cette icône.
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3">

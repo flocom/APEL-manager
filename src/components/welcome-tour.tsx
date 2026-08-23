@@ -92,6 +92,13 @@ function cibleVisible(href: string): HTMLElement | null {
 /** Événement à émettre pour relancer le guide depuis n'importe quel écran. */
 export const TOUR_EVENT = "apel:relancer-guide";
 
+/**
+ * Émis à chaque ouverture ou fermeture du guide : les autres invitations du
+ * tableau de bord s'effacent le temps qu'il dure, pour ne pas se disputer
+ * l'attention d'un membre qui découvre l'application.
+ */
+export const GUIDE_OUVERT_EVENT = "apel:guide-ouvert";
+
 export function WelcomeTour({
   autoStart,
   onFinished,
@@ -135,6 +142,12 @@ export function WelcomeTour({
   useEffect(() => {
     if (ouvert) carte.current?.focus();
   }, [ouvert, index]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(GUIDE_OUVERT_EVENT, { detail: { ouvert } }),
+    );
+  }, [ouvert]);
 
   useEffect(() => {
     function relancer() {
