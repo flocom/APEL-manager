@@ -113,6 +113,13 @@
       "when": 1786183503290,
       "tag": "0015_recaptcha_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787454647327,
+      "tag": "0016_push_notifications",
+      "breakpoints": true
     }
   ]
 }

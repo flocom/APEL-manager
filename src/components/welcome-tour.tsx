@@ -57,6 +57,12 @@ const ETAPES: { href: string; titre: string; texte: string }[] = [
       "Qui a accès à quoi. Trois rôles : membre pour consulter, organisateur pour mener les événements, administrateur pour tout le reste.",
   },
   {
+    href: "/dashboard/notifications",
+    titre: "Les notifications",
+    texte:
+      "Un message envoyé sur le téléphone ou l’ordinateur des membres, avec le détail de qui l’a reçu et qui l’a ouvert.",
+  },
+  {
     href: "/dashboard/settings",
     titre: "La configuration",
     texte:
