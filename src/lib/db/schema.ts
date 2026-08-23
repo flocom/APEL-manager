@@ -99,6 +99,19 @@ export const oauthTokenTypeEnum = pgEnum("oauth_token_type", [
   "refresh",
 ]);
 
+/**
+ * Cycle de vie d'un envoi vers un appareil. `sent` signifie « accepté par le
+ * service de notification », ce qui ne prouve rien de l'appareil : seul
+ * `received`, renvoyé par le service worker à la réception, l'atteste.
+ */
+export const pushDeliveryStatusEnum = pgEnum("push_delivery_status", [
+  "queued",
+  "sent",
+  "failed",
+  "received",
+  "opened",
+]);
+
 // ---------------------------------------------------------------------------
 // Tables
 // ---------------------------------------------------------------------------
@@ -115,6 +128,8 @@ export const users = pgTable("users", {
   sessionEpoch: integer("session_epoch").notNull().default(0),
   /** Date à laquelle le guide de première connexion a été suivi ou passé. */
   onboardingSeenAt: timestamp("onboarding_seen_at", { withTimezone: true }),
+  /** Interrupteur des notifications sur appareil, à la main du membre. */
+  pushEnabled: boolean("push_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -588,6 +603,13 @@ export const associationSettings = pgTable(
     recaptchaSiteKey: text("recaptcha_site_key"),
     encryptedRecaptchaSecret: text("encrypted_recaptcha_secret"),
     recaptchaMinScore: integer("recaptcha_min_score").notNull().default(50),
+    /**
+     * Paire de clés VAPID des notifications sur appareil, engendrée au premier
+     * abonnement : rien à créer ni à recopier pour l'exploitant. La clé
+     * publique part dans le navigateur, la privée reste chiffrée ici.
+     */
+    pushVapidPublicKey: text("push_vapid_public_key"),
+    encryptedPushVapidPrivateKey: text("encrypted_push_vapid_private_key"),
     updatedBy: uuid("updated_by").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -779,6 +801,92 @@ export const oauthTokens = pgTable(
 );
 
 /** Journal transversal des actions sensibles, y compris celles du MCP. */
+/**
+ * Un abonnement par appareil et par navigateur : le même membre en a un sur
+ * son téléphone, un autre sur son ordinateur. L'endpoint fourni par le service
+ * de notification identifie l'abonnement de façon unique.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    /** Clés de chiffrement du navigateur : sans elles, aucun envoi possible. */
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Sert seulement à aider le membre à reconnaître son appareil. */
+    deviceLabel: text("device_label"),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    endpointIdx: uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint),
+    userIdx: index("push_subscriptions_user_idx").on(t.userId),
+  }),
+);
+
+/** Message envoyé par un administrateur à un ou plusieurs membres. */
+export const pushNotifications = pgTable(
+  "push_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    senderId: uuid("sender_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    /** Page ouverte au clic sur la notification. */
+    url: text("url"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    createdAtIdx: index("push_notifications_created_at_idx").on(t.createdAt),
+  }),
+);
+
+/** Une ligne par appareil visé : c'est elle qui dit qui a reçu, et quand. */
+export const pushDeliveries = pgTable(
+  "push_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => pushNotifications.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    subscriptionId: uuid("subscription_id").references(
+      () => pushSubscriptions.id,
+      { onDelete: "set null" },
+    ),
+    status: pushDeliveryStatusEnum("status").notNull().default("queued"),
+    /**
+     * Jeton à usage unique glissé dans la charge utile : il permet au service
+     * worker d'accuser réception sans dépendre d'une session ouverte, la
+     * notification pouvant arriver longtemps après une déconnexion.
+     */
+    ackToken: text("ack_token").notNull(),
+    error: text("error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+  },
+  (t) => ({
+    notificationIdx: index("push_deliveries_notification_idx").on(
+      t.notificationId,
+    ),
+    ackTokenIdx: uniqueIndex("push_deliveries_ack_token_idx").on(t.ackToken),
+    userIdx: index("push_deliveries_user_idx").on(t.userId),
+  }),
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

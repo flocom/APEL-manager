@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 
 import { AccountForm } from "@/components/account-form";
 import { PasswordChangeForm } from "@/components/password-change-form";
+import { PushToggle } from "@/components/push-toggle";
 import { ReplayTourButton } from "@/components/replay-tour-button";
 import { Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS, requireUser } from "@/lib/auth/rbac";
@@ -48,6 +49,17 @@ export default async function AccountPage() {
         <Card className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
           <PasswordChangeForm />
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Notifications sur appareil
+          </h2>
+          <p className="mb-4 mt-1 text-sm leading-6 text-slate-500">
+            Les messages de l’association arrivent sur votre téléphone ou votre
+            ordinateur, même quand le site est fermé.
+          </p>
+          <PushToggle enabled={user.pushEnabled} />
         </Card>
 
         <Card className="p-6">

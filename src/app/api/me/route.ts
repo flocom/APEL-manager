@@ -14,6 +14,8 @@ const selfUpdateSchema = z.object({
   telegramChatId: z.string().trim().max(60).nullable().optional(),
   /** Guide de première connexion terminé ou passé : on ne le repropose plus. */
   onboardingSeen: z.literal(true).optional(),
+  /** Interrupteur des notifications sur appareil. */
+  pushEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -24,6 +26,7 @@ export async function PATCH(req: Request) {
     const updates: Partial<typeof users.$inferInsert> = {};
     if (data.name !== undefined) updates.name = data.name;
     if (data.onboardingSeen) updates.onboardingSeenAt = new Date();
+    if (data.pushEnabled !== undefined) updates.pushEnabled = data.pushEnabled;
     if (data.telegramChatId !== undefined) {
       const chatId = emptyToNull(data.telegramChatId);
       // Retirer un identifiant reste toujours possible ; en enregistrer un ne

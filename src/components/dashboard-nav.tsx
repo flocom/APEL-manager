@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BellRing,
   ContactRound,
   FileText,
   LayoutDashboard,
@@ -77,6 +78,12 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
         href: "/dashboard/members",
         label: "Utilisateurs",
         icon: Users,
+        minRole: "admin",
+      },
+      {
+        href: "/dashboard/notifications",
+        label: "Notifications",
+        icon: BellRing,
         minRole: "admin",
       },
       {
