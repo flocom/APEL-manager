@@ -610,6 +610,12 @@ export const associationSettings = pgTable(
     recaptchaSiteKey: text("recaptcha_site_key"),
     encryptedRecaptchaSecret: text("encrypted_recaptcha_secret"),
     recaptchaMinScore: integer("recaptcha_min_score").notNull().default(50),
+  /**
+   * Lien d'invitation au groupe WhatsApp, affiché sur les pages publiques.
+   * Vide : aucun encart n'est rendu. Ce n'est pas un secret — il est fait pour
+   * être publié — mais il n'a rien à faire dans un journal d'audit.
+   */
+  whatsappGroupUrl: text("whatsapp_group_url"),
     /**
      * Paire de clés VAPID des notifications sur appareil, engendrée au premier
      * abonnement : rien à créer ni à recopier pour l'exploitant. La clé

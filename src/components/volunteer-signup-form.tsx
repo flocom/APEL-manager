@@ -20,12 +20,15 @@ export function VolunteerSignupForm({
   defaultName = "",
   defaultEmail = "",
   recaptchaSiteKey = null,
+  whatsappGroupUrl = null,
 }: {
   token: string;
   slots: SignupSlotOption[];
   defaultName?: string;
   defaultEmail?: string;
   recaptchaSiteKey?: string | null;
+  /** Annoncé après l'inscription : c'est là que passent les changements. */
+  whatsappGroupUrl?: string | null;
 }) {
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const available = slots.filter((s) => s.remaining > 0);
@@ -51,6 +54,21 @@ export function VolunteerSignupForm({
         <p className="mt-1 text-sm text-slate-600">
           À très bientôt pour donner un coup de main. ⚓
         </p>
+        {whatsappGroupUrl && (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Les rappels et les changements de dernière minute passent par le{" "}
+            <a
+              href={whatsappGroupUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-brand-800 underline"
+            >
+              groupe WhatsApp de l’association
+              <span className="sr-only"> (ouvre WhatsApp dans un nouvel onglet)</span>
+            </a>
+            .
+          </p>
+        )}
         <button
           type="button"
           onClick={() => setDone(false)}

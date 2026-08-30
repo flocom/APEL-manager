@@ -17,6 +17,7 @@ import Link from "next/link";
 import { JoinForm } from "@/components/join-form";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { WhatsappInviteCard } from "@/components/whatsapp-invite-card";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime, formatLongDateTime } from "@/lib/dates";
 import { getAssociationSettings } from "@/lib/services/association-settings";
@@ -579,6 +580,18 @@ export default async function RejoindrePage() {
           </div>
         </section>
 
+        {/* ————— Le groupe WhatsApp : le canal où tout se suit au fil de l'eau ————— */}
+        {settings.whatsappGroupUrl && (
+          <section id="groupe-whatsapp" className="scroll-mt-20 bg-white py-16 sm:py-20">
+            <div className="mx-auto max-w-4xl px-4 sm:px-6">
+              <WhatsappInviteCard
+                url={settings.whatsappGroupUrl}
+                associationName={settings.associationName}
+              />
+            </div>
+          </section>
+        )}
+
         {/* ————— Le coupon-réponse : ce qui se passe après l'envoi, puis le formulaire ————— */}
         <section id="contact" className="scroll-mt-20 bg-slate-50 py-16 sm:py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -683,6 +696,7 @@ export default async function RejoindrePage() {
                         recaptchaSiteKey={
                           settings.recaptchaReady ? settings.recaptchaSiteKey : null
                         }
+                        whatsappGroupUrl={settings.whatsappGroupUrl}
                       />
                     </div>
                   </>

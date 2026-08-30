@@ -6,6 +6,7 @@ import {
   Building2,
   CircleAlert,
   KeyRound,
+  MessageCircle,
   Save,
   ShieldCheck,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { LogoUploadField } from "@/components/logo-upload-field";
 import { useToast } from "@/components/toast";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { checkWhatsappUrl, estInvitationGroupe } from "@/lib/whatsapp";
 
 export interface AssociationSettingsView {
   associationName: string;
@@ -36,6 +38,7 @@ export interface AssociationSettingsView {
   recaptchaSecretConfigured: boolean;
   recaptchaMinScore: number;
   recaptchaReady: boolean;
+  whatsappGroupUrl: string | null;
   legacyEnvironment: boolean;
 }
 
@@ -47,6 +50,17 @@ export function AssociationSettingsForm({
   const router = useRouter();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const [whatsappGroupUrl, setWhatsappGroupUrl] = useState(
+    settings.whatsappGroupUrl ?? "",
+  );
+  const [erreurWhatsapp, setErreurWhatsapp] = useState<string | null>(null);
+  const verdictWhatsapp = checkWhatsappUrl(whatsappGroupUrl);
+  // Prévient sans bloquer : un lien raccourci ou une redirection maison reste
+  // acceptable, mais l'administrateur doit voir qu'il n'a pas collé l'invitation.
+  const whatsappInhabituel =
+    verdictWhatsapp.ok &&
+    verdictWhatsapp.url !== null &&
+    !estInvitationGroupe(verdictWhatsapp.url);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,6 +70,16 @@ export function AssociationSettingsForm({
       form.get("telegramBotToken") ?? "",
     ).trim();
     const recaptchaSecret = String(form.get("recaptchaSecret") ?? "").trim();
+
+    // Contrôlé ici en plus du serveur : handleApiError réduit toute erreur zod
+    // à « Données invalides », le message utile ne serait jamais lu.
+    const whatsapp = checkWhatsappUrl(whatsappGroupUrl);
+    if (!whatsapp.ok) {
+      setErreurWhatsapp(whatsapp.message);
+      setSaving(false);
+      document.getElementById("whatsapp-group-url")?.focus();
+      return;
+    }
 
     try {
       await api("/api/settings/association", {
@@ -80,6 +104,7 @@ export function AssociationSettingsForm({
           recaptchaEnabled: form.get("recaptchaEnabled") === "on",
           recaptchaSiteKey: form.get("recaptchaSiteKey") || null,
           recaptchaMinScore: Number(form.get("recaptchaMinScore")),
+          whatsappGroupUrl: whatsapp.url,
           clearRecaptchaSecret:
             !recaptchaSecret && form.get("clearRecaptchaSecret") === "on",
           ...(recaptchaSecret ? { recaptchaSecret } : {}),
@@ -335,6 +360,60 @@ export function AssociationSettingsForm({
                 )}
               </Field>
             </div>
+          </section>
+
+          <section className="border-t-2 border-slate-100 pt-7">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-100 text-sea-800">
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="font-bold text-brand-950">Groupe WhatsApp</h3>
+                <p className="text-sm text-slate-500">
+                  Annoncé aux familles sur la page « Rejoindre l’association »
+                  et dans le pied de page du site public.
+                </p>
+              </div>
+            </div>
+            <Field
+              label="Lien du groupe WhatsApp"
+              htmlFor="whatsapp-group-url"
+              hint="Dans WhatsApp : ouvrez le groupe › Infos du groupe › Inviter via un lien › Copier le lien. Ce lien est publié tel quel : toute personne qui trouve la page peut entrer dans le groupe. Laissez vide pour ne rien afficher."
+            >
+              <Input
+                id="whatsapp-group-url"
+                name="whatsappGroupUrl"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                value={whatsappGroupUrl}
+                onChange={(event) => {
+                  setWhatsappGroupUrl(event.target.value);
+                  setErreurWhatsapp(null);
+                }}
+                onBlur={() => {
+                  const verdict = checkWhatsappUrl(whatsappGroupUrl);
+                  setErreurWhatsapp(verdict.ok ? null : verdict.message);
+                }}
+                aria-invalid={erreurWhatsapp ? true : undefined}
+                aria-describedby="whatsapp-group-url-etat"
+                placeholder="https://chat.whatsapp.com/…"
+              />
+              <p
+                id="whatsapp-group-url-etat"
+                role={erreurWhatsapp ? "alert" : undefined}
+                className={`mt-2 text-xs leading-5 ${
+                  erreurWhatsapp
+                    ? "font-semibold text-coral-700"
+                    : "text-slate-500"
+                }`}
+              >
+                {erreurWhatsapp ??
+                  (whatsappInhabituel
+                    ? "Ce lien ne ressemble pas à une invitation de groupe WhatsApp — il sera tout de même enregistré et affiché."
+                    : "Facultatif. Sans lien, rien n’est annoncé sur le site public.")}
+              </p>
+            </Field>
           </section>
 
           <section className="border-t-2 border-slate-100 pt-7">

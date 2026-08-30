@@ -5,6 +5,7 @@ import {
   Hand,
   HeartHandshake,
   MapPin,
+  MessageCircle,
   MousePointerClick,
 } from "lucide-react";
 import Link from "next/link";
@@ -333,6 +334,20 @@ export default async function HomePage() {
                 ),
               )}
             </div>
+
+            {settings.whatsappGroupUrl && (
+              <a
+                href={settings.whatsappGroupUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-6 inline-flex min-h-12 items-center gap-2 rounded-lg text-sm font-extrabold text-brand-800 underline underline-offset-2 transition-colors hover:text-brand-600 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+              >
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                Toutes les infos au fil de l’eau : le groupe WhatsApp de
+                l’association
+                <span className="sr-only"> (ouvre WhatsApp dans un nouvel onglet)</span>
+              </a>
+            )}
           </div>
         </section>
       </main>

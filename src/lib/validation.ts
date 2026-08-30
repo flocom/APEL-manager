@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseLocalDateTime } from "@/lib/dates";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
+import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
 import {
   LEAD_TIME_MAX,
   type LeadTimeUnit,
@@ -405,6 +406,20 @@ export const associationSettingsSchema = z.object({
   clearRecaptchaSecret: z.boolean().default(false),
   /** Note minimale acceptée, en pourcentage : Google note de 0 à 1. */
   recaptchaMinScore: z.coerce.number().int().min(0).max(100).default(50),
+  /** Lien d'invitation du groupe WhatsApp, publié tel quel sur le site. */
+  whatsappGroupUrl: z
+    .string()
+    .max(WHATSAPP_URL_MAX)
+    .optional()
+    .nullable()
+    .transform((valeur, ctx) => {
+      const verdict = checkWhatsappUrl(valeur);
+      if (!verdict.ok) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.message });
+        return z.NEVER;
+      }
+      return verdict.url;
+    }),
 });
 
 /**

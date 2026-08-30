@@ -1,4 +1,4 @@
-import { Github } from "lucide-react";
+import { Github, MessageCircle } from "lucide-react";
 import Link from "next/link";
 
 import { PROJECT_REPOSITORY_URL } from "@/lib/app-config";
@@ -18,6 +18,18 @@ export async function SiteFooter() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          {settings.whatsappGroupUrl && (
+            <a
+              href={settings.whatsappGroupUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-md font-bold text-white transition-colors hover:text-sea-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-700"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              Groupe WhatsApp
+              <span className="sr-only"> (ouvre WhatsApp dans un nouvel onglet)</span>
+            </a>
+          )}
           <Link
             href="/confidentialite"
             className="rounded-md font-bold text-white transition-colors hover:text-sea-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-700"

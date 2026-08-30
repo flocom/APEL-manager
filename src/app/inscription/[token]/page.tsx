@@ -202,6 +202,7 @@ export default async function InscriptionPage({
                 }
                 defaultName={currentUser?.name ?? ""}
                 defaultEmail={currentUser?.email ?? ""}
+                whatsappGroupUrl={association.whatsappGroupUrl}
               />
             )}
           </section>
