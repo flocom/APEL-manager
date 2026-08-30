@@ -666,36 +666,44 @@ function EventDetailNav({
   ] as const;
 
   return (
+    // Deux colonnes sur téléphone, une seule rangée à partir de sm : à quatre
+    // colonnes sur 390 px, chaque onglet disposait de 85 px pour un intitulé,
+    // une icône et un compteur, et les trois se chevauchaient.
     <nav
       aria-label="Sections de l’événement"
       className={cn(
-        "grid gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1.5",
-        showBudget ? "grid-cols-4" : "grid-cols-3",
+        "grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1.5",
+        showBudget ? "sm:grid-cols-4" : "sm:grid-cols-3",
       )}
     >
-      {tabs.map((tab) => {
+      {tabs.map((tab, index) => {
         const Icon = tab.icon;
         const selected = tab.id === active;
+        // Un nombre impair d'onglets laisse le dernier seul sur sa rangée :
+        // il prend alors toute la largeur plutôt que la moitié.
+        const seulSurSaRangee =
+          tabs.length % 2 === 1 && index === tabs.length - 1;
         return (
           <Link
             key={tab.id}
             href={tab.href}
             aria-current={selected ? "page" : undefined}
             className={cn(
-              "flex min-h-12 items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:px-4",
+              "flex min-h-12 items-center justify-center gap-1.5 rounded-xl px-1.5 py-2 font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 sm:gap-2 sm:px-4",
+              seulSurSaRangee && "col-span-2 sm:col-span-1",
               selected
                 ? "bg-white text-brand-800 shadow-sm"
                 : "text-slate-600 hover:bg-white/70 hover:text-slate-950",
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="break-words text-center text-xs leading-tight sm:text-sm">
+            <span className="truncate text-center text-xs leading-tight sm:text-sm">
               {tab.label}
             </span>
             {"count" in tab && (
               <span
                 className={cn(
-                  "grid min-w-6 place-items-center rounded-md px-1.5 py-0.5 text-[11px]",
+                  "grid min-w-6 shrink-0 place-items-center rounded-md px-1.5 py-0.5 text-[11px]",
                   selected
                     ? "bg-brand-100 text-brand-800"
                     : "bg-white text-slate-500",

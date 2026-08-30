@@ -49,13 +49,13 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="hidden rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:inline"
+                className="inline-flex min-h-10 items-center rounded-lg px-2.5 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-3"
               >
                 Connexion
               </Link>
               <Link
                 href="/register"
-                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-brand-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
               >
                 Créer un compte
               </Link>
