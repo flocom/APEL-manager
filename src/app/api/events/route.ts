@@ -18,6 +18,7 @@ export async function POST(req: Request) {
         title: data.title,
         description: emptyToNull(data.description),
         publicDescription: emptyToNull(data.publicDescription),
+        ticketingUrl: data.ticketingUrl ?? null,
         location: emptyToNull(data.location),
         startAt: data.startAt,
         endAt: data.endAt ?? null,

@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { parseLocalDateTime } from "@/lib/dates";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
+import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
+import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
 import {
   LEAD_TIME_MAX,
   type LeadTimeUnit,
@@ -47,6 +49,20 @@ export const eventSchema = z.object({
   /** Réservé à l'équipe. Ce qui doit être lu par les visiteurs va dans `publicDescription`. */
   description: z.string().max(5000).optional(),
   publicDescription: z.string().max(5000).optional(),
+  /** Billetterie en ligne : validée par la règle partagée avec le formulaire. */
+  ticketingUrl: z
+    .string()
+    .max(TICKETING_URL_MAX)
+    .optional()
+    .nullable()
+    .transform((valeur, ctx) => {
+      const verdict = checkTicketingUrl(valeur);
+      if (!verdict.ok) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.message });
+        return z.NEVER;
+      }
+      return verdict.url;
+    }),
   location: z.string().max(300).optional(),
   startAt: localDateTime,
   endAt: localDateTime.nullable().optional(),
@@ -390,6 +406,20 @@ export const associationSettingsSchema = z.object({
   clearRecaptchaSecret: z.boolean().default(false),
   /** Note minimale acceptée, en pourcentage : Google note de 0 à 1. */
   recaptchaMinScore: z.coerce.number().int().min(0).max(100).default(50),
+  /** Lien d'invitation du groupe WhatsApp, publié tel quel sur le site. */
+  whatsappGroupUrl: z
+    .string()
+    .max(WHATSAPP_URL_MAX)
+    .optional()
+    .nullable()
+    .transform((valeur, ctx) => {
+      const verdict = checkWhatsappUrl(valeur);
+      if (!verdict.ok) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.message });
+        return z.NEVER;
+      }
+      return verdict.url;
+    }),
 });
 
 /**

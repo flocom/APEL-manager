@@ -44,6 +44,7 @@ export default async function SettingsPage() {
     recaptchaSecretConfigured: associationStatus.recaptchaSecretConfigured,
     recaptchaMinScore: associationStatus.recaptchaMinScore,
     recaptchaReady: associationStatus.recaptchaReady,
+    whatsappGroupUrl: associationStatus.whatsappGroupUrl,
     legacyEnvironment: associationStatus.legacyEnvironment,
   };
   const settings: MailSettingsView = {

@@ -10,9 +10,12 @@ import { useRecaptcha } from "@/lib/use-recaptcha";
 export function JoinForm({
   contactEmail,
   recaptchaSiteKey = null,
+  whatsappGroupUrl = null,
 }: {
   contactEmail: string | null;
   recaptchaSiteKey?: string | null;
+  /** Proposé pendant l'attente de la réponse : on suit sans avoir écrit. */
+  whatsappGroupUrl?: string | null;
 }) {
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const [loading, setLoading] = useState(false);
@@ -67,6 +70,22 @@ export function JoinForm({
           ) : null}
           .
         </p>
+        {whatsappGroupUrl && (
+          <p className="mt-3 text-sm font-medium leading-6 text-slate-700">
+            En attendant notre réponse, vous pouvez déjà suivre ce qui se
+            prépare :{" "}
+            <a
+              className="font-bold text-brand-800 underline"
+              href={whatsappGroupUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              le groupe WhatsApp de l’association
+              <span className="sr-only"> (ouvre WhatsApp dans un nouvel onglet)</span>
+            </a>
+            .
+          </p>
+        )}
       </div>
     );
   }

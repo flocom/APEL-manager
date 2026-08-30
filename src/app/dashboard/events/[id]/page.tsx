@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Download,
   CopyPlus,
+  ExternalLink,
   Globe,
   Landmark,
   LayoutDashboard,
@@ -17,6 +18,7 @@ import {
   MapPin,
   Paperclip,
   Pencil,
+  Ticket,
   UserRoundPlus,
   UsersRound,
   WandSparkles,
@@ -346,6 +348,36 @@ export default async function EventDetailPage({
                 titre, la date et le lieu.
               </p>
             )}
+
+            {/* Lecture seule, et volontairement pas de bouton « copier » : le
+                lien qui doit circuler est celui de la page publique, qui porte
+                les deux démarches. */}
+            <div className="mt-5 border-t-2 border-slate-100 pt-5">
+              <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                <Ticket className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+                Billetterie en ligne
+              </p>
+              {event.ticketingUrl ? (
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                  <span className="break-all">{event.ticketingUrl}</span>
+                  <a
+                    href={event.ticketingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer external"
+                    className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-700 underline"
+                  >
+                    Vérifier
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    <span className="sr-only"> (ouvre un nouvel onglet)</span>
+                  </a>
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  Aucune : la page publique ne propose que les créneaux de
+                  bénévoles.
+                </p>
+              )}
+            </div>
           </Card>
 
           {canManage && (

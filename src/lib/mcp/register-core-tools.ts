@@ -178,6 +178,8 @@ export function registerCoreTools(
         description: optionalNullableString,
         /** Affiché sur l'accueil public et sur la page d'inscription. */
         publicDescription: optionalNullableString,
+        /** Billetterie en ligne (HelloAsso…) : « je réserve ma place ». */
+        ticketingUrl: optionalNullableString,
         location: optionalNullableString,
         startAt: localDateTime,
         endAt: localDateTime.nullable().optional(),
@@ -194,6 +196,7 @@ export function registerCoreTools(
           title: data.title,
           description: emptyToNull(data.description),
           publicDescription: emptyToNull(data.publicDescription),
+          ticketingUrl: data.ticketingUrl ?? null,
           location: emptyToNull(data.location),
           startAt: data.startAt,
           endAt: data.endAt ?? null,
@@ -227,6 +230,8 @@ export function registerCoreTools(
         description: optionalNullableString,
         /** Affiché sur l'accueil public et sur la page d'inscription. */
         publicDescription: optionalNullableString,
+        /** Billetterie en ligne (HelloAsso…) : « je réserve ma place ». */
+        ticketingUrl: optionalNullableString,
         location: optionalNullableString,
         startAt: localDateTime.optional(),
         endAt: localDateTime.nullable().optional(),
@@ -244,6 +249,8 @@ export function registerCoreTools(
         updates.description = emptyToNull(data.description);
       if (data.publicDescription !== undefined)
         updates.publicDescription = emptyToNull(data.publicDescription);
+      if (data.ticketingUrl !== undefined)
+        updates.ticketingUrl = data.ticketingUrl;
       if (data.location !== undefined)
         updates.location = emptyToNull(data.location);
       if (data.startAt !== undefined) updates.startAt = data.startAt;

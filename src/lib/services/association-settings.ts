@@ -94,6 +94,7 @@ export async function getAssociationSettings() {
         settings.recaptchaEnabled &&
         Boolean(settings.recaptchaSiteKey) &&
         Boolean(settings.encryptedRecaptchaSecret),
+      whatsappGroupUrl: settings.whatsappGroupUrl,
       legacyEnvironment: false,
       updatedAt: settings.updatedAt,
     };
@@ -122,6 +123,9 @@ export async function getAssociationSettings() {
     recaptchaSecretConfigured: false,
     recaptchaMinScore: 50,
     recaptchaReady: false,
+    // La branche de repli doit avoir la même forme que l'autre, sinon le champ
+    // devient `string | null | undefined` chez tous les appelants.
+    whatsappGroupUrl: null,
     legacyEnvironment: Boolean(
       process.env.NEXT_PUBLIC_ASSO_NAME ||
         process.env.NEXT_PUBLIC_SCHOOL_NAME ||
@@ -258,6 +262,8 @@ export async function saveAssociationSettings(
     recaptchaSiteKey,
     encryptedRecaptchaSecret,
     recaptchaMinScore: data.recaptchaMinScore,
+    // Déjà normalisé par le schéma : "" est devenu null.
+    whatsappGroupUrl: data.whatsappGroupUrl ?? null,
     updatedBy: actor.userId,
     updatedAt: new Date(),
   };
@@ -281,6 +287,10 @@ export async function saveAssociationSettings(
       telegramTokenCleared: data.clearTelegramBotToken,
       taskReminderWindowDays: data.taskReminderWindowDays,
       volunteerReminderWindowDays: data.volunteerReminderWindowDays,
+      // Un booléen, jamais l'adresse : le journal d'audit n'a pas à porter de
+      // lien d'invitation.
+      whatsappGroupChanged:
+        (data.whatsappGroupUrl ?? null) !== (current?.whatsappGroupUrl ?? null),
     },
   );
 

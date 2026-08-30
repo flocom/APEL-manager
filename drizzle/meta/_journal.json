@@ -120,6 +120,20 @@
       "when": 1787454647327,
       "tag": "0016_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788055218908,
+      "tag": "0017_event_ticketing_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788055874581,
+      "tag": "0018_whatsapp_group_link",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock } from "lucide-react";
+import { Globe, Lock, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -9,6 +9,7 @@ import { Button, Input, Label, Select } from "@/components/ui";
 import { ApiError, api } from "@/lib/client";
 import { toDatetimeLocal } from "@/lib/dates";
 import type { Event } from "@/lib/db/schema";
+import { checkTicketingUrl, ticketingHostLabel } from "@/lib/ticketing";
 import { useMutationError } from "@/lib/use-mutation-error";
 
 export function EventForm({
@@ -28,6 +29,15 @@ export function EventForm({
   const [publicDescription, setPublicDescription] = useState(
     event?.publicDescription ?? "",
   );
+  // `?? ""` obligatoire : la colonne vaut null en base, et un input contrôlé
+  // qui reçoit null repasse en non contrôlé.
+  const [ticketingUrl, setTicketingUrl] = useState(event?.ticketingUrl ?? "");
+  const [erreurBilletterie, setErreurBilletterie] = useState<string | null>(null);
+  const verdictBilletterie = checkTicketingUrl(ticketingUrl);
+  // Sert à prévenir sans bloquer quand la billetterie n'est pas HelloAsso.
+  const hoteBilletterie = verdictBilletterie.ok
+    ? ticketingHostLabel(verdictBilletterie.url)
+    : null;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,10 +45,21 @@ export function EventForm({
     setLoading(true);
     const form = new FormData(e.currentTarget);
     const endRaw = form.get("endAt");
+
+    // Contrôlée ici en plus du serveur : handleApiError réduit toute erreur zod
+    // à « Données invalides », le message utile ne serait jamais lu.
+    const billetterie = checkTicketingUrl(ticketingUrl);
+    if (!billetterie.ok) {
+      setErreurBilletterie(billetterie.message);
+      setLoading(false);
+      document.getElementById("ticketingUrl")?.focus();
+      return;
+    }
     const body = {
       title: form.get("title"),
       description,
       publicDescription,
+      ticketingUrl: billetterie.url,
       location: form.get("location"),
       startAt: form.get("startAt"),
       endAt: endRaw ? endRaw : null,
@@ -180,6 +201,61 @@ export function EventForm({
 
       <FormSection
         number="3"
+        title="Billetterie en ligne"
+        description="Si les familles doivent réserver ou payer leur place, collez ici le lien de votre billetterie. Sinon, laissez vide."
+      >
+        <div>
+          <div className="flex items-center gap-2">
+            <Ticket className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <Label htmlFor="ticketingUrl" className="!mb-0">
+              Lien de réservation (HelloAsso ou autre)
+            </Label>
+          </div>
+          <p className="mb-2 mt-1 text-xs leading-5 text-slate-500">
+            Ce lien sert aux familles qui veulent <strong>venir</strong> : il ne
+            remplace pas les créneaux de bénévoles, qui restent gérés ici.
+            Ouvrez votre billetterie dans le navigateur et copiez l’adresse
+            affichée dans la barre du haut.
+          </p>
+          <Input
+            id="ticketingUrl"
+            name="ticketingUrl"
+            // Volontairement « text » : <input type="url"> refuse
+            // « www.helloasso.com/… » sans schéma avec une bulle du navigateur,
+            // dans la langue du système, avant que nos messages ne s'affichent.
+            type="text"
+            inputMode="url"
+            spellCheck={false}
+            value={ticketingUrl}
+            onChange={(e) => {
+              setTicketingUrl(e.target.value);
+              setErreurBilletterie(null);
+            }}
+            onBlur={() => {
+              const verdict = checkTicketingUrl(ticketingUrl);
+              setErreurBilletterie(verdict.ok ? null : verdict.message);
+            }}
+            aria-invalid={erreurBilletterie ? true : undefined}
+            aria-describedby="ticketingUrl-aide"
+            placeholder="https://www.helloasso.com/associations/…/evenements/…"
+          />
+          <p
+            id="ticketingUrl-aide"
+            role={erreurBilletterie ? "alert" : undefined}
+            className={`mt-2 text-xs leading-5 ${
+              erreurBilletterie ? "font-semibold text-coral-700" : "text-slate-500"
+            }`}
+          >
+            {erreurBilletterie ??
+              (hoteBilletterie && hoteBilletterie !== "HelloAsso"
+                ? `Ce n’est pas un lien HelloAsso : les familles verront « sur ${hoteBilletterie} ». C’est accepté, vérifiez simplement que la page est bien celle de la réservation.`
+                : "Facultatif. Sans lien, la page publique ne parle que des créneaux de bénévoles.")}
+          </p>
+        </div>
+      </FormSection>
+
+      <FormSection
+        number="4"
         title="Visibilité"
         description="Vous pouvez tout préparer en brouillon, puis publier lorsque le lien doit être accessible."
       >
@@ -201,7 +277,7 @@ export function EventForm({
 
       {!editing && templates.length > 0 && (
         <FormSection
-          number="4"
+          number="5"
           title="Préparation"
           description="Gagnez du temps en ajoutant immédiatement une check-list adaptée."
         >
