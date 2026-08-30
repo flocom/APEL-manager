@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getAssociationSettings();
   const title = `Rejoindre ${settings.associationName}`;
-  const description = `On monte les stands, on tient la buvette, on range en discutant : ce que fabriquent les parents de ${settings.schoolName} avec ${settings.associationName}.`;
+  const description = `On prépare les rendez-vous de l’année, on donne un coup de main le jour venu : ce que fabriquent les parents ${deEtablissement(settings.schoolName)} avec ${settings.associationName}.`;
   return {
     title,
     description,
@@ -49,26 +49,32 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * Le déroulé d'un rendez-vous, et non des événements nommés : l'application
+ * sert plusieurs associations, et rien ne garantit qu'une école donnée tienne
+ * un vide-grenier ou une buvette. Ces quatre moments-là valent pour une
+ * kermesse comme pour un marché de Noël ou une soirée jeux.
+ */
 const MOMENTS = [
   {
-    titre: "Le samedi du montage",
+    titre: "Les préparatifs",
     texte:
-      "Le café, les tables à déplier, les guirlandes à accrocher. Une heure plus tard, la cour est méconnaissable.",
+      "Quelques semaines avant, on se répartit ce qu’il y a à faire. Chacun prend ce qui lui va.",
   },
   {
-    titre: "Derrière la buvette",
+    titre: "Le jour du montage",
     texte:
-      "On sert les crêpes à la chaîne, on rend la monnaie de travers.",
+      "Les tables à installer, la déco à accrocher, le café qui tourne. Une heure plus tard, on ne reconnaît plus l’endroit.",
   },
   {
-    titre: "Le vide-grenier",
+    titre: "Pendant le rendez-vous",
     texte:
-      "Des tables dans la cour, des cartons de jouets, des enfants qui négocient.",
+      "On se relaie par petits groupes, on accueille les familles, et l’après-midi passe vite.",
   },
   {
     titre: "Le rangement, à plusieurs",
     texte:
-      "On plie les nappes, on empile les chaises, on finit les crêpes. C’est là qu’on discute le plus.",
+      "On plie, on empile, on partage ce qui reste. C’est là qu’on discute le plus.",
   },
 ];
 
@@ -117,6 +123,15 @@ const ETAPES = [
     texte: "Vous choisissez un créneau, et on se retrouve sur place.",
   },
 ];
+
+/**
+ * « de École Sainte-Marie » : beaucoup d'établissements portent un nom qui
+ * commence par une voyelle, et la phrase se lit mal. Élision minimale, sans
+ * prétendre couvrir tous les cas de la langue.
+ */
+function deEtablissement(nom: string): string {
+  return /^[aeiouyàâäéèêëîïôöûü]/i.test(nom.trim()) ? `d’${nom}` : `de ${nom}`;
+}
 
 const AMORCES = [
   "Je peux donner un coup de main sur un événement, prévenez-moi.",
@@ -218,12 +233,13 @@ export default async function RejoindrePage() {
                 {settings.associationName} · {settings.schoolName}
               </span>
               <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.05] tracking-[-0.05em] sm:text-5xl">
-                Venez monter les stands{" "}
-                <span className="text-sea-300">avec nous.</span>
+                Venez préparer{" "}
+                <span className="text-sea-300">le prochain rendez-vous.</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base font-medium leading-7 text-brand-100 sm:text-lg">
-                {settings.associationName} réunit les parents d’élèves de{" "}
-                {settings.schoolName}. On monte les stands, on tient la buvette,
+                {settings.associationName} réunit les parents d’élèves{" "}
+                {deEtablissement(settings.schoolName)}. On prépare les
+                rendez-vous de l’année, on donne un coup de main le jour venu,
                 et on range en discutant.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
