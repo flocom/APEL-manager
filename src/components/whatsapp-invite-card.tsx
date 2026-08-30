@@ -132,8 +132,8 @@ export function WhatsappInviteCard({
             </a>
 
             <p className="mt-4 max-w-sm text-xs font-semibold leading-5 text-sea-200 sm:mt-0">
-              Votre numéro sera visible des autres membres du groupe, et vous
-              pouvez en sortir quand vous voulez. Pas de WhatsApp ?{" "}
+              Votre numéro sera visible des autres membres du groupe. Pas de
+              WhatsApp ?{" "}
               <a
                 href="#contact"
                 className="rounded font-bold text-white underline underline-offset-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-sea-900"
