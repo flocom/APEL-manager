@@ -41,7 +41,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getAssociationSettings();
   const title = `Rejoindre ${settings.associationName}`;
-  const description = `Ce que fait ${settings.associationName} à ${settings.schoolName}, et comment y prendre part — sans engagement.`;
+  const description = `On monte les stands, on tient la buvette, on range en discutant : ce que fabriquent les parents de ${settings.schoolName} avec ${settings.associationName}.`;
   return {
     title,
     description,
@@ -49,26 +49,26 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const OBJECTIONS = [
+const MOMENTS = [
   {
-    phrase: "Je n’ai pas le temps.",
-    reponse:
-      "Personne n’en a. C’est pour ça que tout est découpé en créneaux courts, annoncés à l’avance. Deux heures un samedi matin, une fois dans l’année, c’est déjà un vrai coup de main — et personne ici ne tient le compte des heures des autres.",
+    titre: "Le samedi du montage",
+    texte:
+      "Le café, les tables à déplier, les guirlandes à accrocher. Une heure plus tard, la cour est méconnaissable.",
   },
   {
-    phrase: "Je ne connais personne.",
-    reponse:
-      "C’est exactement ce que préparer quelque chose ensemble règle en une matinée. On installe à deux, on sert à trois, on range à plusieurs, et on repart en connaissant des visages. Les familles qui viennent d’arriver entrent souvent par là.",
+    titre: "Derrière la buvette",
+    texte:
+      "On sert les crêpes à la chaîne, on rend la monnaie de travers.",
   },
   {
-    phrase: "Je ne saurais pas quoi faire.",
-    reponse:
-      "Il n’y a rien à savoir d’avance. Chaque créneau porte un intitulé, un horaire et le nombre de personnes attendues : vous choisissez celui qui vous va, et on vous montre en arrivant.",
+    titre: "Le vide-grenier",
+    texte:
+      "Des tables dans la cour, des cartons de jouets, des enfants qui négocient.",
   },
   {
-    phrase: "Et si je dis oui, puis que je ne peux plus ?",
-    reponse:
-      "Ça arrive, et c’est prévu. L’e-mail de confirmation contient un lien qui retire votre inscription en un clic, sans avoir à vous justifier ni à prévenir qui que ce soit.",
+    titre: "Le rangement, à plusieurs",
+    texte:
+      "On plie les nappes, on empile les chaises, on finit les crêpes. C’est là qu’on discute le plus.",
   },
 ];
 
@@ -78,7 +78,7 @@ const MISSIONS = [
     numero: "01",
     titre: "Les temps forts de l’année",
     texte:
-      "L’association monte les rendez-vous qui font l’année des enfants : ceux qu’on prépare des semaines à l’avance et dont ils parlent encore en juin.",
+      "Les rendez-vous qui font l’année des enfants, et dont ils parlent encore en juin.",
   },
   {
     icon: Coins,
@@ -92,7 +92,7 @@ const MISSIONS = [
     numero: "03",
     titre: "La voix des parents",
     texte:
-      "L’association représente les familles auprès de la direction et fait remonter ce qui compte pour elles. Une voix collective porte plus loin qu’un mot dans un carnet.",
+      "L’association porte auprès de la direction ce qui compte pour les familles.",
   },
   {
     icon: Users,
@@ -114,14 +114,13 @@ const ETAPES = [
   },
   {
     titre: "Vous décidez",
-    texte:
-      "Rien n’est engagé tant que vous n’avez pas dit oui. Ce message n’est ni une adhésion ni une inscription, et il n’y a rien à payer sur cette page.",
+    texte: "Vous choisissez un créneau, et on se retrouve sur place.",
   },
 ];
 
 const AMORCES = [
-  "Je peux venir donner un coup de main sur un événement, prévenez-moi.",
-  "Je ne sais pas encore, j’aimerais surtout savoir ce qui se prépare.",
+  "Je peux donner un coup de main sur un événement, prévenez-moi.",
+  "Comptez sur moi au prochain rendez-vous.",
   "J’aimerais m’impliquer davantage, comment ça marche ?",
 ];
 
@@ -219,15 +218,13 @@ export default async function RejoindrePage() {
                 {settings.associationName} · {settings.schoolName}
               </span>
               <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.05] tracking-[-0.05em] sm:text-5xl">
-                On donne le temps qu’on a,{" "}
-                <span className="text-sea-300">pas celui qu’on n’a pas.</span>
+                Venez monter les stands{" "}
+                <span className="text-sea-300">avec nous.</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base font-medium leading-7 text-brand-100 sm:text-lg">
                 {settings.associationName} réunit les parents d’élèves de{" "}
-                {settings.schoolName}. On y prépare les rendez-vous de l’année
-                et on cherche des mains pour les tenir. Deux heures une fois, ou
-                davantage si l’envie vient : rien n’est obligatoire, et rien
-                n’est décidé d’avance.
+                {settings.schoolName}. On monte les stands, on tient la buvette,
+                et on range en discutant.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <a
@@ -245,7 +242,7 @@ export default async function RejoindrePage() {
                   Voir ce qui se prépare
                 </a>
                 <span className="inline-flex min-h-12 items-center gap-2 px-2 text-sm font-semibold text-brand-100">
-                  Écrire n’engage à rien
+                  Deux lignes suffisent.
                 </span>
               </div>
             </div>
@@ -305,9 +302,8 @@ export default async function RejoindrePage() {
                       Rien de publié en ce moment
                     </p>
                     <p className="mt-1 text-sm font-medium leading-6 text-slate-600">
-                      L’agenda se remplit d’une période à l’autre. Écrivez-nous :
-                      on vous préviendra du prochain rendez-vous plutôt que de
-                      vous laisser guetter la page.
+                      Écrivez-nous : on vous fait signe dès que la prochaine
+                      date est publiée.
                     </p>
                   </div>
                 )}
@@ -362,21 +358,21 @@ export default async function RejoindrePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="max-w-3xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
-                Les quatre phrases qu’on entend le plus
+                Une année à l’école
               </p>
               <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-brand-950 sm:text-5xl">
-                Ce qui retient, et ce qu’on répond.
+                Ce qu’on fabrique entre parents.
               </h2>
             </div>
 
             <ul className="mt-10">
-              {OBJECTIONS.map(({ phrase, reponse }, index) => (
+              {MOMENTS.map(({ titre, texte }, index) => (
                 <li
-                  key={phrase}
+                  key={titre}
                   className="grid gap-3 border-t-2 border-slate-200 py-8 first:border-t-0 first:pt-0 lg:grid-cols-[1.05fr_1fr] lg:gap-12"
                 >
                   <p className="text-2xl font-black tracking-[-0.03em] text-brand-950 sm:text-3xl">
-                    «&nbsp;{phrase}&nbsp;»
+                    {titre}
                   </p>
                   <div>
                     <span
@@ -386,7 +382,7 @@ export default async function RejoindrePage() {
                       }`}
                     />
                     <p className="text-base font-medium leading-7 text-slate-600">
-                      {reponse}
+                      {texte}
                     </p>
                   </div>
                 </li>
@@ -395,7 +391,7 @@ export default async function RejoindrePage() {
 
             <div className="mt-10 flex flex-wrap items-center gap-4 rounded-2xl bg-brand-50 px-5 py-5 sm:px-7">
               <p className="min-w-0 flex-1 basis-72 text-lg font-black tracking-[-0.02em] text-brand-950">
-                Aucune de ces phrases n’est un obstacle.
+                On prend un créneau, on vient, on repart en connaissant du monde.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <a
@@ -422,15 +418,15 @@ export default async function RejoindrePage() {
             <div className="mb-9 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
-                  Sans écrire à personne
+                  Les prochaines dates
                 </p>
                 <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-brand-950 sm:text-5xl">
-                  Vous pouvez aussi juste venir voir.
+                  Choisissez le rendez-vous qui vous arrange.
                 </h2>
               </div>
               <p className="max-w-md text-sm font-medium leading-6 text-slate-600">
-                Ce ne sont pas des exemples : ce sont les rendez-vous déjà
-                publiés par l’association, avec les places qui restent à prendre.
+                Chaque créneau porte un intitulé et le nombre de bénévoles
+                attendus. On vous montre tout en arrivant.
               </p>
             </div>
 
@@ -440,12 +436,11 @@ export default async function RejoindrePage() {
                   <CalendarDays className="h-7 w-7" aria-hidden="true" />
                 </span>
                 <p className="mt-4 font-extrabold text-brand-950">
-                  Rien de publié en ce moment
+                  L’agenda fait une pause
                 </p>
                 <p className="mt-1 max-w-md text-sm font-medium leading-6 text-slate-500">
-                  L’agenda se remplit d’une période à l’autre. Écrivez-nous : on
-                  vous préviendra du prochain rendez-vous plutôt que de vous
-                  laisser guetter la page.
+                  L’agenda fait une pause. La prochaine date apparaîtra ici ;
+                  écrivez-nous, on vous préviendra.
                 </p>
                 <a
                   href="#contact"
@@ -512,9 +507,9 @@ export default async function RejoindrePage() {
                     <Hand className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <p className="min-w-0 flex-1 basis-72 text-sm font-semibold leading-6 text-brand-100">
-                    On prend un créneau directement sur la page de l’événement :
-                    sans créer de compte, sans être adhérent, et sans passer par
-                    nous.
+                    On prend son créneau sur la page du rendez-vous. Un lien
+                    dans l’e-mail de confirmation le libère si la semaine tourne
+                    autrement.
                   </p>
                   {events.length > 3 && (
                     <Link
@@ -536,10 +531,10 @@ export default async function RejoindrePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="max-w-2xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
-                Où va votre coup de main
+                L’association, en bref
               </p>
               <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-brand-950 sm:text-4xl">
-                Tout ce que fait l’association revient à l’école.
+                Quatre choses qui font l’année.
               </h2>
             </div>
 
@@ -611,12 +606,11 @@ export default async function RejoindrePage() {
                     Prendre contact
                   </span>
                   <h2 className="mt-6 text-2xl font-black tracking-[-0.03em] sm:text-3xl">
-                    Il faut bien un premier message.
+                    Ça commence par un bonjour.
                   </h2>
                   <p className="mt-4 text-base font-medium leading-7 text-brand-100">
-                    Vous n’avez pas besoin de savoir ce que vous voulez faire, ni
-                    de vous engager à quoi que ce soit. Dites-nous simplement que
-                    vous êtes là.
+                    Écrivez ce qui vous passe par la tête : ce qui vous attire,
+                    un samedi où vous êtes libre, votre prénom.
                   </p>
 
                   <ol className="mt-7 space-y-4">
@@ -635,15 +629,10 @@ export default async function RejoindrePage() {
                     ))}
                   </ol>
 
-                  <p className="mt-7 border-t-2 border-brand-800 pt-5 text-sm font-medium leading-6 text-brand-100">
-                    Votre message n’est enregistré nulle part sur le site : il
-                    part directement dans la boîte e-mail de l’association.
-                  </p>
-
                   {contactEmail && (
                     <a
                       href={`mailto:${contactEmail}`}
-                      className="mt-4 inline-flex min-h-12 items-center gap-2 rounded-xl border-2 border-white px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-white hover:text-brand-950 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
+                      className="mt-7 inline-flex min-h-12 items-center gap-2 rounded-xl border-2 border-white px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-white hover:text-brand-950 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
                     >
                       <Mail className="h-4 w-4" aria-hidden="true" />
                       Écrire à {contactEmail}
@@ -665,14 +654,12 @@ export default async function RejoindrePage() {
                       Écrire à {settings.associationName}
                     </h3>
                     <p className="mt-1 text-sm font-medium leading-6 text-slate-600">
-                      Quelques mots suffisent. Vous pouvez aussi simplement dire
-                      bonjour.
+                      Quelques mots suffisent.
                     </p>
 
                     <div className="mt-5 rounded-2xl bg-brand-50 p-4">
                       <p className="text-sm font-extrabold text-brand-950">
-                        Si vous ne savez pas quoi écrire, recopiez une de ces
-                        phrases
+                        Trois façons de commencer
                       </p>
                       <ul className="mt-3 space-y-2">
                         {AMORCES.map((amorce) => (
