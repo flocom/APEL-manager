@@ -145,6 +145,13 @@ export const events = pgTable("events", {
   description: text("description"),
   /** Texte affiché sur l'accueil public et sur la page d'inscription. */
   publicDescription: text("public_description"),
+  /**
+   * Billetterie ou réservation en ligne de l'événement (HelloAsso le plus
+   * souvent). Présentée aux familles comme une action distincte du bénévolat :
+   * « je réserve ma place » n'est pas « je donne un coup de main ».
+   * `null` quand l'événement n'a pas de billetterie — rien n'est alors affiché.
+   */
+  ticketingUrl: text("ticketing_url"),
   location: text("location"),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }),

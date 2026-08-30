@@ -25,6 +25,9 @@ export async function PATCH(req: Request, { params }: Params) {
       updates.description = emptyToNull(data.description);
     if (data.publicDescription !== undefined)
       updates.publicDescription = emptyToNull(data.publicDescription);
+    // Déjà normalisée par le schéma : "" est devenu null, l'URL est absolue.
+    if (data.ticketingUrl !== undefined)
+      updates.ticketingUrl = data.ticketingUrl;
     if (data.location !== undefined)
       updates.location = emptyToNull(data.location);
     if (data.startAt !== undefined) updates.startAt = data.startAt;
@@ -47,6 +50,8 @@ export async function PATCH(req: Request, { params }: Params) {
         setFragments.push(
           sql`public_description = ${emptyToNull(data.publicDescription)}`,
         );
+      if (data.ticketingUrl !== undefined)
+        setFragments.push(sql`ticketing_url = ${data.ticketingUrl}`);
       if (data.location !== undefined)
         setFragments.push(sql`location = ${emptyToNull(data.location)}`);
       if (data.startAt !== undefined)
