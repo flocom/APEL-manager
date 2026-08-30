@@ -40,6 +40,17 @@ export type TicketingUrlCheck =
 /** Sous-domaines HelloAsso qu'une famille ne peut pas utiliser. */
 const SOUS_DOMAINES_INTERNES = ["admin", "auth", "api"];
 
+/**
+ * Un nom d'hôte plausible : au moins un point, et rien d'autre que des
+ * étiquettes valides. Sans ce contrôle, `new URL()` accepte « pas une adresse »
+ * en percent-encodant les espaces, et l'organisateur croit son lien enregistré.
+ */
+function hoteVraisemblable(hostname: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(
+    hostname,
+  );
+}
+
 function estHelloAsso(hostname: string): boolean {
   // Comparaison stricte, jamais un `includes` : « helloasso.com.piege.fr »
   // contient la chaîne sans être HelloAsso.
@@ -67,6 +78,10 @@ export function checkTicketingUrl(saisie: string | null | undefined): TicketingU
   try {
     url = new URL(candidat);
   } catch {
+    return { ok: false, raison: "illisible", message: TICKETING_URL_MESSAGES.illisible };
+  }
+
+  if (!hoteVraisemblable(url.hostname)) {
     return { ok: false, raison: "illisible", message: TICKETING_URL_MESSAGES.illisible };
   }
 

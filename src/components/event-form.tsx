@@ -220,8 +220,12 @@ export function EventForm({
           <Input
             id="ticketingUrl"
             name="ticketingUrl"
-            type="url"
+            // Volontairement « text » : <input type="url"> refuse
+            // « www.helloasso.com/… » sans schéma avec une bulle du navigateur,
+            // dans la langue du système, avant que nos messages ne s'affichent.
+            type="text"
             inputMode="url"
+            spellCheck={false}
             value={ticketingUrl}
             onChange={(e) => {
               setTicketingUrl(e.target.value);

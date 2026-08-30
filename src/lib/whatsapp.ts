@@ -32,6 +32,17 @@ export type WhatsappUrlCheck =
 /** Adresses WhatsApp qui ouvrent une discussion individuelle, pas un groupe. */
 const HOTES_CONVERSATION = ["wa.me", "api.whatsapp.com"];
 
+/**
+ * Un nom d'hôte plausible : au moins un point, et rien d'autre que des
+ * étiquettes valides. Sans ce contrôle, `new URL()` accepte « pas une adresse »
+ * en percent-encodant les espaces, et l'organisateur croit son lien enregistré.
+ */
+function hoteVraisemblable(hostname: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(
+    hostname,
+  );
+}
+
 function estHote(hostname: string, hote: string): boolean {
   return hostname === hote || hostname.endsWith(`.${hote}`);
 }
@@ -56,6 +67,10 @@ export function checkWhatsappUrl(saisie: string | null | undefined): WhatsappUrl
   try {
     url = new URL(candidat);
   } catch {
+    return { ok: false, raison: "illisible", message: WHATSAPP_URL_MESSAGES.illisible };
+  }
+
+  if (!hoteVraisemblable(url.hostname)) {
     return { ok: false, raison: "illisible", message: WHATSAPP_URL_MESSAGES.illisible };
   }
 

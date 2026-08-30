@@ -1,5 +1,6 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -21,6 +22,8 @@ export function VolunteerSignupForm({
   defaultEmail = "",
   recaptchaSiteKey = null,
   whatsappGroupUrl = null,
+  ticketingUrl = null,
+  ticketingHost = "la billetterie en ligne",
 }: {
   token: string;
   slots: SignupSlotOption[];
@@ -29,6 +32,13 @@ export function VolunteerSignupForm({
   recaptchaSiteKey?: string | null;
   /** Annoncé après l'inscription : c'est là que passent les changements. */
   whatsappGroupUrl?: string | null;
+  /**
+   * Billetterie de l'événement, s'il y en a une. Le rappel de fin est le point
+   * de bascule du malentendu : un parent qui vient de prendre un créneau croit
+   * son affaire réglée et ne découvrirait le contraire qu'à l'entrée.
+   */
+  ticketingUrl?: string | null;
+  ticketingHost?: string;
 }) {
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const available = slots.filter((s) => s.remaining > 0);
@@ -39,7 +49,7 @@ export function VolunteerSignupForm({
   if (available.length === 0) {
     return (
       <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">
-        Tous les créneaux sont actuellement complets. Merci de votre intérêt !
+        Tous les créneaux sont pourvus. Merci de votre intérêt !
       </p>
     );
   }
@@ -49,11 +59,26 @@ export function VolunteerSignupForm({
       <div className="animate-pop rounded-2xl border-2 border-sea-200 bg-sea-50 px-5 py-6 text-center">
         <div className="mx-auto mb-2 text-4xl">🎉</div>
         <p className="text-base font-semibold text-sea-800">
-          Merci, votre inscription est bien enregistrée !
+          Merci, votre coup de main est bien enregistré !
         </p>
         <p className="mt-1 text-sm text-slate-600">
           À très bientôt pour donner un coup de main. ⚓
         </p>
+        {ticketingUrl && (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Votre place à l’événement n’est pas réservée pour autant.{" "}
+            <a
+              href={ticketingUrl}
+              target="_blank"
+              rel="noopener noreferrer external"
+              className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-800 underline"
+            >
+              Réserver ma place sur {ticketingHost}
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only"> (ouvre un nouvel onglet)</span>
+            </a>
+          </p>
+        )}
         {whatsappGroupUrl && (
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Les rappels et les changements de dernière minute passent par le{" "}
@@ -74,7 +99,7 @@ export function VolunteerSignupForm({
           onClick={() => setDone(false)}
           className="mt-3 text-sm font-semibold text-brand-600 underline-offset-2 hover:underline"
         >
-          Inscrire une autre personne
+          Proposer une autre personne
         </button>
       </div>
     );
@@ -191,8 +216,10 @@ export function VolunteerSignupForm({
         </span>
       </label>
 
+      {/* « Je m'inscris » est le mot qu'un parent emploie pour inscrire son
+          enfant à la kermesse : il ne peut pas désigner ici le bénévolat. */}
       <Button type="submit" loading={loading} className="w-full">
-        Je m’inscris
+        Je prends ce créneau
       </Button>
     </form>
   );

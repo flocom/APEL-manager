@@ -60,11 +60,13 @@ export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
     ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
     : "";
   return {
-    subject: `Inscription confirmée — ${ctx.eventTitle}`,
+    // « Inscription confirmée », lu seul dans une boîte mail trois jours plus
+    // tard, se prend pour une confirmation de billet.
+    subject: `Votre créneau du ${ctx.eventDate} — ${ctx.eventTitle}`,
     html: layout(
-      "Merci pour votre inscription ! 🎉",
+      "Merci pour votre coup de main ! 🎉",
       `<p>Bonjour ${esc(ctx.name)},</p>
-       <p>Votre inscription comme bénévole est bien enregistrée :</p>
+       <p>Votre créneau de bénévole est bien enregistré :</p>
        <ul>
          <li>Événement : <strong>${esc(ctx.eventTitle)}</strong></li>
          <li>Date : <strong>${ctx.eventDate}</strong></li>
@@ -75,7 +77,7 @@ export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
        <p>${button(ctx.cancelUrl, "Me désinscrire")}</p>`,
       ctx.identity,
     ),
-    text: `Bonjour ${ctx.name},\n\nInscription confirmée :\n- Événement : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n- Créneau : ${ctx.slotTitle}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nMe désinscrire : ${ctx.cancelUrl}`,
+    text: `Bonjour ${ctx.name},\n\nCréneau de bénévole confirmé :\n- Événement : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n- Créneau : ${ctx.slotTitle}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nMe désinscrire : ${ctx.cancelUrl}`,
   };
 }
 
