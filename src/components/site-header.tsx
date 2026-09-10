@@ -38,16 +38,19 @@ export async function SiteHeader() {
             </span>
           </span>
         </Link>
-        <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 text-sm">
+        <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 text-sm sm:gap-2">
           {/* Le rouge est réservé à ce bouton : il n'est ni une alerte ni une
               promotion, c'est la porte qu'un parent doit trouver sans chercher
               le jour où quelque chose ne va pas. */}
           <Link
-            href="/mediation"
-            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-coral-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-coral-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-coral-200 sm:px-4"
+            href="/contact"
+            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-coral-600 px-2 py-2 text-sm font-bold text-white transition-colors hover:bg-coral-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-coral-200 sm:px-4"
           >
-            <MessagesSquare className="h-4 w-4" aria-hidden="true" />
-            Médiation
+            {/* L'icône ne réapparaît qu'à partir de sm : sur 390 px, ces 22
+                pixels sont exactement ce qui ferait passer l'en-tête à deux
+                lignes. */}
+            <MessagesSquare className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
+            Un souci ?
           </Link>
           {user ? (
             <Link
@@ -61,15 +64,16 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="inline-flex min-h-10 items-center rounded-lg px-2.5 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-3"
+                className="inline-flex min-h-10 items-center whitespace-nowrap rounded-lg px-1.5 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-3"
               >
                 Connexion
               </Link>
               <Link
                 href="/register"
-                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
+                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-2 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
               >
-                Créer un compte
+                <span className="sm:hidden">S’inscrire</span>
+                <span className="hidden sm:inline">Créer un compte</span>
               </Link>
             </>
           )}

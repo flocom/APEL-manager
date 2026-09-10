@@ -9,7 +9,7 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { MediationForm } from "@/components/mediation-form";
+import { ContactForm } from "@/components/contact-form";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAssociationSettings } from "@/lib/services/association-settings";
@@ -17,7 +17,7 @@ import { getAssociationSettings } from "@/lib/services/association-settings";
 export const dynamic = "force-dynamic";
 
 /**
- * Page publique « Parler à l'association ».
+ * Page publique « On vous écoute ».
  *
  * Un parent qui arrive ici a souvent hésité avant d'écrire. La page dit en
  * trois temps ce qui va se passer, promet la discrétion — promesse tenue par le
@@ -27,8 +27,8 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getAssociationSettings();
-  const title = `Parler à ${settings.associationName}`;
-  const description = `Une difficulté avec l’école ? Les parents ${settings.associationName} vous écoutent et vous accompagnent auprès de l’équipe enseignante.`;
+  const title = `Un souci ? Parlons-en — ${settings.associationName}`;
+  const description = `Une difficulté avec l’école ? Les parents ${settings.associationName} vous écoutent et font le lien avec l’équipe enseignante.`;
   return {
     title,
     description,
@@ -60,7 +60,7 @@ const ETAPES = [
   },
 ];
 
-export default async function MediationPage() {
+export default async function ContactPage() {
   const settings = await getAssociationSettings();
   const contactEmail = settings.contactEmail?.trim() || null;
 
@@ -77,7 +77,7 @@ export default async function MediationPage() {
           <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
             <span className="inline-flex items-center gap-2 rounded-lg bg-coral-600 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-white">
               <MessagesSquare className="h-4 w-4" strokeWidth={2.5} />
-              Médiation
+              On vous écoute
             </span>
             <h1 className="mt-7 max-w-3xl text-4xl font-black leading-[1.05] tracking-[-0.05em] sm:text-5xl">
               Quelque chose coince avec l’école ?{" "}
@@ -187,7 +187,7 @@ export default async function MediationPage() {
                       ne lira ce message.
                     </p>
                     <div className="mt-6">
-                      <MediationForm
+                      <ContactForm
                         contactEmail={contactEmail}
                         recaptchaSiteKey={
                           settings.recaptchaReady ? settings.recaptchaSiteKey : null
