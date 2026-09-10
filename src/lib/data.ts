@@ -15,17 +15,18 @@ import {
 } from "@/lib/db/schema";
 
 /**
- * Événements publiés à venir — pour la page d'accueil publique.
+ * Rendez-vous publiés à venir — pour les pages publiques. Réunions comprises :
+ * l'association veut que son agenda complet soit lisible des familles.
  *
- * Le filtre `kind = 'event'` est le premier des deux verrous qui tiennent les
- * réunions hors du site public ; le second est dans getEventByShareToken.
- * Ne jamais le retirer « pour simplifier » : une réunion de bureau publiée
- * afficherait son ordre du jour et l'adresse d'un domicile sur Internet.
+ * Ce qui protège une réunion n'est donc plus son type mais son STATUT : tant
+ * qu'elle est en brouillon, elle reste interne. Ce que les pages publiques
+ * affichent d'un rendez-vous se limite au titre, à la date, au lieu et à la
+ * description publique ; les notes internes, la check-list et les présences
+ * n'en sortent jamais (voir les composants publics).
  */
 export async function getUpcomingPublishedEvents() {
   return db.query.events.findMany({
     where: and(
-      eq(events.kind, "event"),
       eq(events.status, "published"),
       gte(events.startAt, new Date()),
     ),
@@ -99,17 +100,15 @@ export const getEventWithDetails = cache(async (id: string) => {
 });
 
 /**
- * Un événement via son jeton public — pour l'inscription des bénévoles.
- * `cache()` évite le double appel (generateMetadata + corps de la page).
+ * Un rendez-vous via son jeton public — page publique d'un événement ou d'une
+ * réunion. `cache()` évite le double appel (generateMetadata + corps de page).
  *
- * Second verrou : une réunion possède un jeton de partage comme tout
- * événement, mais ce jeton ne doit ouvrir aucune page. Le filtre est porté par
- * la requête et non par la page, pour qu'un futur appelant hérite de la
- * protection sans avoir à y penser.
+ * La page n'affiche que ce qui est publiable ; en particulier elle ne charge
+ * pas les présences, qui sont une donnée de membres.
  */
 export const getEventByShareToken = cache(async (token: string) => {
   return db.query.events.findFirst({
-    where: and(eq(events.kind, "event"), eq(events.shareToken, token)),
+    where: eq(events.shareToken, token),
     with: {
       volunteerSlots: {
         // Heure de début d'abord : un tableau de créneaux se lit dans l'ordre

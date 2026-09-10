@@ -114,11 +114,7 @@ export function EventForm({
       <FormSection
         number="1"
         title="Informations essentielles"
-        description={
-          estReunion
-            ? "Une réunion reste entre membres : elle n’apparaît jamais sur le site public."
-            : "Le titre est visible de tous, y compris des visiteurs du site."
-        }
+        description="Le titre est visible de tous, y compris des visiteurs du site."
       >
         <div>
           <Label htmlFor="kind">De quoi s’agit-il ?</Label>
@@ -136,7 +132,7 @@ export function EventForm({
                 icone: Users,
                 titre: "Une réunion",
                 texte:
-                  "Bureau, conseil, assemblée générale. Visible des seuls membres, chacun annonce s’il sera présent.",
+                  "Bureau, conseil, assemblée générale. Annoncée sur le site comme les autres rendez-vous, et chaque membre indique s’il sera présent.",
               },
             ].map(({ valeur, icone: Icone, titre, texte }) => (
               <label
@@ -201,7 +197,7 @@ export function EventForm({
             placeholder="Organisation interne, contacts, consignes…"
           />
         </div>
-        <div className={estReunion ? "hidden" : undefined}>
+        <div>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
             <Label htmlFor="publicDescription" className="!mb-0">
@@ -209,9 +205,9 @@ export function EventForm({
             </Label>
           </div>
           <p className="mb-2 mt-1 text-xs leading-5 text-slate-500">
-            Affichée sur l’accueil du site et sur la page d’inscription des
-            bénévoles, dès que l’événement est publié. Ne rien y mettre que
-            vous ne diriez pas devant l’école.
+            {estReunion
+              ? "Affichée sur le site dès que la réunion est publiée : l’ordre du jour tel que vous l’annonceriez aux familles. Vos notes internes, la préparation et les présences n’en sortent jamais."
+              : "Affichée sur l’accueil du site et sur la page d’inscription des bénévoles, dès que l’événement est publié. Ne rien y mettre que vous ne diriez pas devant l’école."}
           </p>
           <RichTextEditor
             id="publicDescription"
@@ -234,8 +230,15 @@ export function EventForm({
             id="location"
             name="location"
             defaultValue={event?.location ?? ""}
-            placeholder="Ex. Cour de l’école"
+            placeholder={estReunion ? "Ex. Salle des associations" : "Ex. Cour de l’école"}
           />
+          {estReunion && (
+            <p className="mt-2 text-xs leading-5 text-coral-700">
+              Une réunion publiée affiche son lieu sur le site. Si vous vous
+              retrouvez chez quelqu’un, écrivez plutôt « chez un parent, adresse
+              communiquée aux inscrits » que l’adresse elle-même.
+            </p>
+          )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -319,7 +322,11 @@ export function EventForm({
       <FormSection
         number="4"
         title="Visibilité"
-        description="Vous pouvez tout préparer en brouillon, puis publier lorsque le lien doit être accessible."
+        description={
+          estReunion
+            ? "Une réunion en brouillon reste entre membres. Publiée, sa date, son lieu et sa description publique apparaissent sur le site."
+            : "Vous pouvez tout préparer en brouillon, puis publier lorsque le lien doit être accessible."
+        }
       >
         <div>
           <Label htmlFor="status">Qui peut voir l’événement ?</Label>
@@ -330,7 +337,9 @@ export function EventForm({
           >
             <option value="draft">Équipe uniquement — brouillon</option>
             <option value="published">
-              Tout le monde — événement publié et inscriptions ouvertes
+              {estReunion
+                ? "Tout le monde — réunion annoncée sur le site"
+                : "Tout le monde — événement publié et inscriptions ouvertes"}
             </option>
             <option value="archived">Archivé — conservé mais masqué</option>
           </Select>
