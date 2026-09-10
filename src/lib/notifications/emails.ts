@@ -169,6 +169,62 @@ export function mailSettingsTestEmail(
 }
 
 /** Message envoyé à l'association depuis la page « Rejoindre l'APEL ». */
+/** Intitulés lisibles des sujets de médiation, côté e-mail. */
+const MEDIATION_LABELS: Record<string, string> = {
+  enseignant: "Relation avec un enseignant",
+  classe: "Vie de la classe",
+  periscolaire: "Cantine, garderie, périscolaire",
+  enfant: "Situation d’un enfant",
+  autre: "Autre sujet",
+};
+
+/**
+ * Demande de médiation. L'objet reste neutre : cet e-mail arrive dans une boîte
+ * partagée, et son sujet ne doit pas exposer une situation d'enfant dans une
+ * liste de messages.
+ */
+export function mediationRequestEmail(ctx: {
+  name: string;
+  email: string;
+  phone?: string | null;
+  schoolClass?: string | null;
+  topic: string;
+  message: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const association = ctx.identity?.associationName || APP_NAME;
+  const sujet = MEDIATION_LABELS[ctx.topic] ?? MEDIATION_LABELS.autre;
+  const lignes = [
+    `<li>Sujet : <strong>${esc(sujet)}</strong></li>`,
+    `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
+    `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`,
+    ctx.phone?.trim()
+      ? `<li>Téléphone : <strong>${esc(ctx.phone.trim())}</strong></li>`
+      : "",
+    ctx.schoolClass?.trim()
+      ? `<li>Classe : <strong>${esc(ctx.schoolClass.trim())}</strong></li>`
+      : "",
+  ].join("");
+
+  return {
+    subject: `Demande de médiation — ${ctx.name}`,
+    html: layout(
+      "Une famille demande à être accompagnée",
+      `<ul>${lignes}</ul>
+       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;">${esc(ctx.message)}</p>
+       <p>${button(`mailto:${esc(ctx.email)}`, "Répondre à la famille")}</p>`,
+      ctx.identity,
+    ),
+    text: `Demande de médiation reçue sur le site de ${association}.
+
+Sujet : ${sujet}
+Nom : ${ctx.name}
+E-mail : ${ctx.email}${ctx.phone?.trim() ? `\nTéléphone : ${ctx.phone.trim()}` : ""}${ctx.schoolClass?.trim() ? `\nClasse : ${ctx.schoolClass.trim()}` : ""}
+
+${ctx.message}`,
+  };
+}
+
 export function joinRequestEmail(ctx: {
   name: string;
   email: string;

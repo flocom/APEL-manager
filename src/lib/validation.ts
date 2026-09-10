@@ -169,6 +169,41 @@ export const joinRequestSchema = z.object({
   recaptchaToken: z.string().max(5000).optional(),
 });
 
+/** Sujets proposés à un parent qui demande une médiation. */
+export const MEDIATION_TOPICS = [
+  "enseignant",
+  "classe",
+  "periscolaire",
+  "enfant",
+  "autre",
+] as const;
+
+/**
+ * Demande de médiation : un parent sollicite l'association pour être
+ * accompagné dans une difficulté avec l'école. Rien n'est stocké en base — le
+ * message part directement dans la boîte de l'association.
+ */
+export const mediationRequestSchema = z.object({
+  name: z.string().trim().min(2, "Votre nom est requis").max(120),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  phone: z.string().trim().max(40).optional(),
+  /** Niveau ou classe concernée, jamais le nom de l'enfant. */
+  schoolClass: z.string().trim().max(80).optional(),
+  topic: z.enum(MEDIATION_TOPICS).default("autre"),
+  message: z
+    .string()
+    .trim()
+    .min(10, "Racontez-nous la situation en quelques mots")
+    .max(4000),
+  consent: z.boolean().refine((value) => value === true, {
+    message: "Vous devez accepter la politique de confidentialité.",
+  }),
+  // Honeypot anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
+  /** Jeton reCAPTCHA v3, présent uniquement si la protection est activée. */
+  recaptchaToken: z.string().max(5000).optional(),
+});
+
 export const forgotSchema = z.object({
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
 });
