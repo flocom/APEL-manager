@@ -48,6 +48,7 @@ import {
   getChecklistTemplates,
   getEventWithDetails,
   getMeetingAttendance,
+  nomPresent,
 } from "@/lib/data";
 import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 import { formatEurosAbsolute } from "@/lib/money";
@@ -260,7 +261,8 @@ export default async function EventDetailPage({
             </h2>
             <p className="mb-4 mt-1 text-sm leading-6 text-slate-500">
               Votre réponse est visible des autres membres. Recliquez dessus
-              pour la retirer.
+              pour la retirer. Les parents sans compte répondent depuis le lien
+              public : ils apparaissent ci-dessous, marqués «&nbsp;invité&nbsp;».
             </p>
             <MeetingAttendance eventId={event.id} reponse={maReponse} />
           </Card>
@@ -286,7 +288,15 @@ export default async function EventDetailPage({
                   <ul className="mt-3 space-y-1.5">
                     {gens.map((r) => (
                       <li key={r.id} className="text-sm font-medium text-slate-700">
-                        {r.user.name}
+                        {nomPresent(r)}
+                        {/* Un parent sans compte a répondu par le lien public :
+                            le dire évite de le chercher dans l'annuaire des
+                            membres, et rappelle que la réunion est ouverte. */}
+                        {!r.userId && (
+                          <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                            invité
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>

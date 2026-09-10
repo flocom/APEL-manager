@@ -212,6 +212,28 @@ export const meetingAttendanceSchema = z.object({
   note: z.string().trim().max(300).optional(),
 });
 
+/**
+ * Présence annoncée depuis la page publique d'une réunion, par un parent qui
+ * n'a pas de compte. Mêmes coordonnées qu'une inscription bénévole : un nom,
+ * et au moins un moyen de le joindre s'il faut prévenir d'un report.
+ */
+export const publicMeetingAttendanceSchema = z.object({
+  status: z.enum(["yes", "maybe", "no"]),
+  name: z.string().trim().min(2, "Nom requis").max(120),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Adresse e-mail invalide")
+    .optional()
+    .or(z.literal("")),
+  phone: z.string().trim().max(40).optional(),
+  consent: z.boolean().refine((v) => v === true, {
+    message: "Vous devez accepter la politique de confidentialité.",
+  }),
+  recaptchaToken: z.string().max(5000).optional(),
+});
+
 export const forgotSchema = z.object({
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
 });

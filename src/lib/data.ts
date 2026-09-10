@@ -144,11 +144,33 @@ export async function getUpcomingMeetings() {
   });
 }
 
-/** Réponses de présence d'une réunion, avec le nom de chaque membre. */
+/**
+ * Réponses de présence d'une réunion, membres et parents venus par le lien
+ * public mêlés. Le nom affiché vient du compte quand il y en a un, du
+ * formulaire sinon — `nomPresent()` fait ce choix en un seul endroit pour que
+ * les trois colonnes de la page réunion ne divergent jamais.
+ */
 export async function getMeetingAttendance(eventId: string) {
   return db.query.meetingAttendance.findMany({
     where: eq(meetingAttendance.eventId, eventId),
+    orderBy: [asc(meetingAttendance.createdAt)],
     with: { user: { columns: { id: true, name: true } } },
+  });
+}
+
+/** Le nom sous lequel afficher une réponse de présence. */
+export function nomPresent(reponse: {
+  name: string | null;
+  user: { name: string } | null;
+}): string {
+  return reponse.user?.name ?? reponse.name ?? "Sans nom";
+}
+
+/** Une présence annoncée publiquement, via son jeton de retrait. */
+export async function getMeetingAttendanceByCancelToken(token: string) {
+  return db.query.meetingAttendance.findFirst({
+    where: eq(meetingAttendance.cancelToken, token),
+    with: { event: true },
   });
 }
 

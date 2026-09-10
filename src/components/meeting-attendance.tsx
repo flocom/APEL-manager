@@ -13,6 +13,9 @@ import { api } from "@/lib/client";
  * Trois réponses plutôt que deux, parce qu'un parent qui ne sait pas encore
  * n'est ni un présent ni un absent — et qu'une assemblée générale se prépare
  * avec des chiffres honnêtes. Recliquer sur sa réponse la retire.
+ *
+ * Les fonds sélectionnés sont deux crans plus foncés que la teinte naturelle
+ * de la palette : du blanc sur sea-500 tombe à 2,89:1, sous le seuil AA.
  */
 
 export type MeetingReply = "yes" | "maybe" | "no";
@@ -29,14 +32,14 @@ const CHOIX: {
     label: "Je serai là",
     courte: "présent",
     icone: Check,
-    actif: "border-sea-500 bg-sea-500 text-white",
+    actif: "border-sea-700 bg-sea-700 text-white",
   },
   {
     valeur: "maybe",
     label: "Peut-être",
     courte: "peut-être",
     icone: HelpCircle,
-    actif: "border-sand-500 bg-sand-500 text-white",
+    actif: "border-sand-700 bg-sand-700 text-white",
   },
   {
     valeur: "no",

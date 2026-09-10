@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 
 import { FormattedText } from "@/components/formatted-text";
+import { MeetingAttendanceForm } from "@/components/meeting-attendance-form";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getAssociationSettings } from "@/lib/services/association-settings";
@@ -37,9 +38,12 @@ export async function generateMetadata({
   // Ce texte est l'aperçu affiché quand le lien circule dans un groupe de
   // classe : n'annoncer que le bénévolat ferait manquer la page aux familles
   // qui voulaient réserver.
-  const action = event.ticketingUrl
-    ? "réservez votre place ou donnez un coup de main."
-    : "proposez-vous comme bénévole.";
+  const action =
+    event.kind === "meeting"
+      ? "dites-nous si vous venez."
+      : event.ticketingUrl
+        ? "réservez votre place ou donnez un coup de main."
+        : "proposez-vous comme bénévole.";
   const desc = `${formatDateTime(event.startAt)}${
     event.location ? ` · ${event.location}` : ""
   } — ${action}`;
@@ -283,25 +287,43 @@ export default async function InscriptionPage({
               <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-brand-950 sm:text-3xl">
                 Les réunions sont ouvertes aux parents
               </h2>
-              <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+              <p className="mb-6 mt-2 text-sm font-medium leading-6 text-slate-600">
                 C’est là qu’on décide de ce que fait l’association. Venez
-                écouter, ou prendre la parole : les deux se valent.
+                écouter, ou prendre la parole : les deux se valent. Dites-nous
+                si vous venez, ça nous aide à prévoir la salle et les chaises.
               </p>
               {/* Aucune liste de présents ici : qui vient à une réunion est une
-                  information réservée aux membres connectés. */}
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/contact"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-950 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
-                >
-                  Poser une question
-                </Link>
-                <Link
-                  href="/rejoindre"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 px-5 py-3 text-sm font-extrabold text-brand-800 transition-colors hover:border-brand-300"
-                >
-                  Rejoindre l’association
-                </Link>
+                  information réservée aux membres connectés. Le formulaire
+                  enregistre une réponse, il n'en montre aucune autre. */}
+              <MeetingAttendanceForm
+                token={token}
+                recaptchaSiteKey={
+                  association.recaptchaReady ? association.recaptchaSiteKey : null
+                }
+                defaultName={currentUser?.name ?? ""}
+                defaultEmail={currentUser?.email ?? ""}
+                whatsappGroupUrl={association.whatsappGroupUrl}
+              />
+
+              <div className="mt-6 border-t-2 border-slate-100 pt-5">
+                <p className="text-sm font-medium leading-6 text-slate-600">
+                  Vous pouvez aussi venir sans avoir répondu : la porte reste
+                  ouverte.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    href="/contact"
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 px-5 py-3 text-sm font-extrabold text-brand-800 transition-colors hover:border-brand-300"
+                  >
+                    Poser une question
+                  </Link>
+                  <Link
+                    href="/rejoindre"
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 px-5 py-3 text-sm font-extrabold text-brand-800 transition-colors hover:border-brand-300"
+                  >
+                    Rejoindre l’association
+                  </Link>
+                </div>
               </div>
             </section>
           ) : (

@@ -6,7 +6,16 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/client";
 
-export function CancelSignup({ token }: { token: string }) {
+export function CancelSignup({
+  token,
+  label = "Confirmer ma désinscription",
+  confirmation = "Votre désinscription est enregistrée. Merci de nous avoir prévenus !",
+}: {
+  token: string;
+  /** Libellé du bouton : on ne « se désinscrit » pas d'une réunion ouverte. */
+  label?: string;
+  confirmation?: string;
+}) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -15,7 +24,7 @@ export function CancelSignup({ token }: { token: string }) {
     return (
       <p className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
         <CheckCircle2 className="h-5 w-5 shrink-0" />
-        Votre désinscription est enregistrée. Merci de nous avoir prévenus !
+        {confirmation}
       </p>
     );
   }
@@ -39,7 +48,7 @@ export function CancelSignup({ token }: { token: string }) {
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       )}
       <Button variant="danger" loading={loading} onClick={cancel}>
-        Confirmer ma désinscription
+        {label}
       </Button>
     </div>
   );

@@ -22,9 +22,9 @@ import {
 export const roleEnum = pgEnum("role", ["admin", "manager", "member"]);
 
 /**
- * Une réunion est un événement de l'association, pas une manifestation : elle
- * ne sort jamais sur le site public (voir le filtre des requêtes publiques dans
- * src/lib/data.ts) et se répond par une présence, pas par un créneau bénévole.
+ * Une réunion est un événement de l'association, pas une manifestation : une
+ * fois publiée elle paraît sur le site comme les autres rendez-vous, mais on y
+ * répond par une présence annoncée et non par un créneau de bénévolat.
  */
 export const eventKindEnum = pgEnum("event_kind", ["event", "meeting"]);
 
@@ -187,9 +187,17 @@ export const meetingAttendanceStatusEnum = pgEnum("meeting_attendance_status", [
 ]);
 
 /**
- * Présence annoncée à une réunion : une réponse par membre et par réunion,
- * modifiable à volonté. Rien de public — la table n'est lue que par des
- * requêtes derrière une session.
+ * Présence annoncée à une réunion.
+ *
+ * Deux populations dans la même table : les membres connectés (`userId`
+ * renseigné, le nom vient du compte) et les parents venus par le lien public
+ * (`userId` nul, coordonnées saisies dans le formulaire). Les réunions étant
+ * ouvertes aux familles, séparer les deux en deux tables aurait obligé chaque
+ * comptage à faire une union — et un oubli quelque part aurait fait disparaître
+ * des présents de la liste.
+ *
+ * La liste reste réservée aux membres : la table n'est lue que derrière une
+ * session, jamais par une page publique.
  */
 export const meetingAttendance = pgTable(
   "meeting_attendance",
@@ -198,23 +206,47 @@ export const meetingAttendance = pgTable(
     eventId: uuid("event_id")
       .notNull()
       .references(() => events.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    /** Renseigné pour un membre connecté, nul pour une réponse publique. */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     status: meetingAttendanceStatusEnum("status").notNull(),
+    /** Coordonnées d'un parent non connecté ; nulles pour un membre. */
+    name: text("name"),
+    email: text("email"),
+    phone: text("phone"),
+    /** Jeton de retrait autonome (lien public dans l'e-mail de confirmation). */
+    cancelToken: text("cancel_token"),
     /** Mot laissé à l'équipe : « j'arriverai en retard », « je peux visio ». */
     note: text("note"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => ({
-    // Une seule réponse par personne : changer d'avis met à jour la ligne.
+    // Une seule réponse par membre : changer d'avis met à jour la ligne. Les
+    // réponses publiques ont un user_id nul, que Postgres tient pour distinct
+    // les uns des autres : elles ne se marchent pas dessus ici.
     uniqueParPersonne: uniqueIndex("meeting_attendance_event_user_unique").on(
       t.eventId,
       t.userId,
     ),
+    // Anti-doublon des réponses publiques : un même e-mail ne répond qu'une
+    // fois par réunion — s'il revient, sa réponse est mise à jour.
+    eventEmailIdx: uniqueIndex("meeting_attendance_event_email_unique")
+      .on(t.eventId, sql`lower(${t.email})`)
+      .where(sql`${t.userId} is null and ${t.email} is not null`),
+    cancelTokenIdx: uniqueIndex("meeting_attendance_cancel_token_idx").on(
+      t.cancelToken,
+    ),
     eventIdx: index("meeting_attendance_event_idx").on(t.eventId),
+    // Une ligne dit toujours qui vient : soit un compte, soit un nom saisi.
+    // Sans cette garantie, la liste des présents afficherait des lignes vides.
+    identifiable: check(
+      "meeting_attendance_identite",
+      sql`${t.userId} is not null or ${t.name} is not null`,
+    ),
   }),
 );
 
