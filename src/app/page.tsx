@@ -8,6 +8,7 @@ import {
   MessageCircle,
   MousePointerClick,
   Ticket,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -249,6 +250,12 @@ export default async function HomePage() {
                                   lien, une ancre imbriquée serait invalide — et
                                   personne ne doit partir payer depuis l'accueil
                                   sans avoir lu la date ni le lieu. */}
+                              {event.kind === "meeting" && (
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-950 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                  <Users className="h-3.5 w-3.5" />
+                                  Réunion
+                                </span>
+                              )}
                               {event.ticketingUrl && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-100 px-2.5 py-1.5 text-xs font-extrabold text-brand-900">
                                   <Ticket className="h-3.5 w-3.5" />
@@ -281,9 +288,11 @@ export default async function HomePage() {
                             />
                           )}
                           <div className="mt-auto flex items-center gap-2 pt-6 text-sm font-extrabold text-brand-700">
-                            {remaining > 0 && !event.ticketingUrl
-                              ? "Voir et se proposer"
-                              : "Voir l’événement"}
+                            {event.kind === "meeting"
+                              ? "Voir la réunion"
+                              : remaining > 0 && !event.ticketingUrl
+                                ? "Voir et se proposer"
+                                : "Voir l’événement"}
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                           </div>
                         </div>

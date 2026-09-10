@@ -187,6 +187,7 @@ export default async function RejoindrePage() {
   const prochains = events.slice(0, 3).map((event, index) => ({
     id: event.id,
     titre: event.title,
+    reunion: event.kind === "meeting",
     date: formatDateTime(event.startAt),
     lieu: event.location,
     jeton: event.shareToken,
@@ -497,7 +498,13 @@ export default async function RejoindrePage() {
                               </p>
                             )}
                             <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
-                              {event.restantes > 0 && (
+                              {event.reunion && (
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-950 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                  <Users className="h-3.5 w-3.5" />
+                                  Réunion
+                                </span>
+                              )}
+                              {event.restantes > 0 && !event.reunion && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-sea-200 px-2.5 py-1.5 text-xs font-extrabold text-brand-950">
                                   <Hand className="h-3.5 w-3.5" />
                                   {event.restantes} place
@@ -505,7 +512,7 @@ export default async function RejoindrePage() {
                                 </span>
                               )}
                               <span className="flex items-center gap-2 text-sm font-extrabold text-brand-700">
-                                {event.restantes > 0
+                                {event.restantes > 0 && !event.reunion
                                   ? "Se proposer"
                                   : "Voir le rendez-vous"}
                                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

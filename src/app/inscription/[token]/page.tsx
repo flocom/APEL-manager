@@ -7,6 +7,7 @@ import {
   Hand,
   MapPin,
   Ticket,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -108,6 +109,7 @@ export default async function InscriptionPage({
   );
   // `trim()` : un espace collé depuis un traitement de texte est truthy, et
   // afficherait un bouton « Réserver » qui ne mène nulle part.
+  const estReunion = event.kind === "meeting";
   const billetterie = event.ticketingUrl?.trim() || null;
   const hote = ticketingHostLabel(billetterie) ?? "la billetterie en ligne";
   const aDesCreneaux = event.volunteerSlots.length > 0;
@@ -141,7 +143,12 @@ export default async function InscriptionPage({
                 permet au bandeau de billetterie de le déborder en -mx-6. */}
             <div className="relative p-6 sm:p-8">
               <span className="inline-flex items-center gap-2 rounded-lg bg-sea-200 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-brand-950">
-                {billetterie ? (
+                {estReunion ? (
+                  <>
+                    <Users className="h-4 w-4" />
+                    Réunion de l’association
+                  </>
+                ) : billetterie ? (
                   <>
                     <Ticket className="h-4 w-4" />
                     {aDesCreneaux ? "Billetterie et bénévoles" : "Billetterie en ligne"}
@@ -252,7 +259,7 @@ export default async function InscriptionPage({
               {/* Sans ce garde, un événement à billetterie seule afficherait
                   « 0 coup de main » à côté du bouton « Réserver » : le parent
                   lit « complet » et referme. */}
-              {aDesCreneaux && (
+              {aDesCreneaux && !estReunion && (
                 <div className="mt-7 flex items-center gap-3 rounded-2xl bg-brand-900 p-4">
                   <Hand
                     className="h-5 w-5 shrink-0 text-brand-300"
@@ -268,6 +275,36 @@ export default async function InscriptionPage({
             </div>
           </aside>
 
+          {estReunion ? (
+            <section className="rounded-2xl border-2 border-slate-200 bg-white p-6 sm:p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
+                Venir à la réunion
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-brand-950 sm:text-3xl">
+                Les réunions sont ouvertes aux parents
+              </h2>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+                C’est là qu’on décide de ce que fait l’association. Venez
+                écouter, ou prendre la parole : les deux se valent.
+              </p>
+              {/* Aucune liste de présents ici : qui vient à une réunion est une
+                  information réservée aux membres connectés. */}
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/contact"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-950 px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+                >
+                  Poser une question
+                </Link>
+                <Link
+                  href="/rejoindre"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 px-5 py-3 text-sm font-extrabold text-brand-800 transition-colors hover:border-brand-300"
+                >
+                  Rejoindre l’association
+                </Link>
+              </div>
+            </section>
+          ) : (
           <section className="rounded-2xl border-2 border-slate-200 bg-white p-6 sm:p-8">
             <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
               Aider à l’organisation
@@ -320,6 +357,7 @@ export default async function InscriptionPage({
               />
             )}
           </section>
+          )}
         </div>
       </main>
 
