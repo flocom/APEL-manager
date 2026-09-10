@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import {
   checklistTemplates,
   events,
+  meetingAttendance,
   taskAssignees,
   tasks,
   users,
@@ -13,10 +14,21 @@ import {
   volunteerSlots,
 } from "@/lib/db/schema";
 
-/** Événements publiés à venir — pour la page d'accueil publique. */
+/**
+ * Événements publiés à venir — pour la page d'accueil publique.
+ *
+ * Le filtre `kind = 'event'` est le premier des deux verrous qui tiennent les
+ * réunions hors du site public ; le second est dans getEventByShareToken.
+ * Ne jamais le retirer « pour simplifier » : une réunion de bureau publiée
+ * afficherait son ordre du jour et l'adresse d'un domicile sur Internet.
+ */
 export async function getUpcomingPublishedEvents() {
   return db.query.events.findMany({
-    where: and(eq(events.status, "published"), gte(events.startAt, new Date())),
+    where: and(
+      eq(events.kind, "event"),
+      eq(events.status, "published"),
+      gte(events.startAt, new Date()),
+    ),
     orderBy: [asc(events.startAt)],
     with: {
       volunteerSlots: { with: { signups: true } },
@@ -89,10 +101,15 @@ export const getEventWithDetails = cache(async (id: string) => {
 /**
  * Un événement via son jeton public — pour l'inscription des bénévoles.
  * `cache()` évite le double appel (generateMetadata + corps de la page).
+ *
+ * Second verrou : une réunion possède un jeton de partage comme tout
+ * événement, mais ce jeton ne doit ouvrir aucune page. Le filtre est porté par
+ * la requête et non par la page, pour qu'un futur appelant hérite de la
+ * protection sans avoir à y penser.
  */
 export const getEventByShareToken = cache(async (token: string) => {
   return db.query.events.findFirst({
-    where: eq(events.shareToken, token),
+    where: and(eq(events.kind, "event"), eq(events.shareToken, token)),
     with: {
       volunteerSlots: {
         // Heure de début d'abord : un tableau de créneaux se lit dans l'ordre
@@ -105,6 +122,36 @@ export const getEventByShareToken = cache(async (token: string) => {
     },
   });
 });
+
+/**
+ * Réunions à venir, avec les réponses de présence.
+ *
+ * Réservé aux écrans authentifiés : la liste des présents est une donnée de
+ * membres. Aucune page publique n'appelle cette fonction.
+ */
+export async function getUpcomingMeetings() {
+  return db.query.events.findMany({
+    where: and(
+      eq(events.kind, "meeting"),
+      gte(events.startAt, new Date()),
+      ne(events.status, "archived"),
+    ),
+    orderBy: [asc(events.startAt)],
+    with: {
+      attendance: {
+        with: { user: { columns: { id: true, name: true } } },
+      },
+    },
+  });
+}
+
+/** Réponses de présence d'une réunion, avec le nom de chaque membre. */
+export async function getMeetingAttendance(eventId: string) {
+  return db.query.meetingAttendance.findMany({
+    where: eq(meetingAttendance.eventId, eventId),
+    with: { user: { columns: { id: true, name: true } } },
+  });
+}
 
 /** Tâches assignées à un membre, avec leur événement. */
 export async function getTasksForUser(userId: string) {

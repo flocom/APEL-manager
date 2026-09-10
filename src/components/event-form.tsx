@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock, Ticket } from "lucide-react";
+import { Globe, Lock, PartyPopper, Ticket, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -32,6 +32,10 @@ export function EventForm({
   // `?? ""` obligatoire : la colonne vaut null en base, et un input contrôlé
   // qui reçoit null repasse en non contrôlé.
   const [ticketingUrl, setTicketingUrl] = useState(event?.ticketingUrl ?? "");
+  // Le type pilote l'affichage du formulaire ET la sortie publique : une
+  // réunion n'apparaît jamais sur le site (filtres de src/lib/data.ts).
+  const [kind, setKind] = useState<"event" | "meeting">(event?.kind ?? "event");
+  const estReunion = kind === "meeting";
   const [erreurBilletterie, setErreurBilletterie] = useState<string | null>(null);
   const verdictBilletterie = checkTicketingUrl(ticketingUrl);
   // Sert à prévenir sans bloquer quand la billetterie n'est pas HelloAsso.
@@ -56,10 +60,11 @@ export function EventForm({
       return;
     }
     const body = {
+      kind,
       title: form.get("title"),
       description,
       publicDescription,
-      ticketingUrl: billetterie.url,
+      ticketingUrl: estReunion ? null : billetterie.url,
       location: form.get("location"),
       startAt: form.get("startAt"),
       endAt: endRaw ? endRaw : null,
@@ -109,16 +114,72 @@ export function EventForm({
       <FormSection
         number="1"
         title="Informations essentielles"
-        description="Le titre est visible de tous, y compris des visiteurs du site."
+        description={
+          estReunion
+            ? "Une réunion reste entre membres : elle n’apparaît jamais sur le site public."
+            : "Le titre est visible de tous, y compris des visiteurs du site."
+        }
       >
         <div>
-          <Label htmlFor="title">Titre de l’événement</Label>
+          <Label htmlFor="kind">De quoi s’agit-il ?</Label>
+          <div className="mt-1 grid gap-2 sm:grid-cols-2">
+            {[
+              {
+                valeur: "event" as const,
+                icone: PartyPopper,
+                titre: "Un événement",
+                texte:
+                  "Kermesse, vide-grenier… Ouvert aux familles, publié sur le site, avec des créneaux de bénévoles.",
+              },
+              {
+                valeur: "meeting" as const,
+                icone: Users,
+                titre: "Une réunion",
+                texte:
+                  "Bureau, conseil, assemblée générale. Visible des seuls membres, chacun annonce s’il sera présent.",
+              },
+            ].map(({ valeur, icone: Icone, titre, texte }) => (
+              <label
+                key={valeur}
+                className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-colors ${
+                  kind === valeur
+                    ? "border-brand-600 bg-brand-50"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="kind"
+                  value={valeur}
+                  checked={kind === valeur}
+                  onChange={() => setKind(valeur)}
+                  className="mt-0.5 h-5 w-5 shrink-0 border-2 border-slate-300 accent-[#0873ab]"
+                />
+                <span>
+                  <span className="flex items-center gap-2 font-bold text-brand-950">
+                    <Icone className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {titre}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">
+                    {texte}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label htmlFor="title">
+            {estReunion ? "Intitulé de la réunion" : "Titre de l’événement"}
+          </Label>
           <Input
             id="title"
             name="title"
             required
             defaultValue={event?.title}
-            placeholder="Ex. Vide-grenier de printemps"
+            placeholder={
+              estReunion ? "Ex. Réunion de bureau" : "Ex. Vide-grenier de printemps"
+            }
           />
         </div>
         <div>
@@ -140,7 +201,7 @@ export function EventForm({
             placeholder="Organisation interne, contacts, consignes…"
           />
         </div>
-        <div>
+        <div className={estReunion ? "hidden" : undefined}>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
             <Label htmlFor="publicDescription" className="!mb-0">
@@ -201,6 +262,7 @@ export function EventForm({
 
       <FormSection
         number="3"
+        hidden={estReunion}
         title="Billetterie en ligne"
         description="Si les familles doivent réserver ou payer leur place, collez ici le lien de votre billetterie. Sinon, laissez vide."
       >
@@ -323,13 +385,17 @@ function FormSection({
   number,
   title,
   description,
+  hidden = false,
   children,
 }: {
   number: string;
   title: string;
   description: string;
+  /** Sections sans objet selon le type d'événement (billetterie d'une réunion). */
+  hidden?: boolean;
   children: ReactNode;
 }) {
+  if (hidden) return null;
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
       <div className="mb-4 flex items-start gap-3 border-b border-slate-100 pb-4">

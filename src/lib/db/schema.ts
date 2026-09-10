@@ -21,6 +21,13 @@ import {
 /** Niveaux de droits : admin > manager (organisateur) > member (membre). */
 export const roleEnum = pgEnum("role", ["admin", "manager", "member"]);
 
+/**
+ * Une réunion est un événement de l'association, pas une manifestation : elle
+ * ne sort jamais sur le site public (voir le filtre des requêtes publiques dans
+ * src/lib/data.ts) et se répond par une présence, pas par un créneau bénévole.
+ */
+export const eventKindEnum = pgEnum("event_kind", ["event", "meeting"]);
+
 export const eventStatusEnum = pgEnum("event_status", [
   "draft",
   "published",
@@ -137,6 +144,8 @@ export const users = pgTable("users", {
 
 export const events = pgTable("events", {
   id: uuid("id").defaultRandom().primaryKey(),
+  /** « event » : manifestation ouverte aux familles. « meeting » : réunion interne. */
+  kind: eventKindEnum("kind").notNull().default("event"),
   title: text("title").notNull(),
   /**
    * Consignes réservées à l'équipe : jamais rendues hors du tableau de bord.
@@ -169,6 +178,45 @@ export const events = pgTable("events", {
 }, (t) => ({
   statusStartIdx: index("events_status_start_idx").on(t.status, t.startAt),
 }));
+
+/** Réponse d'un membre à une réunion. « maybe » existe parce que c'est la vérité. */
+export const meetingAttendanceStatusEnum = pgEnum("meeting_attendance_status", [
+  "yes",
+  "maybe",
+  "no",
+]);
+
+/**
+ * Présence annoncée à une réunion : une réponse par membre et par réunion,
+ * modifiable à volonté. Rien de public — la table n'est lue que par des
+ * requêtes derrière une session.
+ */
+export const meetingAttendance = pgTable(
+  "meeting_attendance",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: meetingAttendanceStatusEnum("status").notNull(),
+    /** Mot laissé à l'équipe : « j'arriverai en retard », « je peux visio ». */
+    note: text("note"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    // Une seule réponse par personne : changer d'avis met à jour la ligne.
+    uniqueParPersonne: uniqueIndex("meeting_attendance_event_user_unique").on(
+      t.eventId,
+      t.userId,
+    ),
+    eventIdx: index("meeting_attendance_event_idx").on(t.eventId),
+  }),
+);
 
 export const tasks = pgTable(
   "tasks",
@@ -958,6 +1006,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const eventsRelations = relations(events, ({ many, one }) => ({
   tasks: many(tasks),
   volunteerSlots: many(volunteerSlots),
+  attendance: many(meetingAttendance),
   attachments: many(eventAttachments),
   accountingEntries: many(accountingEntries),
   creator: one(users, {
@@ -965,6 +1014,20 @@ export const eventsRelations = relations(events, ({ many, one }) => ({
     references: [users.id],
   }),
 }));
+
+export const meetingAttendanceRelations = relations(
+  meetingAttendance,
+  ({ one }) => ({
+    event: one(events, {
+      fields: [meetingAttendance.eventId],
+      references: [events.id],
+    }),
+    user: one(users, {
+      fields: [meetingAttendance.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const eventAttachmentsRelations = relations(
   eventAttachments,

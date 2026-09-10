@@ -37,12 +37,17 @@ import { ShareLink } from "@/components/share-link";
 import { SlotManager } from "@/components/slot-manager";
 import { TaskManager } from "@/components/task-manager";
 import { Badge, buttonClasses, Card } from "@/components/ui";
+import {
+  MeetingAttendance,
+  type MeetingReply,
+} from "@/components/meeting-attendance";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getBaseUrl } from "@/lib/base-url";
 import {
   getMemberOptions,
   getChecklistTemplates,
   getEventWithDetails,
+  getMeetingAttendance,
 } from "@/lib/data";
 import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 import { formatEurosAbsolute } from "@/lib/money";
@@ -74,6 +79,7 @@ export default async function EventDetailPage({
   const activeTab =
     requestedTab === "preparation" ||
     requestedTab === "benevoles" ||
+    requestedTab === "presences" ||
     requestedTab === "budget"
       ? requestedTab
       : "apercu";
@@ -84,6 +90,16 @@ export default async function EventDetailPage({
     getBaseUrl(),
   ]);
   if (!event) notFound();
+
+  const estReunion = event.kind === "meeting";
+  const presences = estReunion ? await getMeetingAttendance(event.id) : [];
+  const maReponse =
+    (presences.find((r) => r.userId === user.id)?.status as
+      | MeetingReply
+      | undefined) ?? null;
+  const presents = presences.filter((r) => r.status === "yes");
+  const peutEtre = presences.filter((r) => r.status === "maybe");
+  const absents = presences.filter((r) => r.status === "no");
 
   const canManage = canManageEvents(user);
   const canSeeBudget = user.role === "admin";
@@ -231,9 +247,55 @@ export default async function EventDetailPage({
         eventId={event.id}
         active={activeTab}
         taskCount={event.tasks.length}
-        signupCount={totalSignups}
-        showBudget={canSeeBudget}
+        signupCount={estReunion ? presents.length : totalSignups}
+        showBudget={canSeeBudget && !estReunion}
+        isMeeting={estReunion}
       />
+
+      {activeTab === "presences" && estReunion && (
+        <div className="space-y-5">
+          <Card className="p-6">
+            <h2 className="text-lg font-bold text-slate-950">
+              Vous serez là ?
+            </h2>
+            <p className="mb-4 mt-1 text-sm leading-6 text-slate-500">
+              Votre réponse est visible des autres membres. Recliquez dessus
+              pour la retirer.
+            </p>
+            <MeetingAttendance eventId={event.id} reponse={maReponse} />
+          </Card>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { titre: "Présents", gens: presents, teinte: "text-sea-700" },
+              { titre: "Peut-être", gens: peutEtre, teinte: "text-sand-700" },
+              { titre: "Absents", gens: absents, teinte: "text-slate-500" },
+            ].map(({ titre, gens, teinte }) => (
+              <Card key={titre} className="p-5">
+                <p className="flex items-baseline justify-between gap-3">
+                  <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">
+                    {titre}
+                  </span>
+                  <span className={cn("text-2xl font-black", teinte)}>
+                    {gens.length}
+                  </span>
+                </p>
+                {gens.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-400">Personne pour l’instant.</p>
+                ) : (
+                  <ul className="mt-3 space-y-1.5">
+                    {gens.map((r) => (
+                      <li key={r.id} className="text-sm font-medium text-slate-700">
+                        {r.user.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {activeTab === "apercu" && (
         <div className="space-y-5">
@@ -625,12 +687,15 @@ function EventDetailNav({
   taskCount,
   signupCount,
   showBudget,
+  isMeeting = false,
 }: {
   eventId: string;
-  active: "apercu" | "preparation" | "benevoles" | "budget";
+  active: "apercu" | "preparation" | "benevoles" | "presences" | "budget";
   taskCount: number;
   signupCount: number;
   showBudget: boolean;
+  /** Une réunion compte des présences là où un événement compte des bénévoles. */
+  isMeeting?: boolean;
 }) {
   const tabs = [
     {
@@ -646,13 +711,21 @@ function EventDetailNav({
       icon: ListChecks,
       count: taskCount,
     },
-    {
-      id: "benevoles",
-      label: "Bénévoles",
-      href: `/dashboard/events/${eventId}?onglet=benevoles`,
-      icon: UsersRound,
-      count: signupCount,
-    },
+    isMeeting
+      ? ({
+          id: "presences",
+          label: "Présences",
+          href: `/dashboard/events/${eventId}?onglet=presences`,
+          icon: UsersRound,
+          count: signupCount,
+        } as const)
+      : ({
+          id: "benevoles",
+          label: "Bénévoles",
+          href: `/dashboard/events/${eventId}?onglet=benevoles`,
+          icon: UsersRound,
+          count: signupCount,
+        } as const),
     ...(showBudget
       ? ([
           {
