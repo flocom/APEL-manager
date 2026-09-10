@@ -81,6 +81,51 @@ export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
   };
 }
 
+/**
+ * Accusé de réception d'une présence annoncée à une réunion.
+ *
+ * Le lien de retrait est le pendant de la promesse faite sur la page : on peut
+ * se décommander sans écrire à personne. « Peut-être » est repris tel quel dans
+ * le corps du message — recevoir « Votre présence est confirmée » après avoir
+ * coché « peut-être » ferait douter de ce qui a été enregistré.
+ */
+export function meetingAttendanceConfirmationEmail(ctx: {
+  name: string;
+  eventTitle: string;
+  eventDate: string;
+  location?: string | null;
+  status: "yes" | "maybe" | "no";
+  cancelUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const reponse = {
+    yes: "vous serez là",
+    maybe: "vous viendrez peut-être",
+    no: "vous ne pourrez pas venir",
+  }[ctx.status];
+  const titre = ctx.status === "no" ? "Merci de nous avoir prévenus" : "À bientôt !";
+  const loc = ctx.location
+    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
+    : "";
+  return {
+    subject: `Votre réponse pour la réunion du ${ctx.eventDate}`,
+    html: layout(
+      titre,
+      `<p>Bonjour ${esc(ctx.name)},</p>
+       <p>Nous avons noté que <strong>${reponse}</strong> :</p>
+       <ul>
+         <li>Réunion : <strong>${esc(ctx.eventTitle)}</strong></li>
+         <li>Date : <strong>${ctx.eventDate}</strong></li>
+         ${loc}
+       </ul>
+       <p>Changement de programme ? Vous pouvez retirer votre réponse en un clic :</p>
+       <p>${button(ctx.cancelUrl, "Retirer ma réponse")}</p>`,
+      ctx.identity,
+    ),
+    text: `Bonjour ${ctx.name},\n\nNous avons noté que ${reponse} :\n- Réunion : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nRetirer ma réponse : ${ctx.cancelUrl}`,
+  };
+}
+
 export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   return {
     subject: `Rappel — ${ctx.eventTitle}, c'est bientôt !`,
