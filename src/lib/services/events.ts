@@ -209,6 +209,7 @@ export async function duplicateEvent(
     const [copy] = await tx
       .insert(events)
       .values({
+        kind: source.kind,
         title: emptyToNull(title ?? null) ?? source.title,
         description: source.description,
         publicDescription: source.publicDescription,

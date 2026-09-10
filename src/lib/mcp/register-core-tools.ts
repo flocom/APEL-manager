@@ -173,6 +173,8 @@ export function registerCoreTools(
       description:
         "Crée un événement APEL avec un lien public d’inscription bénévole.",
       inputSchema: z.object({
+        /** « meeting » : réunion interne, invisible du site public. */
+        kind: z.enum(["event", "meeting"]).default("event"),
         title: z.string().min(2).max(200),
         /** Réservé à l'équipe : jamais affiché hors du tableau de bord. */
         description: optionalNullableString,
@@ -193,6 +195,7 @@ export function registerCoreTools(
       const [event] = await db
         .insert(events)
         .values({
+          kind: data.kind,
           title: data.title,
           description: emptyToNull(data.description),
           publicDescription: emptyToNull(data.publicDescription),
@@ -225,6 +228,7 @@ export function registerCoreTools(
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
+        kind: z.enum(["event", "meeting"]).optional(),
         title: z.string().min(2).max(200).optional(),
         /** Réservé à l'équipe : jamais affiché hors du tableau de bord. */
         description: optionalNullableString,
@@ -244,6 +248,7 @@ export function registerCoreTools(
       const data = eventSchema.partial().parse(input);
       const current = await requireEvent(id);
       const updates: Partial<typeof events.$inferInsert> = {};
+      if (data.kind !== undefined) updates.kind = data.kind;
       if (data.title !== undefined) updates.title = data.title;
       if (data.description !== undefined)
         updates.description = emptyToNull(data.description);
@@ -379,6 +384,7 @@ export function registerCoreTools(
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
+        kind: z.enum(["event", "meeting"]).optional(),
         title: z.string().min(2).max(200).optional(),
         description: optionalNullableString,
         leadTimeDays: z.number().int().min(0).max(365).optional(),
@@ -530,6 +536,7 @@ export function registerCoreTools(
       description: "Modifie un besoin bénévole existant.",
       inputSchema: z.object({
         id: z.string().uuid(),
+        kind: z.enum(["event", "meeting"]).optional(),
         title: z.string().min(2).max(200).optional(),
         description: optionalNullableString,
         capacity: z.number().int().min(1).max(1000).optional(),

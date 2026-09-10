@@ -15,6 +15,7 @@ export async function POST(req: Request) {
     const [created] = await db
       .insert(events)
       .values({
+        kind: data.kind,
         title: data.title,
         description: emptyToNull(data.description),
         publicDescription: emptyToNull(data.publicDescription),

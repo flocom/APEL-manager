@@ -45,6 +45,8 @@ export const loginSchema = z.object({
 });
 
 export const eventSchema = z.object({
+  /** « meeting » : réunion interne, jamais publiée sur le site public. */
+  kind: z.enum(["event", "meeting"]).default("event"),
   title: z.string().trim().min(2, "Titre trop court").max(200),
   /** Réservé à l'équipe. Ce qui doit être lu par les visiteurs va dans `publicDescription`. */
   description: z.string().max(5000).optional(),
@@ -202,6 +204,12 @@ export const familyMessageSchema = z.object({
   website: z.string().optional(),
   /** Jeton reCAPTCHA v3, présent uniquement si la protection est activée. */
   recaptchaToken: z.string().max(5000).optional(),
+});
+
+/** Réponse d'un membre à une réunion. */
+export const meetingAttendanceSchema = z.object({
+  status: z.enum(["yes", "maybe", "no"]),
+  note: z.string().trim().max(300).optional(),
 });
 
 export const forgotSchema = z.object({

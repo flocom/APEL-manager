@@ -49,9 +49,14 @@ export default async function EventsPage({
 
   const now = new Date();
   const scheduledEvents = events.filter((event) => event.status !== "archived");
+  // Les réunions ouvrent la page : ce sont elles qu'un membre vient chercher,
+  // et elles se perdraient au milieu des manifestations.
+  const reunions = scheduledEvents
+    .filter((e) => e.kind === "meeting" && new Date(e.startAt) >= now)
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   const archived = events.filter((event) => event.status === "archived");
   const upcoming = scheduledEvents
-    .filter((e) => new Date(e.startAt) >= now)
+    .filter((e) => e.kind === "event" && new Date(e.startAt) >= now)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   const past = scheduledEvents
     .filter((e) => new Date(e.startAt) < now)
@@ -107,6 +112,14 @@ export default async function EventsPage({
             <CalendarView events={scheduledEvents} />
           ) : (
             <>
+              {reunions.length > 0 && (
+                <Section
+                  title="Réunions à venir"
+                  events={reunions}
+                  emptyLabel="Aucune réunion à venir."
+                  accent
+                />
+              )}
               <Section title="À venir" events={upcoming} emptyLabel="Aucun événement à venir." />
               {past.length > 0 && (
                 <CollapsedEvents title="Événements passés" events={past} />
@@ -195,21 +208,38 @@ function Section({
   events,
   emptyLabel,
   dimmed = false,
+  accent = false,
 }: {
   title: string;
   events: Awaited<ReturnType<typeof getAllEvents>>;
   emptyLabel: string;
   dimmed?: boolean;
+  /** Réunions : filet et compteur colorés, pour qu'elles se voient d'abord. */
+  accent?: boolean;
 }) {
   if (events.length === 0 && !emptyLabel) return null;
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-3">
-        <h2 className="text-sm font-extrabold uppercase tracking-[0.14em] text-slate-700">
+        <h2
+          className={cn(
+            "text-sm font-extrabold uppercase tracking-[0.14em]",
+            accent ? "text-brand-800" : "text-slate-700",
+          )}
+        >
           {title}
         </h2>
-        <span className="h-0.5 flex-1 bg-slate-200" />
-        <span className="grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-bold text-slate-600">
+        <span
+          className={cn("h-0.5 flex-1", accent ? "bg-brand-300" : "bg-slate-200")}
+        />
+        <span
+          className={cn(
+            "grid h-7 min-w-7 place-items-center rounded-lg px-2 text-xs font-bold",
+            accent
+              ? "bg-brand-600 text-white"
+              : "bg-slate-100 text-slate-600",
+          )}
+        >
           {events.length}
         </span>
       </div>

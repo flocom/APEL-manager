@@ -6,14 +6,21 @@ import {
   MapPin,
   Plus,
   TriangleAlert,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 
+import { MeetingAttendance, type MeetingReply } from "@/components/meeting-attendance";
 import { TaskStatusSelect } from "@/components/task-status-select";
 import { Badge } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
-import { getAllEvents, getSignupsForUser, getTasksForUser } from "@/lib/data";
+import {
+  getAllEvents,
+  getSignupsForUser,
+  getTasksForUser,
+  getUpcomingMeetings,
+} from "@/lib/data";
 import { formatDateTime, formatRelative, isOverdue } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
 
@@ -21,19 +28,31 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [events, myTasks, signups] = await Promise.all([
+  const [events, myTasks, signups, meetings] = await Promise.all([
     getAllEvents(),
     getTasksForUser(user.id),
     getSignupsForUser(user.id),
+    getUpcomingMeetings(),
   ]);
 
   const now = new Date();
+  // Les réunions ont leur propre bandeau : elles ne se noient pas dans la
+  // liste des manifestations.
   const upcoming = events
+    .filter((event) => event.kind === "event")
     .filter((event) => new Date(event.startAt) >= now)
     .sort(
       (a, b) =>
         new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
     );
+  const prochaineReunion = meetings[0] ?? null;
+  const presents =
+    prochaineReunion?.attendance.filter((r) => r.status === "yes").length ?? 0;
+  const peutEtre =
+    prochaineReunion?.attendance.filter((r) => r.status === "maybe").length ?? 0;
+  const maReponse =
+    (prochaineReunion?.attendance.find((r) => r.userId === user.id)
+      ?.status as MeetingReply | undefined) ?? null;
   const openTasks = myTasks.filter((task) => task.status !== "done");
   const overdueTasks = openTasks.filter((task) => isOverdue(task.dueAt));
 
@@ -69,6 +88,56 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      {prochaineReunion && (
+        <section aria-label="Prochaine réunion">
+          <article className="overflow-hidden rounded-2xl border-2 border-brand-200 bg-white">
+            <div className="h-1.5 bg-brand-600" aria-hidden />
+            <div className="flex flex-wrap items-start justify-between gap-5 p-6 sm:p-7">
+              <div className="min-w-0 flex-1 basis-72">
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-brand-700">
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  Prochaine réunion
+                </p>
+                <h2 className="mt-2 break-words text-2xl font-extrabold tracking-[-0.03em] text-brand-950">
+                  <Link
+                    href={`/dashboard/events/${prochaineReunion.id}`}
+                    className="rounded-lg hover:text-brand-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+                  >
+                    {prochaineReunion.title}
+                  </Link>
+                </h2>
+                <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold text-slate-600">
+                  <span className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-brand-700" aria-hidden="true" />
+                    {formatDateTime(prochaineReunion.startAt)}
+                  </span>
+                  {prochaineReunion.location && (
+                    <span className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      {prochaineReunion.location}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-3 text-sm font-medium text-slate-500">
+                  {presents} présent{presents > 1 ? "s" : ""} annoncé
+                  {presents > 1 ? "s" : ""}
+                  {peutEtre > 0 ? ` · ${peutEtre} peut-être` : ""}
+                </p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-bold text-brand-950">
+                  {maReponse ? "Vous avez répondu" : "Vous serez là ?"}
+                </p>
+                <MeetingAttendance
+                  eventId={prochaineReunion.id}
+                  reponse={maReponse}
+                />
+              </div>
+            </div>
+          </article>
+        </section>
+      )}
 
       <section aria-label="Indicateurs clés">
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">

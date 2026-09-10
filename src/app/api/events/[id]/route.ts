@@ -20,6 +20,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const data = eventSchema.partial().parse(await req.json());
 
     const updates: Partial<typeof events.$inferInsert> = {};
+    if (data.kind !== undefined) updates.kind = data.kind;
     if (data.title !== undefined) updates.title = data.title;
     if (data.description !== undefined)
       updates.description = emptyToNull(data.description);
@@ -43,6 +44,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (data.version !== undefined) {
       // SET dynamique (seuls les champs réellement fournis).
       const setFragments: SQL[] = [];
+      if (data.kind !== undefined) setFragments.push(sql`kind = ${data.kind}`);
       if (data.title !== undefined) setFragments.push(sql`title = ${data.title}`);
       if (data.description !== undefined)
         setFragments.push(sql`description = ${emptyToNull(data.description)}`);
