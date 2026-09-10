@@ -8,7 +8,7 @@ import { api } from "@/lib/client";
 import { useRecaptcha } from "@/lib/use-recaptcha";
 
 /**
- * Formulaire de demande de médiation.
+ * Formulaire « on vous écoute ».
  *
  * Il demande la classe concernée, jamais le nom de l'enfant : pour préparer un
  * rendez-vous avec la direction, le niveau suffit, et le prénom d'un élève dans
@@ -26,7 +26,7 @@ const SUJETS = [
 const champ =
   "min-h-11 w-full rounded-xl border-2 border-slate-200 px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-brand-600 focus:outline-none";
 
-export function MediationForm({
+export function ContactForm({
   contactEmail,
   recaptchaSiteKey = null,
 }: {
@@ -44,7 +44,7 @@ export function MediationForm({
     setLoading(true);
     const form = new FormData(event.currentTarget);
     try {
-      await api("/api/mediation", {
+      await api("/api/contact", {
         body: {
           name: form.get("name"),
           email: form.get("email"),

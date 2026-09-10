@@ -169,8 +169,8 @@ export const joinRequestSchema = z.object({
   recaptchaToken: z.string().max(5000).optional(),
 });
 
-/** Sujets proposés à un parent qui demande une médiation. */
-export const MEDIATION_TOPICS = [
+/** Sujets proposés à un parent qui écrit à l'association. */
+export const FAMILY_MESSAGE_TOPICS = [
   "enseignant",
   "classe",
   "periscolaire",
@@ -179,17 +179,17 @@ export const MEDIATION_TOPICS = [
 ] as const;
 
 /**
- * Demande de médiation : un parent sollicite l'association pour être
+ * Message d'une famille : un parent sollicite l'association pour être
  * accompagné dans une difficulté avec l'école. Rien n'est stocké en base — le
  * message part directement dans la boîte de l'association.
  */
-export const mediationRequestSchema = z.object({
+export const familyMessageSchema = z.object({
   name: z.string().trim().min(2, "Votre nom est requis").max(120),
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
   phone: z.string().trim().max(40).optional(),
   /** Niveau ou classe concernée, jamais le nom de l'enfant. */
   schoolClass: z.string().trim().max(80).optional(),
-  topic: z.enum(MEDIATION_TOPICS).default("autre"),
+  topic: z.enum(FAMILY_MESSAGE_TOPICS).default("autre"),
   message: z
     .string()
     .trim()

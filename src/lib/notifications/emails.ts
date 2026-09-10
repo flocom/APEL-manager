@@ -169,8 +169,8 @@ export function mailSettingsTestEmail(
 }
 
 /** Message envoyé à l'association depuis la page « Rejoindre l'APEL ». */
-/** Intitulés lisibles des sujets de médiation, côté e-mail. */
-const MEDIATION_LABELS: Record<string, string> = {
+/** Intitulés lisibles des sujets, côté e-mail. */
+const SUJET_LABELS: Record<string, string> = {
   enseignant: "Relation avec un enseignant",
   classe: "Vie de la classe",
   periscolaire: "Cantine, garderie, périscolaire",
@@ -179,11 +179,11 @@ const MEDIATION_LABELS: Record<string, string> = {
 };
 
 /**
- * Demande de médiation. L'objet reste neutre : cet e-mail arrive dans une boîte
+ * Message d'une famille en difficulté avec l'école. L'objet reste neutre : cet e-mail arrive dans une boîte
  * partagée, et son sujet ne doit pas exposer une situation d'enfant dans une
  * liste de messages.
  */
-export function mediationRequestEmail(ctx: {
+export function familyMessageEmail(ctx: {
   name: string;
   email: string;
   phone?: string | null;
@@ -193,7 +193,7 @@ export function mediationRequestEmail(ctx: {
   identity?: NotificationIdentity;
 }): EmailContent {
   const association = ctx.identity?.associationName || APP_NAME;
-  const sujet = MEDIATION_LABELS[ctx.topic] ?? MEDIATION_LABELS.autre;
+  const sujet = SUJET_LABELS[ctx.topic] ?? SUJET_LABELS.autre;
   const lignes = [
     `<li>Sujet : <strong>${esc(sujet)}</strong></li>`,
     `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
@@ -207,7 +207,7 @@ export function mediationRequestEmail(ctx: {
   ].join("");
 
   return {
-    subject: `Demande de médiation — ${ctx.name}`,
+    subject: `Une famille vous écrit — ${ctx.name}`,
     html: layout(
       "Une famille demande à être accompagnée",
       `<ul>${lignes}</ul>
@@ -215,7 +215,7 @@ export function mediationRequestEmail(ctx: {
        <p>${button(`mailto:${esc(ctx.email)}`, "Répondre à la famille")}</p>`,
       ctx.identity,
     ),
-    text: `Demande de médiation reçue sur le site de ${association}.
+    text: `Une famille vous écrit depuis le site de ${association}.
 
 Sujet : ${sujet}
 Nom : ${ctx.name}
