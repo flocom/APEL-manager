@@ -36,10 +36,11 @@ export default async function DashboardPage() {
   ]);
 
   const now = new Date();
-  // Les réunions ont leur propre bandeau : elles ne se noient pas dans la
-  // liste des manifestations.
+  // Réunions et manifestations dans un seul agenda, par ordre de date : ce
+  // qu'on veut savoir en ouvrant le tableau de bord, c'est ce qui arrive
+  // ensuite, pas de quelle sorte c'est. Le bandeau du dessus reste, il ne
+  // liste pas la prochaine réunion — il demande si l'on y sera.
   const upcoming = events
-    .filter((event) => event.kind === "event")
     .filter((event) => new Date(event.startAt) >= now)
     .sort(
       (a, b) =>
@@ -142,8 +143,8 @@ export default async function DashboardPage() {
       <section aria-label="Indicateurs clés">
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           <FlatStat
-            label="Événements à venir"
-            helper="Dans votre agenda"
+            label="Rendez-vous à venir"
+            helper="Réunions comprises"
             value={upcoming.length}
             icon={CalendarDays}
             tone="brand"
@@ -225,28 +226,45 @@ export default async function DashboardPage() {
         <section>
           <SectionTitle
             eyebrow="Agenda"
-            title="Prochains événements"
+            title="Prochains rendez-vous"
             href="/dashboard/events"
             accent="brand"
           />
           {upcoming.length === 0 ? (
             <FlatEmpty
               icon={CalendarDays}
-              title="Aucun événement à venir"
-              description="Les prochains rendez-vous apparaîtront ici."
+              title="Aucun rendez-vous à venir"
+              description="Les prochaines réunions et manifestations apparaîtront ici."
             />
           ) : (
             <div className="grid gap-3">
-              {upcoming.slice(0, 3).map((event) => (
+              {upcoming.slice(0, 3).map((event) => {
+                const estReunion = event.kind === "meeting";
+                return (
                 <Link
                   key={event.id}
                   href={`/dashboard/events/${event.id}`}
-                  className="group block rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                  className={`group block rounded-2xl border bg-white p-5 transition-colors hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                    estReunion
+                      ? "border-brand-300 hover:border-brand-500"
+                      : "border-slate-200 hover:border-brand-300"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-bold leading-snug text-slate-950 group-hover:text-brand-800">
-                      {event.title}
-                    </p>
+                    <div className="min-w-0">
+                      {/* Le mot, pas seulement la teinte du cadre : une
+                          réunion et une kermesse ne se préparent pas pareil,
+                          et le liseré seul ne le dit à personne. */}
+                      {estReunion && (
+                        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.14em] text-brand-700">
+                          <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          Réunion
+                        </p>
+                      )}
+                      <p className="break-words font-bold leading-snug text-slate-950 group-hover:text-brand-800">
+                        {event.title}
+                      </p>
+                    </div>
                     <Badge color={EVENT_STATUS_COLORS[event.status]}>
                       {EVENT_STATUS_LABELS[event.status]}
                     </Badge>
@@ -264,7 +282,8 @@ export default async function DashboardPage() {
                     </p>
                   )}
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
