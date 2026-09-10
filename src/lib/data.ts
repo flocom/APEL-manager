@@ -154,7 +154,15 @@ export async function getMeetingAttendance(eventId: string) {
   return db.query.meetingAttendance.findMany({
     where: eq(meetingAttendance.eventId, eventId),
     orderBy: [asc(meetingAttendance.createdAt)],
-    with: { user: { columns: { id: true, name: true } } },
+    with: {
+      user: {
+        columns: { id: true, name: true },
+        // Un compte n'a pas de téléphone ; sa fiche d'adhérent, si elle est
+        // rattachée, en porte un. C'est le seul numéro d'un membre que
+        // l'association détient — le chercher ailleurs serait le deviner.
+        with: { associationMember: { columns: { phone: true } } },
+      },
+    },
   });
 }
 
@@ -164,6 +172,19 @@ export function nomPresent(reponse: {
   user: { name: string } | null;
 }): string {
   return reponse.user?.name ?? reponse.name ?? "Sans nom";
+}
+
+/**
+ * Le téléphone auquel joindre quelqu'un qui a répondu : celui qu'il a saisi
+ * s'il est venu par le lien public, sinon celui de sa fiche d'adhérent.
+ * `null` quand l'association n'en connaît pas — la plupart des membres.
+ */
+export function telephonePresent(reponse: {
+  phone: string | null;
+  user: { associationMember: { phone: string | null } | null } | null;
+}): string | null {
+  const numero = reponse.phone ?? reponse.user?.associationMember?.phone ?? null;
+  return numero?.trim() || null;
 }
 
 /** Une présence annoncée publiquement, via son jeton de retrait. */

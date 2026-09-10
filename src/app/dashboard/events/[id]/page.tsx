@@ -49,6 +49,7 @@ import {
   getEventWithDetails,
   getMeetingAttendance,
   nomPresent,
+  telephonePresent,
 } from "@/lib/data";
 import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 import { formatEurosAbsolute } from "@/lib/money";
@@ -285,20 +286,35 @@ export default async function EventDetailPage({
                 {gens.length === 0 ? (
                   <p className="mt-3 text-sm text-slate-400">Personne pour l’instant.</p>
                 ) : (
-                  <ul className="mt-3 space-y-1.5">
-                    {gens.map((r) => (
-                      <li key={r.id} className="text-sm font-medium text-slate-700">
-                        {nomPresent(r)}
-                        {/* Un parent sans compte a répondu par le lien public :
-                            le dire évite de le chercher dans l'annuaire des
-                            membres, et rappelle que la réunion est ouverte. */}
-                        {!r.userId && (
-                          <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                            invité
-                          </span>
-                        )}
-                      </li>
-                    ))}
+                  <ul className="mt-3 space-y-2">
+                    {gens.map((r) => {
+                      const telephone = telephonePresent(r);
+                      return (
+                        <li key={r.id} className="text-sm font-medium text-slate-700">
+                          {nomPresent(r)}
+                          {/* Un parent sans compte a répondu par le lien
+                              public : le dire évite de le chercher dans
+                              l'annuaire des membres, et rappelle que la
+                              réunion est ouverte. */}
+                          {!r.userId && (
+                            <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                              invité
+                            </span>
+                          )}
+                          {/* Cliquable : celui qui consulte cette liste pour
+                              relancer quelqu'un est le plus souvent sur son
+                              téléphone, la veille de la réunion. */}
+                          {telephone && (
+                            <a
+                              href={`tel:${telephone.replace(/[^+0-9]/g, "")}`}
+                              className="mt-0.5 block rounded text-xs font-semibold text-slate-500 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            >
+                              {telephone}
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </Card>
