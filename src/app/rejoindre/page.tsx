@@ -195,7 +195,12 @@ export default async function RejoindrePage() {
       (somme, slot) => somme + Math.max(0, slot.capacity - slot.signups.length),
       0,
     ),
-    filet: index % 2 === 0 ? "bg-brand-700" : "bg-sea-500",
+    filet:
+      event.kind === "meeting"
+        ? "bg-coral-600"
+        : index % 2 === 0
+          ? "bg-brand-700"
+          : "bg-sea-500",
   }));
   const prochain = events[0]
     ? {
@@ -499,7 +504,7 @@ export default async function RejoindrePage() {
                             )}
                             <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
                               {event.reunion && (
-                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-950 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-600 px-2.5 py-1.5 text-xs font-extrabold text-white">
                                   <Users className="h-3.5 w-3.5" />
                                   Réunion
                                 </span>

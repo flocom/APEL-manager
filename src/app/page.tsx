@@ -232,12 +232,29 @@ export default async function HomePage() {
                     <Link
                       key={event.id}
                       href={`/inscription/${event.shareToken}`}
-                      className="group rounded-2xl focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-300"
+                      className={`group rounded-2xl focus:outline-none focus-visible:ring-4 ${
+                        event.kind === "meeting"
+                          ? "focus-visible:ring-coral-300"
+                          : "focus-visible:ring-brand-300"
+                      }`}
                     >
-                      <article className="flex h-full flex-col overflow-hidden rounded-2xl border-2 border-slate-200 bg-white transition-colors group-hover:border-brand-600">
+                      {/* Une réunion porte le rouge de la maison : cadre,
+                          filet et badge. C'est le seul objet encadré de
+                          l'agenda, donc celui que l'œil trouve en premier. */}
+                      <article
+                        className={`flex h-full flex-col overflow-hidden rounded-2xl border-2 bg-white transition-colors ${
+                          event.kind === "meeting"
+                            ? "border-coral-600 group-hover:border-coral-700"
+                            : "border-slate-200 group-hover:border-brand-600"
+                        }`}
+                      >
                         <div
                           className={`h-2 ${
-                            index % 2 === 0 ? "bg-brand-700" : "bg-sea-500"
+                            event.kind === "meeting"
+                              ? "bg-coral-600"
+                              : index % 2 === 0
+                                ? "bg-brand-700"
+                                : "bg-sea-500"
                           }`}
                         />
                         <div className="flex flex-1 flex-col p-6">
@@ -251,7 +268,7 @@ export default async function HomePage() {
                                   personne ne doit partir payer depuis l'accueil
                                   sans avoir lu la date ni le lieu. */}
                               {event.kind === "meeting" && (
-                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-950 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-600 px-2.5 py-1.5 text-xs font-extrabold text-white">
                                   <Users className="h-3.5 w-3.5" />
                                   Réunion
                                 </span>
