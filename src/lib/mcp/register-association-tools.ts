@@ -762,6 +762,13 @@ export function registerAssociationTools(
           .string()
           .regex(/^W\d{9}$/i, "Numéro RNA invalide")
           .optional(),
+        headquarters: z
+          .string()
+          .max(300)
+          .optional()
+          .describe(
+            "Siège social déclaré en préfecture, repris sur les documents officiels.",
+          ),
         taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
         volunteerReminderWindowDays: z
           .number()
@@ -786,6 +793,7 @@ export function registerAssociationTools(
               ? current.contactEmail
               : args.contactEmail,
           rna: args.rna ?? current.rna,
+          headquarters: args.headquarters ?? current.headquarters,
           taskReminderWindowDays:
             args.taskReminderWindowDays ??
             current.taskReminderWindowDays,
@@ -794,6 +802,16 @@ export function registerAssociationTools(
             current.volunteerReminderWindowDays,
           telegramEnabled:
             args.telegramEnabled ?? current.telegramEnabled,
+          // Le schéma remplace tout réglage absent par sa valeur par défaut.
+          // Sans ces reprises, modifier le nom de l'association par cet outil
+          // effaçait au passage le logo, le lien du groupe WhatsApp et la clé
+          // de site reCAPTCHA — donc désactivait la protection des
+          // formulaires publics sans que personne ne l'ait demandé.
+          logoUrl: current.logoUrl,
+          recaptchaEnabled: current.recaptchaEnabled,
+          recaptchaSiteKey: current.recaptchaSiteKey,
+          recaptchaMinScore: current.recaptchaMinScore,
+          whatsappGroupUrl: current.whatsappGroupUrl,
         },
         mcpAuditActor(principal),
       );

@@ -1,0 +1,1 @@
+ALTER TABLE "association_settings" ADD COLUMN "headquarters" text DEFAULT '' NOT NULL;

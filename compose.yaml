@@ -34,6 +34,13 @@ x-app-environment: &app-environment
   UPDATE_REPOSITORY: ${UPDATE_REPOSITORY:-flocom/APEL-manager}
   UPDATE_CHANNEL: ${UPDATE_CHANNEL:-main}
   UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
+  # L'image réellement déployée, celle que l'`updater` surveille. C'est elle que
+  # l'application interroge dans le registre pour savoir s'il y a quelque chose
+  # à installer : comparer au dernier commit du dépôt reviendrait à annoncer une
+  # mise à jour pendant les dix minutes de construction, et indéfiniment si la
+  # publication échoue. Même valeur par défaut que la clé `image` des services,
+  # pour qu'on ne puisse pas surveiller une autre image que celle qui tourne.
+  APEL_IMAGE: ${APEL_IMAGE:-ghcr.io/flocom/apel-manager:latest}
 
 services:
   db:

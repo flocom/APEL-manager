@@ -292,6 +292,11 @@ export async function renderPrintableDocument(document: {
   const rnaSuffix = association.rna.trim()
     ? ` · RNA ${escapeHtml(association.rna.trim())}`
     : "";
+  // L'identité complète — nom, siège, RNA — est ce qui fait qu'une préfecture,
+  // une banque ou un assureur reconnaissent l'association dans le document.
+  const siege = association.headquarters.trim()
+    ? `<div class="rna">Siège social : ${escapeHtml(association.headquarters.trim())}</div>`
+    : "";
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -314,6 +319,7 @@ export async function renderPrintableDocument(document: {
   <header>
     <div class="org">${escapeHtml(association.associationName)}</div>
     <div class="rna">${escapeHtml(association.schoolName)}${rnaSuffix}</div>
+    ${siege}
   </header>
   <main>
     <p class="meta">${typeLabel} · ${formatLongDate(document.documentDate)}</p>

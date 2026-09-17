@@ -454,6 +454,13 @@ export const associationSettingsSchema = z.object({
     .trim()
     .toUpperCase()
     .regex(/^W\d{9}$/, "Numéro RNA invalide (format attendu : W123456789)"),
+  /**
+   * Siège social déclaré en préfecture, repris tel quel sur les documents
+   * officiels. Facultatif ici, signalé là où il manque : bloquer l'écran de
+   * configuration sur une adresse que l'administrateur n'a pas sous la main
+   * l'empêcherait d'enregistrer le reste.
+   */
+  headquarters: z.string().trim().max(300).default(""),
   taskReminderWindowDays: z.coerce.number().int().min(0).max(30),
   volunteerReminderWindowDays: z.coerce.number().int().min(0).max(30),
   telegramEnabled: z.boolean().default(false),
