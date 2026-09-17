@@ -656,6 +656,14 @@ export const associationSettings = pgTable(
     contactEmail: text("contact_email"),
     rna: text("rna").notNull().default(""),
     /**
+     * Siège social déclaré en préfecture. Un procès-verbal d'assemblée
+     * générale, une attestation ou un courrier à la banque identifient
+     * l'association par son nom, son RNA et son siège : sans cette adresse,
+     * aucun des trois n'est complet. Vide tant qu'elle n'a pas été renseignée
+     * — les documents le signalent plutôt que d'inventer.
+     */
+    headquarters: text("headquarters").notNull().default(""),
+    /**
      * Logo affiché sur le site et dans l'espace de travail. Chemin d'un fichier
      * du scope `branding` ; vide, l'application utilise le logo neutre livré
      * avec l'image.

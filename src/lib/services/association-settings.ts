@@ -72,6 +72,7 @@ export async function getAssociationSettings() {
       schoolName: settings.schoolName,
       contactEmail: settings.contactEmail,
       rna: settings.rna,
+      headquarters: settings.headquarters,
       logoUrl: settings.logoUrl,
       taskReminderWindowDays: settings.taskReminderWindowDays,
       volunteerReminderWindowDays: settings.volunteerReminderWindowDays,
@@ -106,6 +107,10 @@ export async function getAssociationSettings() {
     schoolName: SCHOOL_NAME,
     contactEmail: CONTACT_EMAIL || null,
     rna: ASSOCIATION_RNA,
+    // Le siège social n'a jamais eu de variable d'environnement : sur une
+    // installation d'avant les réglages en base, il reste vide et les
+    // documents le signalent.
+    headquarters: "",
     logoUrl: null,
     taskReminderWindowDays: legacyReminderWindow("REMINDER_WINDOW_DAYS", 3),
     volunteerReminderWindowDays: 2,
@@ -250,6 +255,7 @@ export async function saveAssociationSettings(
     schoolName: data.schoolName,
     contactEmail: emptyToNull(data.contactEmail),
     rna: data.rna,
+    headquarters: data.headquarters,
     logoUrl: emptyToNull(data.logoUrl),
     taskReminderWindowDays: data.taskReminderWindowDays,
     volunteerReminderWindowDays: data.volunteerReminderWindowDays,

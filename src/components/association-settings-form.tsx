@@ -24,6 +24,7 @@ export interface AssociationSettingsView {
   schoolName: string;
   contactEmail: string | null;
   rna: string;
+  headquarters: string;
   logoUrl: string | null;
   taskReminderWindowDays: number;
   volunteerReminderWindowDays: number;
@@ -89,6 +90,7 @@ export function AssociationSettingsForm({
           schoolName: form.get("schoolName"),
           contactEmail: form.get("contactEmail") || null,
           rna: form.get("rna"),
+          headquarters: form.get("headquarters"),
           logoUrl: form.get("logoUrl") || null,
           taskReminderWindowDays: Number(
             form.get("taskReminderWindowDays"),
@@ -217,6 +219,20 @@ export function AssociationSettingsForm({
                   defaultValue={settings.rna}
                   pattern="W[0-9]{9}"
                   required
+                />
+              </Field>
+              <Field
+                label="Siège social"
+                htmlFor="association-headquarters"
+                hint="L’adresse déclarée en préfecture. Elle identifie l’association sur les procès-verbaux d’assemblée générale et les attestations."
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="association-headquarters"
+                  name="headquarters"
+                  defaultValue={settings.headquarters}
+                  placeholder="12 rue de l’École, 29200 Brest"
+                  autoComplete="off"
                 />
               </Field>
               <LogoUploadField name="logoUrl" defaultValue={settings.logoUrl} />
