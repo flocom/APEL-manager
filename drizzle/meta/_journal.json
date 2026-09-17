@@ -155,6 +155,13 @@
       "when": 1789629977428,
       "tag": "0021_association_headquarters",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789646856683,
+      "tag": "0022_ag_minutes_payload",
+      "breakpoints": true
     }
   ]
 }

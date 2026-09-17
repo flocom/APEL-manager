@@ -22,15 +22,24 @@ export async function GET(req: Request, { params }: Params) {
     const { id } = await params;
     const document = await getAssociationDocument(id);
     if (!document) throw new HttpError(404, "Document introuvable.");
-    if (new URL(req.url).searchParams.get("format") === "print") {
-      return new NextResponse(await renderPrintableDocument(document), {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Content-Security-Policy":
-            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
-          "X-Content-Type-Options": "nosniff",
+    const requete = new URL(req.url).searchParams;
+    if (requete.get("format") === "print") {
+      // `auto=0` sert l'aperçu affiché dans l'éditeur : sans lui, la boîte
+      // d'impression du navigateur s'ouvrirait à chaque rendu de l'iframe.
+      const auto = requete.get("auto") !== "0";
+      return new NextResponse(
+        await renderPrintableDocument(document, { auto }),
+        {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            // `default-src 'none'` bloque les images en silence : l'erreur
+            // n'apparaît qu'en console, et le logo disparaît sans rien dire.
+            "Content-Security-Policy":
+              "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+          },
         },
-      });
+      );
     }
     return NextResponse.json({ document });
   } catch (error) {
