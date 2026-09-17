@@ -323,9 +323,56 @@ curl -s https://apel.example.org/api/health
 {"status":"ok","database":"up","latencyMs":3,"version":"main-42","revision":"a1b2c3d", ...}
 ```
 
-Ces indicateurs reposent sur un appel à l'API publique de GitHub, mis en cache
-30 minutes. `UPDATE_CHECK_ENABLED="false"` supprime tout appel sortant : la
-mise à jour automatique continue de fonctionner, seul l'indicateur disparaît.
+Ces indicateurs reposent sur la lecture de l'image publiée dans le registre —
+celle que l'`updater` installerait — et non sur le dernier commit du dépôt :
+entre une fusion et la fin de la construction il s'écoule une dizaine de
+minutes, pendant lesquelles il n'y a rien à installer. Le résultat est mis en
+cache dix minutes. Le dépôt GitHub n'est consulté qu'en appoint, pour signaler
+une version fusionnée dont l'image n'est pas encore publiée ; cette
+consultation échoue sans conséquence. `UPDATE_CHECK_ENABLED="false"` supprime
+tout appel sortant : la mise à jour automatique continue de fonctionner, seul
+l'indicateur disparaît.
+
+L'écran indique aussi si le service `updater` répond réellement. Une mise à
+jour automatique annoncée « activée » alors que le conteneur est arrêté
+n'installerait jamais rien : la distinction est faite par une sonde, pas
+déduite de la configuration.
+
+### Revenir à la version précédente
+
+Chaque publication pousse, à côté de `latest`, une étiquette immuable
+`sha-xxxxxxx` reprenant les sept premiers caractères de la révision. C'est la
+porte de sortie quand une version ne démarre pas.
+
+L'application écrit dans le volume `app_config` la révision du dernier
+démarrage réussi. Pour la lire, même application arrêtée :
+
+```bash
+docker run --rm -v apel-manager_app_config:/config alpine \
+  cat /config/last-good-revision
+```
+
+Puis, dans `.env` :
+
+```env
+APEL_IMAGE="ghcr.io/flocom/apel-manager:sha-2ab04da"
+```
+
+```bash
+docker compose up -d
+```
+
+Deux points à connaître. D'abord, `docker compose pull && docker compose up -d`
+ne répare rien : `latest` désigne justement la version fautive, et la commande
+la réinstalle. Ensuite, tant qu'`APEL_IMAGE` désigne une étiquette `sha-`, la
+mise à jour automatique est figée — l'`updater` surveille une étiquette qui ne
+bouge plus. Remettez `APEL_IMAGE` à `latest` une fois le correctif publié.
+
+Une migration refusée par PostgreSQL n'abîme pas la base : elle est appliquée
+d'un seul bloc, donc annulée d'un seul bloc, et le schéma reste celui de la
+version précédente. Le conteneur s'arrête alors immédiatement en écrivant la
+commande de retour dans ses journaux (`docker compose logs app`), au lieu de
+réessayer en boucle.
 
 ### Précautions
 

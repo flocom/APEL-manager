@@ -40,11 +40,17 @@ function formatInterval(seconds: number) {
   return `toutes les ${seconds} secondes`;
 }
 
-function StateBadge({ state }: { state: UpdateStatus["state"] }) {
+function StateBadge({
+  state,
+  stale,
+}: {
+  state: UpdateStatus["state"];
+  stale: boolean;
+}) {
   if (state === "up-to-date") {
     return (
-      <Badge color="green" icon={ShieldCheck}>
-        À jour
+      <Badge color={stale ? "slate" : "green"} icon={ShieldCheck}>
+        {stale ? "À jour, d’après la dernière lecture" : "À jour"}
       </Badge>
     );
   }
@@ -276,7 +282,7 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
       setSuivi({
         etat: "inchangee",
         message:
-          "Contrôle effectué : le service de mise à jour n’a trouvé aucune version plus récente à installer.",
+          "Le service de mise à jour a contrôlé le registre et rendu la main sans redémarrer l’application : rien n’a été installé.",
       });
       try {
         setCurrent(await recharger());
@@ -319,7 +325,7 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
             </p>
           </div>
         </div>
-        <StateBadge state={current.state} />
+        <StateBadge state={current.state} stale={current.stale} />
       </div>
 
       <div className="space-y-5 p-5 sm:p-6">

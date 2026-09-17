@@ -34,6 +34,14 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 5000;
 /** Au-delà, la consultation du dépôt est abandonnée : elle n'est qu'un appoint. */
 const HEAD_TTL_MS = 10 * 60 * 1000;
+/**
+ * Passé ce délai sans une seule lecture réussie du registre, la dernière
+ * réponse connue cesse de valoir état. Garder le cache indéfiniment évite un
+ * « État inconnu » sur un délai dépassé de cinq secondes, mais afficherait un
+ * « À jour » vieux de trois semaines avec le même aplomb qu'un « À jour » de
+ * l'instant.
+ */
+const STALE_MAX_MS = 24 * 60 * 60 * 1000;
 /** Une recréation de conteneur dépasse largement le délai d'une vérification. */
 const TRIGGER_TIMEOUT_MS = 20_000;
 /** Sonde de présence de l'`updater` : il répond sur son réseau, ou pas. */
@@ -334,8 +342,12 @@ export async function getUpdateStatus(
   // Lancée seulement maintenant : elle écrit dans le cache déjà en place.
   rafraichirHeadEnArrierePlan();
 
+  const perime =
+    checked.succeededAt === null ||
+    Date.now() - checked.succeededAt > STALE_MAX_MS;
+
   let state: UpdateState = "unknown";
-  if (checked.latest && current.revision) {
+  if (checked.latest && current.revision && !perime) {
     state =
       checked.latest.revision === current.revision ? "up-to-date" : "outdated";
   }
@@ -469,6 +481,8 @@ export async function triggerUpdateNow(): Promise<TriggerOutcome> {
       `Le service de mise à jour a répondu ${response.status}.`,
     );
   }
-  // L'updater a répondu sans nous interrompre : il n'avait rien à installer.
+  // L'updater a rendu la main sans que le conteneur soit remplacé : rien n'a
+  // été installé ici. Ce qu'il a fait d'autre — mettre à jour le planificateur,
+  // par exemple — n'est pas dans sa réponse, qui n'a pas de corps exploitable.
   return "no-update";
 }

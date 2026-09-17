@@ -25,8 +25,53 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Les migrations s'appliquent-elles sur une base vierge ? C'est la seule
+  # panne qui transforme une mise à jour automatique en panne totale : une
+  # migration invalide part sur toutes les instances, l'entrypoint réessaie
+  # trente fois, abandonne, et le conteneur tourne en boucle de redémarrage.
+  # Les éprouver ici coûte une minute et referme ce chemin.
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: apel_manager
+          POSTGRES_USER: apel
+          POSTGRES_PASSWORD: apel-ci
+        options: >-
+          --health-cmd "pg_isready -U apel -d apel_manager"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://apel:apel-ci@localhost:5432/apel_manager
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Préparer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Appliquer les migrations sur une base vierge
+        run: node scripts/migrate.mjs
+
+      - name: Les rejouer, elles doivent rester sans effet
+        run: node scripts/migrate.mjs
+
   publish:
     runs-on: ubuntu-latest
+    # Rien ne part tant que les migrations n'ont pas été éprouvées : une image
+    # publiée est installée toute seule sur les instances dans l'heure.
+    needs: migrations
     permissions:
       contents: read
       packages: write

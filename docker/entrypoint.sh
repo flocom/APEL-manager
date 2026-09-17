@@ -129,9 +129,36 @@ if [ "${SKIP_MIGRATIONS:-0}" != "1" ]; then
   attempt=1
   maximum_attempts="${MIGRATION_MAX_ATTEMPTS:-30}"
 
-  while ! node scripts/migrate.mjs; do
+  while true; do
+    # `if cmd; then …; fi` rend 0 quand la condition échoue sans branche
+    # `else` : relire $? après le bloc donnerait donc toujours 0 et le code
+    # fatal ne serait jamais vu. `|| status=$?` capture la vraie valeur, et
+    # protège la commande de `set -e`.
+    status=0
+    node scripts/migrate.mjs || status=$?
+    if [ "$status" -eq 0 ]; then
+      break
+    fi
+
+    # Code 2 : PostgreSQL a répondu et a refusé la migration. La rejouer
+    # trente fois donnerait trente fois le même refus, en annonçant une base
+    # indisponible qui se porte très bien — et en envoyant chercher la panne
+    # là où elle n'est pas. Mieux vaut s'arrêter en disant quoi faire.
+    if [ "$status" -eq 2 ]; then
+      echo "Cette version ne peut pas démarrer : sa migration est refusée par la base." >&2
+      echo "Le schéma n'a pas été modifié — la migration est appliquée d'un bloc, donc annulée d'un bloc." >&2
+      if [ -s "$CONFIG_DIR/last-good-revision" ]; then
+        echo "Pour revenir à la version qui tournait avant, sur le serveur :" >&2
+        echo "  APEL_IMAGE=${UPDATE_IMAGE_REPOSITORY:-ghcr.io/flocom/apel-manager}:sha-$(sed -n '1p' "$CONFIG_DIR/last-good-revision" | cut -c1-7) docker compose up -d" >&2
+      else
+        echo "Revenez à la version précédente en fixant APEL_IMAGE sur son étiquette sha-xxxxxxx." >&2
+      fi
+      echo "Un « docker compose pull && docker compose up -d » réinstallerait la même version." >&2
+      exit 2
+    fi
+
     if [ "$attempt" -ge "$maximum_attempts" ]; then
-      echo "Échec des migrations après $attempt tentatives." >&2
+      echo "PostgreSQL est resté injoignable après $attempt tentatives." >&2
       exit 1
     fi
 
@@ -140,6 +167,15 @@ if [ "${SKIP_MIGRATIONS:-0}" != "1" ]; then
     sleep "$delay"
     attempt=$((attempt + 1))
   done
+fi
+
+# Repère du retour en arrière. Écrit après les migrations, donc seulement par
+# une version qui a pu démarrer : quand la suivante échouera, l'étiquette à
+# réinstaller sera là, sur le disque, lisible sans l'application.
+if [ -n "${APP_REVISION:-}" ] && [ "${SKIP_MIGRATIONS:-0}" != "1" ]; then
+  printf '%s\n' "$APP_REVISION" > "$CONFIG_DIR/last-good-revision.tmp" 2>/dev/null &&
+    mv "$CONFIG_DIR/last-good-revision.tmp" "$CONFIG_DIR/last-good-revision" 2>/dev/null ||
+    true
 fi
 
 exec "$@"
