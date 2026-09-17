@@ -42,6 +42,17 @@ export type RegistryCheck =
   | { ok: true; image: PublishedImage }
   | { ok: false; error: string };
 
+/** Erreur portant le code renvoyé par le registre, pour pouvoir l'expliquer. */
+class RegistryError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "RegistryError";
+  }
+}
+
 interface ImageReference {
   registry: string;
   repository: string;
@@ -186,7 +197,7 @@ export class RegistryClient {
       MANIFEST_TYPES,
     );
     if (!reponse.ok) {
-      throw new Error(`le registre a répondu ${reponse.status}`);
+      throw new RegistryError("manifeste refusé", reponse.status);
     }
 
     const manifeste = await this.manifestePlateforme(await reponse.json());
@@ -197,7 +208,7 @@ export class RegistryClient {
     // qu'attend l'URL signée.
     const config = await this.get(`${this.base}/blobs/${manifeste.config.digest}`);
     if (!config.ok) {
-      throw new Error(`le registre a répondu ${config.status} sur la configuration`);
+      throw new RegistryError("configuration refusée", config.status);
     }
 
     const corps = (await config.json()) as {
@@ -264,6 +275,28 @@ export async function checkPublishedImage(
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       return { ok: false, error: "Le registre n'a pas répondu à temps." };
+    }
+    // Un registre qui répond 404 ou 401 n'est pas injoignable : il est joint,
+    // et il refuse. Les confondre enverrait chercher une panne de réseau là où
+    // c'est le nom de l'image qui est faux.
+    if (error instanceof RegistryError && error.status) {
+      const cible = `${image.registry}/${image.repository}:${image.tag}`;
+      if (error.status === 404) {
+        return {
+          ok: false,
+          error: `Aucune image « ${cible} » dans le registre. Vérifiez le nom et l'étiquette dans APEL_IMAGE.`,
+        };
+      }
+      if (error.status === 401 || error.status === 403) {
+        return {
+          ok: false,
+          error: `Le registre refuse l'accès à « ${cible} ». Une image privée ne peut pas être consultée sans identifiants ; une image publique répond ainsi lorsqu'elle n'existe pas.`,
+        };
+      }
+      return {
+        ok: false,
+        error: `Le registre a répondu ${error.status} pour « ${cible} ».`,
+      };
     }
     return {
       ok: false,
