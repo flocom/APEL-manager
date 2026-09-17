@@ -2,17 +2,24 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
 import { formatLongDate } from "@/lib/dates";
+import { pvEnHtml, pvEnTexte } from "@/lib/documents/ag-rendu";
+import type { AgMinutesPayload } from "@/lib/documents/ag-types";
 import { db } from "@/lib/db";
 import {
   ASSOCIATION_DOCUMENT_TYPE_LABELS,
   type AssociationDocumentType,
 } from "@/lib/labels";
-import { associationDocuments, associationMembers } from "@/lib/db/schema";
+import {
+  associationDocuments,
+  associationMembers,
+  associationSettings,
+} from "@/lib/db/schema";
 import {
   removeUpload,
   storedUploadIdFromUrl,
 } from "@/lib/uploads";
 import { emptyToNull } from "@/lib/utils";
+import { reglesStatutairesSchema } from "@/lib/documents/ag-validation";
 import {
   associationDocumentSchema,
   associationDocumentUpdateSchema,
@@ -34,6 +41,9 @@ export async function listAssociationDocuments(limit = 200) {
       memberFirstName: associationMembers.firstName,
       memberLastName: associationMembers.lastName,
       fileUrl: associationDocuments.fileUrl,
+      payload: associationDocuments.payload,
+      contentSource: associationDocuments.contentSource,
+      signedAt: associationDocuments.signedAt,
       version: associationDocuments.version,
       createdAt: associationDocuments.createdAt,
       updatedAt: associationDocuments.updatedAt,
@@ -60,6 +70,9 @@ export async function getAssociationDocument(id: string) {
       memberFirstName: associationMembers.firstName,
       memberLastName: associationMembers.lastName,
       fileUrl: associationDocuments.fileUrl,
+      payload: associationDocuments.payload,
+      contentSource: associationDocuments.contentSource,
+      signedAt: associationDocuments.signedAt,
       version: associationDocuments.version,
       createdAt: associationDocuments.createdAt,
       updatedAt: associationDocuments.updatedAt,
@@ -74,6 +87,23 @@ export async function getAssociationDocument(id: string) {
   return document ?? null;
 }
 
+/**
+ * Compose le texte du procès-verbal à partir de sa saisie structurée.
+ *
+ * Le texte reste la vérité stockée dans `content` : c'est lui que cherche la
+ * recherche, que lisent les outils MCP et qu'affiche la carte. Le recomposer à
+ * chaque écriture évite d'avoir deux versions du même document qui divergent.
+ */
+async function composerDepuisPayload(payload: AgMinutesPayload): Promise<string> {
+  const association = await getAssociationSettings();
+  return pvEnTexte(payload, {
+    associationName: association.associationName,
+    schoolName: association.schoolName,
+    rna: association.rna,
+    headquarters: association.headquarters,
+  });
+}
+
 export async function createAssociationDocument(
   input: unknown,
   actor: AuditActor,
@@ -85,6 +115,9 @@ export async function createAssociationDocument(
       "Un document doit être créé en brouillon ou finalisé, puis archivé.",
     );
   }
+  const compose = data.payload
+    ? await composerDepuisPayload(data.payload as AgMinutesPayload)
+    : null;
   const [document] = await db
     .insert(associationDocuments)
     .values({
@@ -92,7 +125,9 @@ export async function createAssociationDocument(
       status: data.status,
       title: data.title,
       documentDate: data.documentDate,
-      content: data.content,
+      content: compose ?? data.content,
+      payload: (data.payload as AgMinutesPayload | null | undefined) ?? null,
+      contentSource: compose === null ? "manual" : "payload",
       memberId: data.memberId ?? null,
       fileUrl: emptyToNull(data.fileUrl),
       createdBy: actor.userId,
@@ -119,6 +154,20 @@ export async function updateAssociationDocument(
       "Un document archivé ne peut plus être modifié.",
     );
   }
+  // Un document finalisé est celui qu'on a signé et diffusé : le laisser
+  // modifiable en silence retirait toute valeur au statut, et à la jauge du
+  // classeur qui s'y fie. Le rouvrir reste possible, mais c'est alors un geste
+  // délibéré, seul accepté ici, et il laisse une trace au journal d'audit.
+  if (current.status === "final") {
+    const rouvre =
+      data.status === "draft" && Object.keys(data).every((k) => k === "status" || k === "version");
+    if (!rouvre) {
+      throw new HttpError(
+        409,
+        "Ce document est finalisé. Rouvrez-le en brouillon avant de le modifier.",
+      );
+    }
+  }
   if (data.status === "archived") {
     throw new HttpError(
       409,
@@ -134,7 +183,23 @@ export async function updateAssociationDocument(
   if (data.title !== undefined) updates.title = data.title;
   if (data.documentDate !== undefined)
     updates.documentDate = data.documentDate;
-  if (data.content !== undefined) updates.content = data.content;
+  if (data.content !== undefined) {
+    updates.content = data.content;
+    // Quelqu'un a écrit le texte directement — le serveur MCP, le plus souvent.
+    // Le noter évite que la sauvegarde suivante de l'éditeur ne l'efface sans
+    // que personne ne comprenne où le texte est passé.
+    updates.contentSource = "manual";
+  }
+  if (data.payload !== undefined) {
+    updates.payload = (data.payload as AgMinutesPayload | null) ?? null;
+    if (data.payload) {
+      updates.content = await composerDepuisPayload(data.payload as AgMinutesPayload);
+      updates.contentSource = "payload";
+    } else {
+      updates.contentSource = "manual";
+    }
+  }
+  if (data.status === "final") updates.signedAt = updates.signedAt ?? null;
   if (data.memberId !== undefined) updates.memberId = data.memberId ?? null;
   if (data.fileUrl !== undefined)
     updates.fileUrl = emptyToNull(data.fileUrl);
@@ -259,6 +324,33 @@ export async function deleteArchivedAgMinutes(
   return document;
 }
 
+/**
+ * Ce que prévoient les statuts de l'association.
+ *
+ * Séparé des autres réglages à dessein : l'écran de configuration générale
+ * n'envoie pas ces champs, et le schéma des réglages remplace par leur valeur
+ * par défaut tous ceux qu'il ne reçoit pas. Passer par ce point d'entrée
+ * dédié met la fiche à l'abri de cet effacement.
+ */
+export async function saveStatutoryRules(input: unknown, actor: AuditActor) {
+  const regles = reglesStatutairesSchema.parse(input);
+  await db
+    .insert(associationSettings)
+    .values({ id: "default", statutoryRules: regles })
+    .onConflictDoUpdate({
+      target: associationSettings.id,
+      set: { statutoryRules: regles, updatedAt: new Date() },
+    });
+  await recordAudit(
+    actor,
+    "association.statutory_rules_update",
+    "association_settings",
+    "default",
+    { champsRenseignes: Object.keys(regles).length },
+  );
+  return regles;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -268,14 +360,19 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-export async function renderPrintableDocument(document: {
-  title: string;
-  type: AssociationDocumentType;
-  documentDate: Date;
-  content: string;
-  memberFirstName: string | null;
-  memberLastName: string | null;
-}) {
+export async function renderPrintableDocument(
+  document: {
+    title: string;
+    type: AssociationDocumentType;
+    documentDate: Date;
+    content: string;
+    memberFirstName: string | null;
+    memberLastName: string | null;
+    payload?: AgMinutesPayload | null;
+    status?: "draft" | "final" | "archived";
+  },
+  options: { auto?: boolean } = {},
+) {
   const association = await getAssociationSettings();
   const typeLabel =
     document.type === "ag_minutes"
@@ -297,6 +394,22 @@ export async function renderPrintableDocument(document: {
   const siege = association.headquarters.trim()
     ? `<div class="rna">Siège social : ${escapeHtml(association.headquarters.trim())}</div>`
     : "";
+  // Un procès-verbal rédigé dans l'éditeur guidé s'imprime section par
+  // section ; tous les autres documents, et les PV saisis en texte libre,
+  // gardent le rendu d'origine.
+  const corps = document.payload
+    ? pvEnHtml(
+        document.payload,
+        {
+          associationName: association.associationName,
+          schoolName: association.schoolName,
+          rna: association.rna,
+          headquarters: association.headquarters,
+        },
+        { projet: document.status !== "final" },
+      )
+    : `<div class="content">${escapeHtml(document.content)}</div>`;
+
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -325,10 +438,10 @@ export async function renderPrintableDocument(document: {
     <p class="meta">${typeLabel} · ${formatLongDate(document.documentDate)}</p>
     <h1>${escapeHtml(document.title)}</h1>
     ${beneficiary}
-    <div class="content">${escapeHtml(document.content)}</div>
+    ${corps}
   </main>
   <footer>${escapeHtml(association.associationName)}${rnaSuffix}</footer>
-  <script>window.addEventListener("load",()=>window.print())</script>
+  ${options.auto === false ? "" : '<script>window.addEventListener("load",()=>window.print())</script>'}
 </body>
 </html>`;
 }

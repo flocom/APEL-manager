@@ -1,4 +1,9 @@
 import { relations, sql } from "drizzle-orm";
+
+import type {
+  AgMinutesPayload,
+  ReglesStatutaires,
+} from "@/lib/documents/ag-types";
 import {
   boolean,
   check,
@@ -597,6 +602,21 @@ export const associationDocuments = pgTable(
     title: text("title").notNull(),
     documentDate: timestamp("document_date", { withTimezone: true }).notNull(),
     content: text("content").notNull().default(""),
+    /**
+     * Procès-verbal d'assemblée générale rédigé section par section. Nul pour
+     * tous les autres documents, et pour les PV saisis en texte libre avant
+     * l'éditeur guidé — qui continuent de fonctionner tels quels.
+     */
+    payload: jsonb("payload").$type<AgMinutesPayload>(),
+    /**
+     * Qui fait foi de `content` : la saisie directe, ou la composition à partir
+     * du payload. Sans ce témoin, un `update_association_document` passé par le
+     * serveur MCP écrivait `content`, et l'enregistrement suivant de l'éditeur
+     * l'écrasait en silence.
+     */
+    contentSource: text("content_source").notNull().default("manual"),
+    /** Finalisé n'est pas signé : le classeur mentirait sans cette date. */
+    signedAt: timestamp("signed_at", { withTimezone: true }),
     memberId: uuid("member_id").references(() => associationMembers.id, {
       onDelete: "set null",
     }),
@@ -617,6 +637,10 @@ export const associationDocuments = pgTable(
       "association_documents_type_status_date_idx",
     ).on(t.type, t.status, t.documentDate),
     memberIdx: index("association_documents_member_idx").on(t.memberId),
+    contentSourceCheck: check(
+      "association_documents_content_source_check",
+      sql`${t.contentSource} in ('manual','payload')`,
+    ),
   }),
 );
 
@@ -663,6 +687,15 @@ export const associationSettings = pgTable(
      * — les documents le signalent plutôt que d'inventer.
      */
     headquarters: text("headquarters").notNull().default(""),
+    /**
+     * Ce que prévoient les statuts : quorum, majorités, délai de convocation,
+     * règle de voix. Lu une fois, réutilisé par toutes les assemblées. Vide,
+     * l'application s'abstient de tout verdict plutôt que d'en inventer un.
+     */
+    statutoryRules: jsonb("statutory_rules")
+      .$type<ReglesStatutaires>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /**
      * Logo affiché sur le site et dans l'espace de travail. Chemin d'un fichier
      * du scope `branding` ; vide, l'application utilise le logo neutre livré

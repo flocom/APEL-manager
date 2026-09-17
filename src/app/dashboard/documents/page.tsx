@@ -41,6 +41,9 @@ export default async function DocumentsPage() {
     content: document.content,
     memberId: document.memberId,
     fileUrl: document.fileUrl,
+    // Un booléen suffit à l'écran : le payload complet n'a rien à faire dans
+    // le flux envoyé au navigateur pour une simple liste.
+    payload: document.payload !== null,
     version: document.version,
   }));
 

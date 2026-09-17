@@ -73,6 +73,7 @@ export async function getAssociationSettings() {
       contactEmail: settings.contactEmail,
       rna: settings.rna,
       headquarters: settings.headquarters,
+      statutoryRules: settings.statutoryRules ?? {},
       logoUrl: settings.logoUrl,
       taskReminderWindowDays: settings.taskReminderWindowDays,
       volunteerReminderWindowDays: settings.volunteerReminderWindowDays,
@@ -111,6 +112,7 @@ export async function getAssociationSettings() {
     // installation d'avant les réglages en base, il reste vide et les
     // documents le signalent.
     headquarters: "",
+    statutoryRules: {},
     logoUrl: null,
     taskReminderWindowDays: legacyReminderWindow("REMINDER_WINDOW_DAYS", 3),
     volunteerReminderWindowDays: 2,

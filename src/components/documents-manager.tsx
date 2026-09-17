@@ -13,12 +13,15 @@ import {
   Printer,
   Search,
   Trash2,
+  Sparkles,
   UserRound,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { forwardRef, useMemo, useRef, useState } from "react";
 
+import { ClasseurBandeau } from "@/components/documents-classeur";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FileUploadField } from "@/components/file-upload-field";
 import { ModuleStat } from "@/components/module-stat";
@@ -35,6 +38,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
+import { payloadVide } from "@/lib/documents/ag-types";
 import {
   ASSOCIATION_DOCUMENT_TYPE_LABELS,
   OFFICIAL_DOCUMENT_TYPES,
@@ -56,6 +60,8 @@ export interface AssociationDocumentView {
   content: string;
   memberId: string | null;
   fileUrl: string | null;
+  /** Vrai pour un procès-verbal rédigé dans l'éditeur guidé. */
+  payload: boolean;
   version: number;
 }
 
@@ -104,6 +110,8 @@ export function DocumentsManager({
   const [pendingDelete, setPendingDelete] =
     useState<AssociationDocumentView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [redaction, setRedaction] = useState(false);
+  const onglets = useRef<(HTMLButtonElement | null)[]>([]);
   const permanentlyDeleting =
     pendingDelete?.type === "ag_minutes" &&
     pendingDelete.status === "archived";
@@ -210,6 +218,34 @@ export function DocumentsManager({
     }
   }
 
+  /**
+   * Le brouillon existe en base avant la première frappe : c'est ce qui fait
+   * que plus rien ne peut être perdu ensuite, et que fermer l'onglet par
+   * mégarde ne coûte rien.
+   */
+  async function redigerUnPv() {
+    setRedaction(true);
+    const aujourdhui = new Date();
+    const jour = aujourdhui.toISOString().slice(0, 10);
+    try {
+      const reponse = (await api("/api/documents", {
+        body: {
+          type: "ag_minutes",
+          status: "draft",
+          title: `Procès-verbal de l’assemblée générale du ${aujourdhui.toLocaleDateString("fr-FR")}`,
+          documentDate: jour,
+          payload: payloadVide({ date: jour }),
+        },
+      })) as { document?: { id?: string } };
+      const id = reponse?.document?.id;
+      if (!id) throw new Error("Le brouillon n’a pas pu être créé.");
+      router.push(`/dashboard/documents/pv/${id}`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+      setRedaction(false);
+    }
+  }
+
   function printDocument(document: AssociationDocumentView) {
     const printWindow = window.open(
       `/api/documents/${document.id}?format=print`,
@@ -231,9 +267,14 @@ export function DocumentsManager({
 
   return (
     <div className="space-y-6">
+      <ClasseurBandeau
+        documents={documents}
+        onVoir={(type) => changeTab(tabOf(type))}
+      />
+
       <section
         aria-label="Indicateurs des documents"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
         <ModuleStat
           label="PV d'AG"
@@ -248,13 +289,6 @@ export function DocumentsManager({
           helper="Documents nominatifs"
           icon={BadgeCheck}
           tone="sea"
-        />
-        <ModuleStat
-          label="Documents de l’association"
-          value={officialCount}
-          helper="Statuts, assurance, conventions"
-          icon={Landmark}
-          tone="brand"
         />
         <ModuleStat
           label="Finalisés"
@@ -275,9 +309,29 @@ export function DocumentsManager({
       <div
         role="tablist"
         aria-label="Type de documents"
+        onKeyDown={(event) => {
+          const ordre: DocumentTab[] = ["ag_minutes", "attestation", "association"];
+          const index = ordre.indexOf(tab);
+          const suivant =
+            event.key === "ArrowRight"
+              ? (index + 1) % ordre.length
+              : event.key === "ArrowLeft"
+                ? (index - 1 + ordre.length) % ordre.length
+                : event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? ordre.length - 1
+                    : -1;
+          if (suivant === -1) return;
+          event.preventDefault();
+          changeTab(ordre[suivant]);
+          onglets.current[suivant]?.focus();
+        }}
         className="grid rounded-2xl border-2 border-slate-200 bg-slate-100 p-1 sm:w-fit sm:grid-cols-3"
       >
         <DocumentTabButton
+          ref={(el) => { onglets.current[0] = el; }}
+          id="onglet-ag_minutes"
           active={tab === "ag_minutes"}
           icon={FileText}
           label="PV d'AG"
@@ -285,6 +339,8 @@ export function DocumentsManager({
           onClick={() => changeTab("ag_minutes")}
         />
         <DocumentTabButton
+          ref={(el) => { onglets.current[1] = el; }}
+          id="onglet-attestation"
           active={tab === "attestation"}
           icon={BadgeCheck}
           label="Attestations"
@@ -292,6 +348,8 @@ export function DocumentsManager({
           onClick={() => changeTab("attestation")}
         />
         <DocumentTabButton
+          ref={(el) => { onglets.current[2] = el; }}
+          id="onglet-association"
           active={tab === "association"}
           icon={Landmark}
           label="Documents de l’association"
@@ -380,21 +438,45 @@ export function DocumentsManager({
             <option value="final">Finalisés</option>
             <option value="archived">Archivés</option>
           </Select>
-          <Button
-            type="button"
-            icon={Plus}
-            onClick={() => setEditor("new")}
-            className="w-full lg:w-auto"
-          >
-            {tab === "ag_minutes"
-              ? "Ajouter un PV"
-              : tab === "attestation"
-                ? "Créer une attestation"
-                : "Ajouter un document"}
-          </Button>
+          {tab === "ag_minutes" ? (
+            <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
+              <Button
+                type="button"
+                icon={Sparkles}
+                loading={redaction}
+                onClick={() => void redigerUnPv()}
+              >
+                Rédiger un PV d’AG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                icon={Plus}
+                onClick={() => setEditor("new")}
+              >
+                Importer un PV rédigé
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              icon={Plus}
+              onClick={() => setEditor("new")}
+              className="w-full lg:w-auto"
+            >
+              {tab === "attestation" ? "Créer une attestation" : "Ajouter un document"}
+            </Button>
+          )}
         </div>
       </Card>
 
+      <div
+        id="panneau-documents"
+        role="tabpanel"
+        aria-labelledby={`onglet-${tab}`}
+        tabIndex={-1}
+        className="space-y-4 focus:outline-none"
+      >
       {filtered.length === 0 ? (
         <EmptyState
           icon={
@@ -462,6 +544,7 @@ export function DocumentsManager({
           </div>
         </>
       )}
+      </div>
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
@@ -494,24 +577,28 @@ export function DocumentsManager({
   );
 }
 
-function DocumentTabButton({
-  active,
-  icon: Icon,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  icon: typeof FileText;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
+const DocumentTabButton = forwardRef<
+  HTMLButtonElement,
+  {
+    active: boolean;
+    icon: typeof FileText;
+    label: string;
+    count: number;
+    onClick: () => void;
+    id: string;
+  }
+>(function DocumentTabButton({ active, icon: Icon, label, count, onClick, id }, ref) {
   return (
     <button
+      ref={ref}
+      id={id}
       type="button"
       role="tab"
       aria-selected={active}
+      aria-controls="panneau-documents"
+      // Un seul onglet dans l'ordre de tabulation : on entre dans la barre,
+      // puis on circule aux flèches. C'est ce qu'attend un lecteur d'écran.
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
       className={cn(
         "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2",
@@ -532,7 +619,7 @@ function DocumentTabButton({
       </span>
     </button>
   );
-}
+});
 
 function DocumentCard({
   document,
@@ -603,7 +690,7 @@ function DocumentCard({
           </p>
         )}
         {document.content && (
-          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+          <p className="mt-3 line-clamp-3 max-h-[4.5rem] overflow-hidden whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
             {document.content}
           </p>
         )}
@@ -619,16 +706,7 @@ function DocumentCard({
           </a>
         )}
       </div>
-      <div
-        className={cn(
-          "grid gap-2 border-t-2 border-slate-100 bg-slate-50 p-4",
-          canDeletePermanently
-            ? "grid-cols-2"
-            : isArchived
-              ? "grid-cols-1"
-              : "grid-cols-3",
-        )}
-      >
+      <div className="flex flex-wrap gap-2 border-t-2 border-slate-100 bg-slate-50 p-4 [&>*]:min-w-[7.5rem] [&>*]:flex-1">
         <Button
           type="button"
           size="sm"
@@ -640,15 +718,25 @@ function DocumentCard({
         </Button>
         {!isArchived && (
           <>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              icon={Pencil}
-              onClick={onEdit}
-            >
-              Modifier
-            </Button>
+            {document.type === "ag_minutes" && document.payload ? (
+              <Link
+                href={`/dashboard/documents/pv/${document.id}`}
+                className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+                Reprendre
+              </Link>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={Pencil}
+                onClick={onEdit}
+              >
+                Modifier
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { parseLocalDateTime } from "@/lib/dates";
+import { agMinutesPayloadSchema } from "@/lib/documents/ag-validation";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
 import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
@@ -429,6 +430,12 @@ export const associationDocumentSchema = z.object({
   content: z.string().max(200_000).default(""),
   memberId: nullableUuid,
   fileUrl: optionalUrl("document"),
+  /**
+   * Procès-verbal d'assemblée rédigé section par section. Absent pour tous les
+   * autres documents. `null` détache explicitement un PV de l'éditeur guidé et
+   * rend la main au texte libre.
+   */
+  payload: agMinutesPayloadSchema.nullable().optional(),
   version: optimisticVersion,
 });
 
