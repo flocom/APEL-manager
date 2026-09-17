@@ -32,6 +32,8 @@ const IMAGE =
   "ghcr.io/flocom/apel-manager:latest";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 5000;
+/** Au-delà, la consultation du dépôt est abandonnée : elle n'est qu'un appoint. */
+const HEAD_TTL_MS = 10 * 60 * 1000;
 /** Une recréation de conteneur dépasse largement le délai d'une vérification. */
 const TRIGGER_TIMEOUT_MS = 20_000;
 /** Sonde de présence de l'`updater` : il répond sur son réseau, ou pas. */
@@ -109,6 +111,12 @@ export interface UpdateStatus {
     committedAt: string | null;
     url: string;
   } | null;
+  /**
+   * Vrai quand l'état repose sur une réponse antérieure, le registre n'ayant
+   * pas répondu cette fois. Un « À jour » calculé sur une lecture d'il y a
+   * trois semaines n'a pas la même valeur qu'un « À jour » de l'instant.
+   */
+  stale: boolean;
   repository: string;
   channel: string;
   image: string;
@@ -130,9 +138,13 @@ interface CachedCheck extends CheckResult {
   succeededAt: number | null;
   /** Dernier commit connu de la branche, pour situer une image en retard. */
   head: { revision: string; committedAt: string | null; url: string } | null;
+  /** Dernière tentative de lecture du dépôt, réussie ou non. */
+  headFetchedAt: number;
 }
 
 let cache: CachedCheck | null = null;
+/** Évite d'empiler les consultations du dépôt lancées en arrière-plan. */
+let headEnCours = false;
 
 /**
  * L'API publique de GitHub tolère 60 requêtes par heure et par adresse IP sans
@@ -197,15 +209,37 @@ async function fetchHeadCommit(): Promise<{
   }
 }
 
-/** Interroge le registre, puis le dépôt en complément. */
+/**
+ * Consultation du dépôt, lancée sans être attendue. Elle n'alimente qu'un
+ * encart d'appoint : la faire attendre par le rendu ferait dépendre l'écran
+ * Configuration tout entier de la disponibilité de GitHub, et d'un quota de
+ * soixante requêtes par heure partagé avec toute la machine.
+ */
+function rafraichirHeadEnArrierePlan() {
+  if (headEnCours) return;
+  const maintenant = Date.now();
+  if (cache && maintenant - cache.headFetchedAt < HEAD_TTL_MS) return;
+  if (cache?.retryAfter != null && maintenant < cache.retryAfter) return;
+
+  headEnCours = true;
+  void fetchHeadCommit()
+    .then(({ head, retryAfter }) => {
+      if (!cache) return;
+      cache.headFetchedAt = Date.now();
+      cache.retryAfter = retryAfter;
+      if (head) cache.head = head;
+    })
+    .catch(() => {
+      if (cache) cache.headFetchedAt = Date.now();
+    })
+    .finally(() => {
+      headEnCours = false;
+    });
+}
+
+/** Interroge le registre. Lui seul décide de l'état, lui seul est attendu. */
 async function runCheck(precedent: CachedCheck | null): Promise<CachedCheck> {
   const registre = await checkPublishedImage(IMAGE);
-
-  const bloque =
-    precedent?.retryAfter != null && Date.now() < precedent.retryAfter;
-  const commit = bloque
-    ? { head: precedent?.head ?? null, retryAfter: precedent.retryAfter }
-    : await fetchHeadCommit();
 
   const latest: UpdateStatus["latest"] = registre.ok
     ? {
@@ -220,11 +254,13 @@ async function runCheck(precedent: CachedCheck | null): Promise<CachedCheck> {
   return {
     // Un échec ne doit pas effacer la dernière réponse connue : sans elle
     // l'écran retomberait sur « État inconnu » alors qu'il sait encore quelle
-    // version est publiée. L'erreur est affichée à côté, pas à la place.
+    // version est publiée. L'erreur est affichée à côté, pas à la place — et
+    // `stale` dit que ce qu'on lit n'est plus de première main.
     latest: latest ?? precedent?.latest ?? null,
     error: registre.ok ? null : registre.error,
-    retryAfter: commit.retryAfter,
-    head: commit.head ?? precedent?.head ?? null,
+    retryAfter: precedent?.retryAfter ?? null,
+    head: precedent?.head ?? null,
+    headFetchedAt: precedent?.headFetchedAt ?? 0,
     fetchedAt: Date.now(),
     succeededAt: latest ? Date.now() : precedent?.succeededAt ?? null,
   };
@@ -240,7 +276,6 @@ async function runCheck(precedent: CachedCheck | null): Promise<CachedCheck> {
  * déclencher quoi que ce soit.
  */
 async function probeUpdater(): Promise<UpdaterReachability> {
-  if (!autoUpdateEnabled()) return "not-configured";
   try {
     await fetch(`${watchtowerUrl()}/`, {
       cache: "no-store",
@@ -248,7 +283,11 @@ async function probeUpdater(): Promise<UpdaterReachability> {
     });
     return "reachable";
   } catch {
-    return "unreachable";
+    // La sonde tourne même quand le profil n'est pas déclaré : `docker compose
+    // --profile autoupdate up` active le service en ligne de commande sans que
+    // COMPOSE_PROFILES n'en garde trace, et l'écran annonçait alors
+    // « Désactivée » pendant que l'updater faisait son travail.
+    return autoUpdateEnabled() ? "unreachable" : "not-configured";
   }
 }
 
@@ -264,17 +303,20 @@ export async function getUpdateStatus(
   const enabled = autoUpdateEnabled();
 
   if (!CHECK_ENABLED) {
+    const reachability = await probeUpdater();
+    const actif = enabled || reachability === "reachable";
     return {
       current,
       latest: null,
       state: "disabled",
       autoUpdate: {
-        enabled,
+        enabled: actif,
         pollIntervalSeconds: pollIntervalSeconds(),
-        canTriggerNow: enabled && watchtowerToken().length > 0,
-        reachability: await probeUpdater(),
+        canTriggerNow: actif && watchtowerToken().length > 0,
+        reachability,
       },
       pending: null,
+      stale: false,
       repository: REPOSITORY,
       channel: CHANNEL,
       image: IMAGE,
@@ -289,6 +331,8 @@ export async function getUpdateStatus(
     probeUpdater(),
   ]);
   cache = checked;
+  // Lancée seulement maintenant : elle écrit dans le cache déjà en place.
+  rafraichirHeadEnArrierePlan();
 
   let state: UpdateState = "unknown";
   if (checked.latest && current.revision) {
@@ -311,17 +355,19 @@ export async function getUpdateStatus(
         }
       : null;
 
+  const actif = enabled || reachability === "reachable";
   return {
     current,
     latest: checked.latest,
     state,
     autoUpdate: {
-      enabled,
+      enabled: actif,
       pollIntervalSeconds: pollIntervalSeconds(),
-      canTriggerNow: enabled && watchtowerToken().length > 0,
+      canTriggerNow: actif && watchtowerToken().length > 0,
       reachability,
     },
     pending,
+    stale: Boolean(checked.error && checked.latest),
     repository: REPOSITORY,
     channel: CHANNEL,
     image: IMAGE,

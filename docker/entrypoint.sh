@@ -91,6 +91,14 @@ load_or_create_secret CRON_SECRET cron-secret 32
 # aux secrets ci-dessus, le remplacer n'invalide rien — une valeur imposée dans
 # le `.env` prend simplement la place de celle qui a été générée.
 updater_token_path="$CONFIG_DIR/updater-token"
+# Un fichier présent mais vide — interruption au premier démarrage, volume
+# restauré à moitié — n'était jamais réécrit : `ln` échouait sur la cible
+# existante et l'application repartait avec un jeton vide, donc sans bouton
+# d'installation immédiate, et le conseil affiché (« relancez la pile ») ne
+# corrigeait rien puisque le fichier restait là.
+if [ -e "$updater_token_path" ] && [ ! -s "$updater_token_path" ]; then
+  rm -f "$updater_token_path"
+fi
 if [ -n "${WATCHTOWER_HTTP_API_TOKEN:-}" ]; then
   if [ "$(sed -n '1p' "$updater_token_path" 2>/dev/null || true)" != "$WATCHTOWER_HTTP_API_TOKEN" ]; then
     mv "$(write_temp_file "$updater_token_path" "$WATCHTOWER_HTTP_API_TOKEN")" \

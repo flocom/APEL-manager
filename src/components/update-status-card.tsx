@@ -175,32 +175,24 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
       setSuivi({
         etat: "attente",
         message:
-          "Mise à jour lancée. L’application redémarre : cet écran vous dira ce qui a été installé.",
+          "Demande envoyée. Si une version plus récente existe, l’application redémarre — cet écran dira ce qui a été installé.",
       });
 
       while (Date.now() < limite) {
         await new Promise((r) => setTimeout(r, INTERVALLE_MS));
         if (!vivant.current) return;
-        try {
-          const frais = await recharger();
-          if (!vivant.current) return;
-          setCurrent(frais);
 
-          if (frais.current.revision !== revisionAvant) {
-            setSuivi({
-              etat: "installee",
-              message: `Mise à jour installée : l’application tourne maintenant en ${frais.current.version} (${frais.current.shortRevision}).`,
-            });
-            return;
-          }
-          if (tombee) {
-            setSuivi({
-              etat: "inchangee",
-              message:
-                "L’application est revenue, toujours dans la même version : le service de mise à jour n’avait rien de plus récent à installer.",
-            });
-            return;
-          }
+        // On interroge le contrôle de santé, et non l'état des mises à jour :
+        // il répond sans consulter ni registre ni dépôt. Rafraîchir l'état
+        // complet toutes les trois secondes épuiserait en une minute le quota
+        // horaire de l'API GitHub et martèlerait le registre pour rien. Ce
+        // point d'entrée atteste en outre que la base répond : une application
+        // dont les migrations échouent n'est pas « revenue ».
+        let sante: { revision: string | null; version: string } | null = null;
+        try {
+          const reponse = await fetch("/api/health", { cache: "no-store" });
+          if (!reponse.ok) throw new Error(String(reponse.status));
+          sante = (await reponse.json()) as { revision: string | null; version: string };
         } catch {
           // L'application ne répond plus : c'est le remplacement en cours.
           tombee = true;
@@ -211,6 +203,31 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
                 "L’application redémarre… cet écran se met à jour tout seul dès qu’elle répond.",
             });
           }
+          continue;
+        }
+
+        if (!vivant.current) return;
+        if (sante.revision && sante.revision !== revisionAvant) {
+          // Une seule lecture complète, celle qui remet la carte à jour.
+          try {
+            setCurrent(await recharger());
+          } catch {
+            // Sans conséquence : le compte rendu ci-dessous suffit.
+          }
+          if (!vivant.current) return;
+          setSuivi({
+            etat: "installee",
+            message: `Mise à jour installée : l’application tourne maintenant en ${sante.version} (${sante.revision}).`,
+          });
+          return;
+        }
+        if (tombee) {
+          setSuivi({
+            etat: "inchangee",
+            message:
+              "L’application est revenue, toujours dans la même version : le service de mise à jour n’avait rien de plus récent à installer.",
+          });
+          return;
         }
       }
 
@@ -228,7 +245,7 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
   async function applyNow() {
     setConfirmApply(false);
     setApplying(true);
-    const revisionAvant = current.current.revision;
+    const revisionAvant = current.current.shortRevision;
     try {
       const response = await fetch("/api/updates/apply", { method: "POST" });
       if (!response.ok) {
@@ -340,7 +357,7 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
               !autoUpdate.enabled
                 ? "Désactivée"
                 : autoUpdate.reachability === "reachable"
-                  ? `Active, contrôle ${formatInterval(
+                  ? `Le service répond · contrôle prévu ${formatInterval(
                       autoUpdate.pollIntervalSeconds,
                     )}`
                   : "Activée, mais le service ne répond pas"
@@ -441,9 +458,22 @@ export function UpdateStatusCard({ status }: { status: UpdateStatus }) {
             >
               {current.pending.shortRevision}
             </a>{" "}
-            est fusionné mais son image n&apos;est pas encore publiée. La
-            construction dure une dizaine de minutes ; au-delà, vérifiez qu&apos;elle
-            n&apos;a pas échoué.
+            {current.pending.committedAt
+              ? ` a été fusionné le ${formatDate(current.pending.committedAt)} `
+              : " est fusionné "}
+            mais son image n&apos;est pas encore publiée. La construction dure une
+            dizaine de minutes ; au-delà, vérifiez qu&apos;elle n&apos;a pas échoué.
+          </Encart>
+        )}
+
+        {current.stale && (
+          <Encart
+            ton="neutre"
+            icone={CircleAlert}
+            titre="Version publiée lue précédemment"
+          >
+            Le registre n’a pas répondu cette fois : l’état ci-dessus repose sur
+            la dernière lecture réussie, pas sur celle de maintenant.
           </Encart>
         )}
 
