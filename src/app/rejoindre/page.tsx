@@ -20,6 +20,7 @@ import { SiteHeader } from "@/components/site-header";
 import { WhatsappInviteCard } from "@/components/whatsapp-invite-card";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime, formatLongDateTime } from "@/lib/dates";
+import { deEtablissement } from "@/lib/etablissement";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const dynamic = "force-dynamic";
@@ -123,15 +124,6 @@ const ETAPES = [
     texte: "Vous choisissez un créneau, et on se retrouve sur place.",
   },
 ];
-
-/**
- * « de École Sainte-Marie » : beaucoup d'établissements portent un nom qui
- * commence par une voyelle, et la phrase se lit mal. Élision minimale, sans
- * prétendre couvrir tous les cas de la langue.
- */
-function deEtablissement(nom: string): string {
-  return /^[aeiouyàâäéèêëîïôöûü]/i.test(nom.trim()) ? `d’${nom}` : `de ${nom}`;
-}
 
 const AMORCES = [
   "Je peux donner un coup de main sur un événement, prévenez-moi.",
