@@ -78,8 +78,15 @@ function dateInput(value: string | null) {
 
 export function AdherentsManager({
   members,
+  cotisationParDefautCents = null,
 }: {
   members: AdherentView[];
+  /**
+   * Le tarif publié par l'association, quand il y en a un : une adhésion
+   * nouvelle s'ouvre dessus plutôt que sur 0,00 €. On ne le force jamais — une
+   * famille peut régler autre chose — mais on évite de le retaper à chaque fois.
+   */
+  cotisationParDefautCents?: number | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -253,6 +260,7 @@ export function AdherentsManager({
             loading={submitting}
             onSubmit={save}
             onCancel={() => setEditor(null)}
+            cotisationParDefautCents={cotisationParDefautCents}
           />
         </Card>
       )}
@@ -540,11 +548,13 @@ function AdherentForm({
   loading,
   onSubmit,
   onCancel,
+  cotisationParDefautCents,
 }: {
   member: AdherentView | null;
   loading: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
+  cotisationParDefautCents: number | null;
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-7 p-5 sm:p-6">
@@ -683,9 +693,11 @@ function AdherentForm({
               min="0"
               step="0.01"
               inputMode="decimal"
-              defaultValue={
-                member ? (member.membershipFeeCents / 100).toFixed(2) : "0.00"
-              }
+              defaultValue={(
+                (member
+                  ? member.membershipFeeCents
+                  : cotisationParDefautCents ?? 0) / 100
+              ).toFixed(2)}
             />
           </Field>
           <Field label="Réglée le" htmlFor="feePaidAt">

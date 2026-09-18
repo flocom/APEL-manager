@@ -746,7 +746,7 @@ export function registerAssociationTools(
     {
       title: "Modifier les réglages de l’association",
       description:
-        "Met à jour l’identité, les fenêtres de rappel et l’activation de Telegram. Le token Telegram reste exclusivement configurable dans l’interface administrateur.",
+        "Met à jour l’identité, la cotisation affichée, les fenêtres de rappel et l’activation de Telegram. Le token Telegram reste exclusivement configurable dans l’interface administrateur.",
       inputSchema: z.object({
         associationName: z.string().min(2).max(160).optional(),
         schoolName: z.string().min(2).max(200).optional(),
@@ -769,6 +769,27 @@ export function registerAssociationTools(
           .describe(
             "Siège social déclaré en préfecture, repris sur les documents officiels.",
           ),
+        membershipFeeCents: z
+          .number()
+          .int()
+          .min(0)
+          .max(100_000)
+          .nullable()
+          .optional()
+          .describe(
+            "Cotisation annuelle affichée sur la page publique, en CENTIMES. null retire l'affichage : la page renvoie alors au bureau. Attention, null n'est pas 0 — 0 annoncerait une adhésion gratuite.",
+          ),
+        membershipFeeBasis: z
+          .enum(["famille", "enfant", "non_precise"])
+          .optional()
+          .describe(
+            "Ce que couvre la cotisation. Relève des statuts ; sans précision la page n'affirme rien sur ce point.",
+          ),
+        membershipFeeNote: z
+          .string()
+          .max(300)
+          .optional()
+          .describe("La marche à suivre pour régler, en une phrase."),
         taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
         volunteerReminderWindowDays: z
           .number()
@@ -794,6 +815,17 @@ export function registerAssociationTools(
               : args.contactEmail,
           rna: args.rna ?? current.rna,
           headquarters: args.headquarters ?? current.headquarters,
+          // `?? current` ne conviendrait pas : null est une valeur délibérée
+          // ici — « retire le montant de la page » — et serait confondu avec
+          // « ne touche pas au montant ».
+          membershipFeeCents:
+            args.membershipFeeCents === undefined
+              ? current.membershipFeeCents
+              : args.membershipFeeCents,
+          membershipFeeBasis:
+            args.membershipFeeBasis ?? current.membershipFeeBasis,
+          membershipFeeNote:
+            args.membershipFeeNote ?? current.membershipFeeNote,
           taskReminderWindowDays:
             args.taskReminderWindowDays ??
             current.taskReminderWindowDays,

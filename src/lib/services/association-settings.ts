@@ -73,6 +73,15 @@ export async function getAssociationSettings() {
       contactEmail: settings.contactEmail,
       rna: settings.rna,
       headquarters: settings.headquarters,
+      membershipFeeCents: settings.membershipFeeCents,
+      membershipFeeBasis: settings.membershipFeeBasis,
+      membershipFeeNote: settings.membershipFeeNote,
+      /**
+       * Seul état qui autorise une page publique à annoncer un tarif. `null`
+       * veut dire « non publié », pas « gratuit » : sans ce garde-fou, une
+       * installation neuve afficherait « 0 € » à tous les parents.
+       */
+      membershipFeePublished: settings.membershipFeeCents !== null,
       statutoryRules: settings.statutoryRules ?? {},
       logoUrl: settings.logoUrl,
       taskReminderWindowDays: settings.taskReminderWindowDays,
@@ -112,6 +121,12 @@ export async function getAssociationSettings() {
     // installation d'avant les réglages en base, il reste vide et les
     // documents le signalent.
     headquarters: "",
+    // Aucune variable d'environnement n'a jamais porté de cotisation : sur une
+    // installation d'avant les réglages en base, rien n'est publié.
+    membershipFeeCents: null,
+    membershipFeeBasis: "non_precise" as const,
+    membershipFeeNote: "",
+    membershipFeePublished: false,
     statutoryRules: {},
     logoUrl: null,
     taskReminderWindowDays: legacyReminderWindow("REMINDER_WINDOW_DAYS", 3),
@@ -258,6 +273,9 @@ export async function saveAssociationSettings(
     contactEmail: emptyToNull(data.contactEmail),
     rna: data.rna,
     headquarters: data.headquarters,
+    membershipFeeCents: data.membershipFeeCents,
+    membershipFeeBasis: data.membershipFeeBasis,
+    membershipFeeNote: data.membershipFeeNote,
     logoUrl: emptyToNull(data.logoUrl),
     taskReminderWindowDays: data.taskReminderWindowDays,
     volunteerReminderWindowDays: data.volunteerReminderWindowDays,
@@ -299,6 +317,10 @@ export async function saveAssociationSettings(
       // lien d'invitation.
       whatsappGroupChanged:
         (data.whatsappGroupUrl ?? null) !== (current?.whatsappGroupUrl ?? null),
+      // Le tarif affiché est public par destination : le consigner en clair ne
+      // divulgue rien, et savoir quand il a changé sert aux comptes.
+      membershipFeeCents: data.membershipFeeCents,
+      membershipFeeBasis: data.membershipFeeBasis,
     },
   );
 

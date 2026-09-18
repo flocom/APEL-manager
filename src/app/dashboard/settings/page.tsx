@@ -30,6 +30,9 @@ export default async function SettingsPage() {
     contactEmail: associationStatus.contactEmail,
     rna: associationStatus.rna,
     headquarters: associationStatus.headquarters,
+    membershipFeeCents: associationStatus.membershipFeeCents,
+    membershipFeeBasis: associationStatus.membershipFeeBasis,
+    membershipFeeNote: associationStatus.membershipFeeNote,
     logoUrl: associationStatus.logoUrl,
     taskReminderWindowDays: associationStatus.taskReminderWindowDays,
     volunteerReminderWindowDays:

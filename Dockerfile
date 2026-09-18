@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-bookworm-slim AS base
+# Node 22 : la branche 20 est sortie du support le 30 avril 2026, elle ne
+# reçoit donc plus de correctif de sécurité. 22 est la LTS active.
+FROM node:22-bookworm-slim AS base
 
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
+# npm annonce ses nouvelles versions majeures dans chaque journal de
+# construction. C'est du bruit dans un journal qu'on lit pour y chercher une
+# panne, et la version de npm est celle que l'image apporte, pas un choix.
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 
 FROM base AS dependencies

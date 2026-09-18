@@ -479,6 +479,26 @@ export const eventAttachmentSchema = z.object({
   ),
 });
 
+/**
+ * Ce que couvre la cotisation. Relève des statuts, donc varie : tant que le
+ * bureau n’a pas tranché, les pages publiques se taisent sur ce point plutôt
+ * que de supposer la règle la plus répandue.
+ */
+export const MEMBERSHIP_FEE_BASES = ["famille", "enfant", "non_precise"] as const;
+
+export type MembershipFeeBasis = (typeof MEMBERSHIP_FEE_BASES)[number];
+
+/** Ce qui s’écrit à la suite d’un montant : « 18 € par famille ». */
+export const MEMBERSHIP_FEE_BASIS_SUFFIX: Record<MembershipFeeBasis, string> = {
+  famille: "par famille",
+  enfant: "par enfant",
+  non_precise: "",
+};
+
+const MEMBERSHIP_FEE_BASIS_SCHEMA = z
+  .enum(MEMBERSHIP_FEE_BASES)
+  .default("non_precise");
+
 export const associationSettingsSchema = z.object({
   associationName: z.string().trim().min(2).max(160),
   schoolName: z.string().trim().min(2).max(200),
@@ -496,6 +516,25 @@ export const associationSettingsSchema = z.object({
    * l'empêcherait d'enregistrer le reste.
    */
   headquarters: z.string().trim().max(300).default(""),
+  /**
+   * Cotisation annuelle affichée, en centimes. `null` vaut « non publiée » et
+   * non « gratuite » : la page publique renvoie alors au bureau au lieu
+   * d’annoncer un tarif. Le plafond à 1 000 € n’est pas une doctrine, c’est un
+   * garde-fou contre la saisie en centimes d’un montant en euros.
+   */
+  membershipFeeCents: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(
+      100_000,
+      "Montant improbable : le réglage attend des euros, pas des centimes.",
+    )
+    .nullable()
+    .default(null),
+  membershipFeeBasis: MEMBERSHIP_FEE_BASIS_SCHEMA,
+  /** La marche à suivre pour régler, en une phrase écrite par le bureau. */
+  membershipFeeNote: z.string().trim().max(300).default(""),
   taskReminderWindowDays: z.coerce.number().int().min(0).max(30),
   volunteerReminderWindowDays: z.coerce.number().int().min(0).max(30),
   telegramEnabled: z.boolean().default(false),

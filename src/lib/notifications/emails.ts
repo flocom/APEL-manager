@@ -276,9 +276,14 @@ export function joinRequestEmail(ctx: {
   phone?: string | null;
   message: string;
   intention?: "adherer" | "coup_de_main" | "les_deux" | "question";
+  /** Le montant figure déjà sur la page publique : inutile de le redemander. */
+  feePublished?: boolean;
   identity?: NotificationIdentity;
 }): EmailContent {
   const association = ctx.identity?.associationName || APP_NAME;
+  const aRepondreSurLaCotisation = ctx.feePublished
+    ? "la marche à suivre pour régler"
+    : "le montant de la cotisation de cette année et la marche à suivre pour régler";
   // L'intention porte jusqu'à l'objet du message : le bureau lit sa boîte sur
   // un téléphone, et une demande d'adhésion n'attend pas la même réponse
   // qu'une proposition de coup de main. Quand elle manque — vieux client, appel
@@ -287,8 +292,7 @@ export function joinRequestEmail(ctx: {
     adherer: {
       objet: "Demande d’adhésion",
       titre: "Une famille souhaite adhérer",
-      ligne:
-        "Cette personne veut devenir membre de l’association. Indiquez-lui le montant de la cotisation de cette année et la marche à suivre pour régler.",
+      ligne: `Cette personne veut devenir membre de l’association. Indiquez-lui ${aRepondreSurLaCotisation}.`,
     },
     coup_de_main: {
       objet: "Proposition de coup de main",
@@ -299,8 +303,7 @@ export function joinRequestEmail(ctx: {
     les_deux: {
       objet: "Adhésion + coup de main",
       titre: "Une famille souhaite adhérer et donner un coup de main",
-      ligne:
-        "Cette personne veut devenir membre et propose aussi de l’aide. Indiquez-lui le montant de la cotisation de cette année, la marche à suivre pour régler, et les créneaux où il manque des bras.",
+      ligne: `Cette personne veut devenir membre et propose aussi de l’aide. Indiquez-lui ${aRepondreSurLaCotisation}, et les créneaux où il manque des bras.`,
     },
     question: {
       objet: "Question depuis le site",
@@ -358,6 +361,8 @@ export function joinRequestAckEmail(ctx: {
   name: string;
   message: string;
   intention?: "adherer" | "coup_de_main" | "les_deux" | "question";
+  /** Le montant figure déjà sur la page publique : ne pas promettre de l'annoncer. */
+  feePublished?: boolean;
   contactEmail: string;
   identity?: NotificationIdentity;
 }): EmailContent {
@@ -367,8 +372,10 @@ export function joinRequestAckEmail(ctx: {
     ? "Votre demande d’adhésion est bien arrivée"
     : "Votre message est bien arrivé";
   const suite = adhesion
-    ? `Un parent du bureau vous répondra par e-mail avec le montant de la cotisation pour cette année scolaire et la marche à suivre pour régler.`
-    : `Un parent de l’équipe vous répondra par e-mail.`;
+    ? ctx.feePublished
+      ? "Un parent du bureau vous répondra par e-mail avec la marche à suivre pour régler la cotisation."
+      : "Un parent du bureau vous répondra par e-mail avec le montant de la cotisation pour cette année scolaire et la marche à suivre pour régler."
+    : "Un parent de l’équipe vous répondra par e-mail.";
 
   return {
     subject: `${titre} — ${association}`,

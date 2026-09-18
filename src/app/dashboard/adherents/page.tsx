@@ -9,15 +9,22 @@ import { PageHeader } from "@/components/ui";
 import { requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { associationMembers } from "@/lib/db/schema";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdherentsPage() {
   await requireRole("admin");
-  const members = await db
-    .select()
-    .from(associationMembers)
-    .orderBy(asc(associationMembers.lastName), asc(associationMembers.firstName));
+  const [members, settings] = await Promise.all([
+    db
+      .select()
+      .from(associationMembers)
+      .orderBy(
+        asc(associationMembers.lastName),
+        asc(associationMembers.firstName),
+      ),
+    getAssociationSettings(),
+  ]);
 
   const serialized: AdherentView[] = members.map((member) => ({
     id: member.id,
@@ -46,7 +53,10 @@ export default async function AdherentsPage() {
         description="Suivez les adhésions, les coordonnées et les cotisations de l'association."
         icon={ContactRound}
       />
-      <AdherentsManager members={serialized} />
+      <AdherentsManager
+        members={serialized}
+        cotisationParDefautCents={settings.membershipFeeCents}
+      />
     </div>
   );
 }

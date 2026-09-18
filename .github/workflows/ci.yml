@@ -14,6 +14,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Sans cela, npm annonce sa prochaine version majeure dans chaque journal.
+  NPM_CONFIG_UPDATE_NOTIFIER: false
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -25,7 +29,7 @@ jobs:
       - name: Préparer Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Installer les dépendances
@@ -67,7 +71,7 @@ jobs:
       - name: Préparer Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Installer les dépendances

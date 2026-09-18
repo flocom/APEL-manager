@@ -98,11 +98,17 @@ export function JoinForm({
   contactEmail,
   recaptchaSiteKey = null,
   whatsappGroupUrl = null,
+  cotisationPubliee = false,
 }: {
   contactEmail: string | null;
   recaptchaSiteKey?: string | null;
   /** Proposé pendant l'attente de la réponse : on suit sans avoir écrit. */
   whatsappGroupUrl?: string | null;
+  /**
+   * Le montant figure déjà sur la page : promettre de l'annoncer par e-mail
+   * ferait passer l'association pour distraite.
+   */
+  cotisationPubliee?: boolean;
 }) {
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const [loading, setLoading] = useState(false);
@@ -193,7 +199,9 @@ export function JoinForm({
         </p>
         <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
           {adhesion
-            ? "Un parent du bureau vous répond par e-mail avec le montant de la cotisation pour cette année scolaire et la marche à suivre pour régler."
+            ? cotisationPubliee
+              ? "Un parent du bureau vous répond par e-mail avec la marche à suivre pour régler la cotisation."
+              : "Un parent du bureau vous répond par e-mail avec le montant de la cotisation pour cette année scolaire et la marche à suivre pour régler."
             : "Un parent de l’équipe vous répondra par e-mail."}{" "}
           Comptez quelques jours ; sans nouvelles, n’hésitez pas à relancer
           {contactEmail ? (

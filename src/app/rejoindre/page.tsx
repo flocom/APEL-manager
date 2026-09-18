@@ -24,6 +24,7 @@ import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime, formatLongDateTime } from "@/lib/dates";
 import { deEtablissement } from "@/lib/etablissement";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import { MEMBERSHIP_FEE_BASIS_SUFFIX } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -63,14 +64,32 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Ce qu'adhérer veut dire, sans rien affirmer qui dépende des statuts. */
-const CE_QU_ADHERER_VEUT_DIRE = [
-  "Régler la cotisation annuelle et devenir membre de l’association pour l’année scolaire.",
-  "Adhérer ne vous engage à aucune présence : ni réunion, ni permanence, ni stand.",
-  "La cotisation vaut pour la famille.",
-  "Les membres sont convoqués à l’assemblée générale, où l’on présente les comptes et ce qui est prévu.",
-  "Le montant et la façon de régler sont fixés par l’association pour l’année en cours : écrivez-nous, on vous le dit.",
-];
+/**
+ * Ce qu'adhérer veut dire. Deux des cinq lignes dépendent des réglages, parce
+ * qu'elles dépendent des statuts : ce que couvre la cotisation, et son montant.
+ * Tant que le bureau ne les a pas renseignés, la page ne suppose rien et
+ * renvoie à lui — c'est moins pratique, mais ce n'est pas faux.
+ */
+function ceQuAdhererVeutDire(reglages: {
+  membershipFeePublished: boolean;
+  membershipFeeBasis: "famille" | "enfant" | "non_precise";
+}): string[] {
+  const couverture = {
+    famille: "Une seule cotisation par famille, quel que soit le nombre d’enfants scolarisés.",
+    enfant: "La cotisation se compte par enfant scolarisé.",
+    non_precise: null,
+  }[reglages.membershipFeeBasis];
+
+  return [
+    "Régler la cotisation annuelle et devenir membre de l’association pour l’année scolaire.",
+    "Adhérer ne vous engage à aucune présence : ni réunion, ni permanence, ni stand.",
+    couverture,
+    "Les membres sont convoqués à l’assemblée générale, où l’on présente les comptes et ce qui est prévu.",
+    reglages.membershipFeePublished
+      ? null
+      : "Le montant et la façon de régler sont fixés par l’association pour l’année en cours : écrivez-nous, on vous le dit.",
+  ].filter((ligne): ligne is string => ligne !== null);
+}
 
 const CE_QUE_LE_COUP_DE_MAIN_VEUT_DIRE = [
   "Venir sur un rendez-vous et prendre une tâche, sans devenir membre.",
@@ -220,6 +239,20 @@ export default async function RejoindrePage() {
   const contactEmail = settings.contactEmail?.trim() || null;
   const rna = settings.rna?.trim() || null;
 
+  // Le tarif affiché, quand le bureau a choisi de le publier. `null` n'est pas
+  // zéro : sans réglage, la page continue de renvoyer au bureau.
+  const cotisation = settings.membershipFeePublished
+    ? {
+        montant: (settings.membershipFeeCents! / 100).toLocaleString("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+        }),
+        suffixe: MEMBERSHIP_FEE_BASIS_SUFFIX[settings.membershipFeeBasis],
+        note: settings.membershipFeeNote.trim(),
+      }
+    : null;
+  const puces = ceQuAdhererVeutDire(settings);
+
   // Sans adresse de contact publiée, le formulaire n'existe pas et /api/join
   // répond 503 : aucun bouton ne doit alors promettre qu'on peut écrire.
   const ecritureOuverte = contactEmail !== null;
@@ -303,16 +336,30 @@ export default async function RejoindrePage() {
 
                 {/* La preuve de cette porte-ci. En face, la carte du coup de
                     main affiche un rendez-vous daté ; sans cela, l'adhésion
-                    serait la seule des deux à n'avancer que du texte. */}
-                {rna && (
+                    serait la seule des deux à n'avancer que du texte.
+                    Le montant passe devant le RNA quand il est publié : c'est
+                    la question que le parent se pose, le RNA ne lui dit rien. */}
+                {cotisation ? (
                   <p className="mt-4 rounded-xl border-2 border-slate-200 p-3">
                     <span className="block text-[11px] font-extrabold uppercase tracking-[0.14em] text-brand-700">
-                      Association déclarée
+                      Cotisation annuelle
                     </span>
                     <span className="mt-1 block break-words font-black tracking-[-0.02em] text-brand-950">
-                      RNA {rna}
+                      {cotisation.montant}
+                      {cotisation.suffixe ? ` ${cotisation.suffixe}` : ""}
                     </span>
                   </p>
+                ) : (
+                  rna && (
+                    <p className="mt-4 rounded-xl border-2 border-slate-200 p-3">
+                      <span className="block text-[11px] font-extrabold uppercase tracking-[0.14em] text-brand-700">
+                        Association déclarée
+                      </span>
+                      <span className="mt-1 block break-words font-black tracking-[-0.02em] text-brand-950">
+                        RNA {rna}
+                      </span>
+                    </p>
+                  )
                 )}
               </div>
 
@@ -449,7 +496,7 @@ export default async function RejoindrePage() {
                   Devenir membre
                 </h3>
                 <ul className="mt-5 space-y-3 text-sm font-medium leading-6 text-slate-700">
-                  {CE_QU_ADHERER_VEUT_DIRE.map((ligne) => (
+                  {puces.map((ligne) => (
                     <li key={ligne} className="flex gap-2.5">
                       <span
                         aria-hidden="true"
@@ -459,6 +506,29 @@ export default async function RejoindrePage() {
                     </li>
                   ))}
                 </ul>
+                {/* Le chiffre en grand, et la marche à suivre juste dessous :
+                    c'est la première question d'un parent qui veut adhérer, et
+                    la page y répondait par un aller-retour d'e-mail. */}
+                {cotisation && (
+                  <div className="mt-5 rounded-xl border-2 border-brand-950 bg-white p-4">
+                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
+                      Cotisation annuelle
+                    </p>
+                    <p className="mt-1 text-3xl font-black tracking-[-0.04em] text-brand-950">
+                      {cotisation.montant}
+                      {cotisation.suffixe ? (
+                        <span className="ml-2 text-base font-bold tracking-normal text-slate-600">
+                          {cotisation.suffixe}
+                        </span>
+                      ) : null}
+                    </p>
+                    {cotisation.note && (
+                      <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
+                        {cotisation.note}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <p className="mt-5 rounded-xl bg-white p-4 text-sm font-semibold leading-6 text-brand-950">
                   Vous ne savez pas si votre famille est déjà adhérente cette
                   année ? Écrivez-nous, on vérifie.
@@ -600,6 +670,7 @@ export default async function RejoindrePage() {
                               : null
                           }
                           whatsappGroupUrl={settings.whatsappGroupUrl}
+                          cotisationPubliee={settings.membershipFeePublished}
                         />
                       </div>
                     </>
