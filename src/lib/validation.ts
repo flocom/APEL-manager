@@ -663,3 +663,60 @@ export type OAuthAuthorizationCodeInput = z.infer<
   typeof oauthAuthorizationCodeSchema
 >;
 export type OAuthTokenInput = z.infer<typeof oauthTokenSchema>;
+
+
+/**
+ * Le rapprochement des cotisations avec la comptabilité.
+ *
+ * Les parts se posent en bloc : l'écran d'affectation montre la répartition
+ * entière d'une écriture, et une liste vide détache tout. Le plafond de 500
+ * lignes couvre l'année d'une grosse école en un seul virement HelloAsso, sans
+ * laisser passer une requête déraisonnable.
+ */
+export const cotisationAffectationsSchema = z.object({
+  affectations: z
+    .array(
+      z.object({
+        memberId: z.string().uuid(),
+        amountCents: z.coerce.number().int().positive().max(10_000_000),
+      }),
+    )
+    .max(500)
+    .default([])
+    .superRefine((liste, ctx) => {
+      const vus = new Set<string>();
+      for (const part of liste) {
+        if (vus.has(part.memberId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Un adhérent ne peut apparaître deux fois sur la même écriture.",
+          });
+          return;
+        }
+        vus.add(part.memberId);
+      }
+    }),
+});
+
+/** Reprise des adhésions encaissées avant la mise en service du rapprochement. */
+export const cotisationRattrapageSchema = z.object({
+  schoolYear: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{4}$/, "Année scolaire invalide"),
+  /**
+   * « groupée » : une seule écriture pour tout le lot, la forme d'un
+   * reversement HelloAsso ou d'une remise de chèques.
+   * « par_adherent » : une écriture chacun, datée du règlement porté sur la
+   * fiche.
+   */
+  mode: z.enum(["groupee", "par_adherent"]).default("groupee"),
+  accountId: z.string().uuid("Choisissez un compte de trésorerie"),
+  categoryId: z.string().uuid("Choisissez une catégorie de recettes"),
+  label: z.string().trim().min(2).max(200),
+  occurredAt: z.coerce.date(),
+  counterparty: optionalText(200),
+  paymentMethod: optionalText(80),
+  /** Restreint la reprise à une sélection ; absent, elle prend tout le lot. */
+  memberIds: z.array(z.string().uuid()).max(2000).optional(),
+});
