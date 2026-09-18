@@ -16,7 +16,7 @@ export default async function RegisterPage() {
 
   return (
     <AuthShell
-      eyebrow="Rejoindre l’équipe"
+      eyebrow="Compte de gestion"
       title="Créer un compte"
       description={`Le premier compte créé devient administrateur de l’espace ${settings.associationName}.`}
     >

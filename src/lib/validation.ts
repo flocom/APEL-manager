@@ -153,8 +153,36 @@ export const signupSchema = z.object({
   recaptchaToken: z.string().max(5000).optional(),
 });
 
+/**
+ * Ce qui amène le visiteur. Des démarches distinctes, que la page
+ * confondait : adhérer à l'association et donner un coup de main sur un
+ * rendez-vous sont deux démarches indépendantes — on peut adhérer sans jamais
+ * tenir un stand, et aider sans être adhérent. Le bureau ne répond pas la même
+ * chose aux deux, d'où le recueil de l'intention.
+ *
+ * Le champ reste facultatif plutôt que muni d'une valeur par défaut : une
+ * demande d'adhésion qui arriverait sans son intention doit se signaler comme
+ * telle, pas se déguiser silencieusement en question.
+ */
+export const JOIN_INTENTIONS = [
+  "adherer",
+  "coup_de_main",
+  "les_deux",
+  "question",
+] as const;
+
+export type JoinIntention = (typeof JOIN_INTENTIONS)[number];
+
+export const JOIN_INTENTION_LABELS: Record<JoinIntention, string> = {
+  adherer: "Adhérer à l’association",
+  coup_de_main: "Donner un coup de main",
+  les_deux: "Adhérer et donner un coup de main",
+  question: "Poser une question",
+};
+
 /** Message public envoyé depuis la page « Rejoindre l'association ». */
 export const joinRequestSchema = z.object({
+  intention: z.enum(JOIN_INTENTIONS).optional(),
   name: z.string().trim().min(2, "Votre nom est requis").max(120),
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
   phone: z.string().trim().max(40).optional(),
