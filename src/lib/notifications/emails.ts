@@ -275,9 +275,46 @@ export function joinRequestEmail(ctx: {
   email: string;
   phone?: string | null;
   message: string;
+  intention?: "adherer" | "coup_de_main" | "les_deux" | "question";
   identity?: NotificationIdentity;
 }): EmailContent {
   const association = ctx.identity?.associationName || APP_NAME;
+  // L'intention porte jusqu'à l'objet du message : le bureau lit sa boîte sur
+  // un téléphone, et une demande d'adhésion n'attend pas la même réponse
+  // qu'une proposition de coup de main. Quand elle manque — vieux client, appel
+  // direct de l'API — on le dit, plutôt que de ranger la demande au hasard.
+  const intentions = {
+    adherer: {
+      objet: "Demande d’adhésion",
+      titre: "Une famille souhaite adhérer",
+      ligne:
+        "Cette personne veut devenir membre de l’association. Indiquez-lui le montant de la cotisation de cette année et la marche à suivre pour régler.",
+    },
+    coup_de_main: {
+      objet: "Proposition de coup de main",
+      titre: "Quelqu’un propose un coup de main",
+      ligne:
+        "Cette personne propose de l’aide sur un rendez-vous. Elle n’a pas demandé à adhérer.",
+    },
+    les_deux: {
+      objet: "Adhésion + coup de main",
+      titre: "Une famille souhaite adhérer et donner un coup de main",
+      ligne:
+        "Cette personne veut devenir membre et propose aussi de l’aide. Indiquez-lui le montant de la cotisation de cette année, la marche à suivre pour régler, et les créneaux où il manque des bras.",
+    },
+    question: {
+      objet: "Question depuis le site",
+      titre: "Quelqu’un vous écrit depuis le site",
+      ligne: "",
+    },
+    inconnue: {
+      objet: "Message depuis le site",
+      titre: "Quelqu’un vous écrit depuis le site",
+      ligne:
+        "Intention non précisée : lisez le message avant de répondre, il peut s’agir d’une demande d’adhésion.",
+    },
+  } as const;
+  const intention = intentions[ctx.intention ?? "inconnue"];
   const contact = [
     `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
     `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`,
@@ -287,19 +324,68 @@ export function joinRequestEmail(ctx: {
   ].join("");
 
   return {
-    subject: `Nouveau contact depuis le site — ${ctx.name}`,
+    subject: `${intention.objet} — ${ctx.name}`,
     html: layout(
-      "Quelqu’un souhaite rejoindre l’association",
+      intention.titre,
       `<ul>${contact}</ul>
+       ${intention.ligne ? `<p style="color:#0e6d68;font-weight:600;">${intention.ligne}</p>` : ""}
        <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;">${esc(ctx.message)}</p>
        <p>${button(`mailto:${esc(ctx.email)}`, "Répondre")}</p>`,
       ctx.identity,
     ),
-    text: `Nouveau contact depuis le site de ${association}.
+    text: `${intention.objet} sur le site de ${association}.
 
 Nom : ${ctx.name}
-E-mail : ${ctx.email}${ctx.phone?.trim() ? `\nTéléphone : ${ctx.phone.trim()}` : ""}
+E-mail : ${ctx.email}${ctx.phone?.trim() ? `\nTéléphone : ${ctx.phone.trim()}` : ""}${intention.ligne ? `\n\n${intention.ligne}` : ""}
 
+${ctx.message}`,
+  };
+}
+
+/**
+ * L'accusé de réception envoyé au parent qui vient d'écrire.
+ *
+ * `/api/join` n'écrit rien en base — c'est délibéré, il n'y a donc aucun
+ * fichier de prospects à protéger. Mais cela laisse l'écran de confirmation
+ * comme seule trace de la demande, et cet écran meurt à la fermeture de
+ * l'onglet. Pour une démarche qui engage un paiement, c'est un trou : le parent
+ * ne sait plus s'il a écrit, ni à qui. Une copie dans sa boîte le referme.
+ *
+ * Aucun montant, aucun circuit de règlement : ces choses varient d'une
+ * association à l'autre, et c'est le bureau qui les dira dans sa réponse.
+ */
+export function joinRequestAckEmail(ctx: {
+  name: string;
+  message: string;
+  intention?: "adherer" | "coup_de_main" | "les_deux" | "question";
+  contactEmail: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const association = ctx.identity?.associationName || APP_NAME;
+  const adhesion = ctx.intention === "adherer" || ctx.intention === "les_deux";
+  const titre = adhesion
+    ? "Votre demande d’adhésion est bien arrivée"
+    : "Votre message est bien arrivé";
+  const suite = adhesion
+    ? `Un parent du bureau vous répondra par e-mail avec le montant de la cotisation pour cette année scolaire et la marche à suivre pour régler.`
+    : `Un parent de l’équipe vous répondra par e-mail.`;
+
+  return {
+    subject: `${titre} — ${association}`,
+    html: layout(
+      titre,
+      `<p>Bonjour ${esc(ctx.name)},</p>
+       <p>Nous avons bien reçu ce que vous nous avez écrit sur le site de ${esc(association)}. ${suite} Comptez quelques jours ; sans nouvelles, écrivez-nous directement.</p>
+       <p style="color:#64748b;font-size:14px;">Votre message :</p>
+       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;color:#475569;">${esc(ctx.message)}</p>
+       <p>${button(`mailto:${esc(ctx.contactEmail)}`, "Nous écrire")}</p>`,
+      ctx.identity,
+    ),
+    text: `Bonjour ${ctx.name},
+
+Nous avons bien reçu ce que vous nous avez écrit sur le site de ${association}. ${suite} Comptez quelques jours ; sans nouvelles, écrivez-nous à ${ctx.contactEmail}.
+
+Votre message :
 ${ctx.message}`,
   };
 }

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { sendEmail } from "@/lib/notifications/email";
-import { joinRequestEmail } from "@/lib/notifications/emails";
+import {
+  joinRequestAckEmail,
+  joinRequestEmail,
+} from "@/lib/notifications/emails";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -55,6 +58,7 @@ export async function POST(req: Request) {
         email: data.email,
         phone: data.phone,
         message: data.message,
+        intention: data.intention,
         identity: {
           associationName: settings.associationName,
           schoolName: settings.schoolName,
@@ -68,6 +72,30 @@ export async function POST(req: Request) {
         502,
         `L’envoi a échoué. Écrivez directement à ${destination}, votre message sera lu.`,
       );
+    }
+
+    // Copie au parent : sans écriture en base, l'écran de confirmation est la
+    // seule trace de sa démarche, et il meurt avec l'onglet. L'échec de cet
+    // envoi-là ne doit jamais faire échouer la demande : le bureau a déjà reçu
+    // le message, c'est ce qui compte.
+    try {
+      await sendEmail({
+        to: data.email,
+        replyTo: destination,
+        ...joinRequestAckEmail({
+          name: data.name,
+          message: data.message,
+          intention: data.intention,
+          contactEmail: destination,
+          identity: {
+            associationName: settings.associationName,
+            schoolName: settings.schoolName,
+            rna: settings.rna,
+          },
+        }),
+      });
+    } catch {
+      // Silence volontaire : voir ci-dessus.
     }
 
     return NextResponse.json({ ok: true });

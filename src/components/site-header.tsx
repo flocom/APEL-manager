@@ -72,8 +72,11 @@ export async function SiteHeader() {
                 href="/register"
                 className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-2 py-2 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
               >
-                <span className="sm:hidden">S’inscrire</span>
-                <span className="hidden sm:inline">Créer un compte</span>
+                {/* « Créer un compte » attirait les parents venus adhérer :
+                    c'est le seul bouton foncé permanent du site, et il mène à
+                    l'espace de gestion, pas à l'adhésion. */}
+                <span className="sm:hidden">Organisateurs</span>
+                <span className="hidden sm:inline">Espace organisateurs</span>
               </Link>
             </>
           )}
