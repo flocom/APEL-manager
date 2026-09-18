@@ -33,6 +33,18 @@ export const roleEnum = pgEnum("role", ["admin", "manager", "member"]);
  */
 export const eventKindEnum = pgEnum("event_kind", ["event", "meeting"]);
 
+/**
+ * Ce que couvre une cotisation : une famille entière, ou chaque enfant
+ * scolarisé. Cela relève des statuts et varie d'une association à l'autre —
+ * `non_precise` est la valeur de départ, et tant qu'elle tient, les pages
+ * publiques n'affirment rien sur ce point.
+ */
+export const membershipFeeBasisEnum = pgEnum("membership_fee_basis", [
+  "famille",
+  "enfant",
+  "non_precise",
+]);
+
 export const eventStatusEnum = pgEnum("event_status", [
   "draft",
   "published",
@@ -688,6 +700,29 @@ export const associationSettings = pgTable(
      */
     headquarters: text("headquarters").notNull().default(""),
     /**
+     * Le montant de la cotisation annuelle, en centimes, tel que l'association
+     * choisit de le publier.
+     *
+     * `null` n'est pas zéro : c'est « non publié ». La distinction compte, car
+     * une association peut très bien afficher une cotisation libre à 0 €, et la
+     * page publique ne doit pas confondre les deux — elle renvoie au bureau
+     * dans le premier cas, elle annonce un montant dans le second.
+     *
+     * Sans rapport avec `associationMembers.membershipFeeCents`, qui enregistre
+     * ce qu'une famille a réellement réglé cette année-là : celui-ci est un
+     * tarif affiché, celui-là une recette constatée.
+     */
+    membershipFeeCents: integer("membership_fee_cents"),
+    membershipFeeBasis: membershipFeeBasisEnum("membership_fee_basis")
+      .notNull()
+      .default("non_precise"),
+    /**
+     * La marche à suivre pour régler, en une phrase écrite par le bureau :
+     * c'est la seule façon honnête de couvrir des circuits qui vont du chèque
+     * remis en classe au prélèvement sur la facture de scolarité.
+     */
+    membershipFeeNote: text("membership_fee_note").notNull().default(""),
+    /**
      * Ce que prévoient les statuts : quorum, majorités, délai de convocation,
      * règle de voix. Lu une fois, réutilisé par toutes les assemblées. Vide,
      * l'application s'abstient de tout verdict plutôt que d'en inventer un.
@@ -759,6 +794,10 @@ export const associationSettings = pgTable(
     taskReminderWindowCheck: check(
       "association_settings_task_reminder_window_check",
       sql`${t.taskReminderWindowDays} >= 0 and ${t.taskReminderWindowDays} <= 30`,
+    ),
+    membershipFeeCheck: check(
+      "association_settings_membership_fee_check",
+      sql`${t.membershipFeeCents} is null or ${t.membershipFeeCents} >= 0`,
     ),
     recaptchaMinScoreCheck: check(
       "association_settings_recaptcha_min_score_check",

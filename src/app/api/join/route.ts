@@ -59,6 +59,7 @@ export async function POST(req: Request) {
         phone: data.phone,
         message: data.message,
         intention: data.intention,
+        feePublished: settings.membershipFeePublished,
         identity: {
           associationName: settings.associationName,
           schoolName: settings.schoolName,
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
           name: data.name,
           message: data.message,
           intention: data.intention,
+          feePublished: settings.membershipFeePublished,
           contactEmail: destination,
           identity: {
             associationName: settings.associationName,

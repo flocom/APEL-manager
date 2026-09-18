@@ -23,6 +23,8 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Sans cela, npm annonce sa prochaine version majeure dans chaque journal.
+  NPM_CONFIG_UPDATE_NOTIFIER: false
 
 jobs:
   # Les migrations s'appliquent-elles sur une base vierge ? C'est la seule
@@ -55,7 +57,7 @@ jobs:
       - name: Préparer Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Installer les dépendances

@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   CircleAlert,
+  Coins,
   KeyRound,
   MessageCircle,
   Save,
@@ -17,6 +18,10 @@ import { LogoUploadField } from "@/components/logo-upload-field";
 import { useToast } from "@/components/toast";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import {
+  MEMBERSHIP_FEE_BASIS_SUFFIX,
+  type MembershipFeeBasis,
+} from "@/lib/validation";
 import { checkWhatsappUrl, estInvitationGroupe } from "@/lib/whatsapp";
 
 export interface AssociationSettingsView {
@@ -40,7 +45,26 @@ export interface AssociationSettingsView {
   recaptchaMinScore: number;
   recaptchaReady: boolean;
   whatsappGroupUrl: string | null;
+  membershipFeeCents: number | null;
+  membershipFeeBasis: MembershipFeeBasis;
+  membershipFeeNote: string;
   legacyEnvironment: boolean;
+}
+
+/**
+ * Le tarif affiché circule en centimes et se saisit en euros. La conversion
+ * tient en deux fonctions plutôt qu’en une expression recopiée : c’est le genre
+ * d’arrondi qu’on n’a pas envie de déboguer sur une facture.
+ */
+function centsVersEuros(cents: number | null): string {
+  return cents === null ? "" : (cents / 100).toFixed(2);
+}
+
+function eurosVersCents(saisie: string): number | null {
+  const propre = saisie.trim().replace(",", ".");
+  if (!propre) return null;
+  const montant = Number(propre);
+  return Number.isFinite(montant) ? Math.round(montant * 100) : null;
 }
 
 export function AssociationSettingsForm({
@@ -55,6 +79,16 @@ export function AssociationSettingsForm({
     settings.whatsappGroupUrl ?? "",
   );
   const [erreurWhatsapp, setErreurWhatsapp] = useState<string | null>(null);
+  const [cotisation, setCotisation] = useState(
+    centsVersEuros(settings.membershipFeeCents),
+  );
+  const [baseCotisation, setBaseCotisation] = useState<MembershipFeeBasis>(
+    settings.membershipFeeBasis,
+  );
+  const [noteCotisation, setNoteCotisation] = useState(
+    settings.membershipFeeNote,
+  );
+  const cotisationCents = eurosVersCents(cotisation);
   const verdictWhatsapp = checkWhatsappUrl(whatsappGroupUrl);
   // Prévient sans bloquer : un lien raccourci ou une redirection maison reste
   // acceptable, mais l'administrateur doit voir qu'il n'a pas collé l'invitation.
@@ -91,6 +125,9 @@ export function AssociationSettingsForm({
           contactEmail: form.get("contactEmail") || null,
           rna: form.get("rna"),
           headquarters: form.get("headquarters"),
+          membershipFeeCents: cotisationCents,
+          membershipFeeBasis: baseCotisation,
+          membershipFeeNote: noteCotisation,
           logoUrl: form.get("logoUrl") || null,
           taskReminderWindowDays: Number(
             form.get("taskReminderWindowDays"),
@@ -236,6 +273,102 @@ export function AssociationSettingsForm({
                 />
               </Field>
               <LogoUploadField name="logoUrl" defaultValue={settings.logoUrl} />
+            </div>
+          </section>
+
+          <section className="border-t-2 border-slate-100 pt-7">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-100 text-brand-800">
+                <Coins className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="font-bold text-brand-950">La cotisation</h3>
+                <p className="text-sm text-slate-500">
+                  Ce qu’un parent lit sur la page « Rejoindre l’association »
+                  avant d’écrire.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Montant annuel"
+                htmlFor="membership-fee"
+                hint="En euros. Laissez vide pour ne rien publier : la page renverra au bureau, comme aujourd’hui."
+              >
+                <Input
+                  id="membership-fee"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={cotisation}
+                  onChange={(e) => setCotisation(e.target.value)}
+                  placeholder="18.00"
+                />
+              </Field>
+              <Field
+                label="Ce que couvre la cotisation"
+                htmlFor="membership-fee-basis"
+                hint="Relève de vos statuts. Sans précision, la page n’affirme rien sur ce point."
+              >
+                <Select
+                  id="membership-fee-basis"
+                  value={baseCotisation}
+                  onChange={(e) =>
+                    setBaseCotisation(e.target.value as MembershipFeeBasis)
+                  }
+                >
+                  <option value="non_precise">Sans précision</option>
+                  <option value="famille">Une cotisation par famille</option>
+                  <option value="enfant">Une cotisation par enfant</option>
+                </Select>
+              </Field>
+              <Field
+                label="Comment régler"
+                htmlFor="membership-fee-note"
+                hint="Une phrase, écrite par vous : c’est la seule façon de couvrir un chèque remis en classe comme un prélèvement sur la facture de scolarité."
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="membership-fee-note"
+                  value={noteCotisation}
+                  onChange={(e) => setNoteCotisation(e.target.value)}
+                  maxLength={300}
+                  placeholder="Par chèque à l’ordre de l’association, remis au secrétariat."
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+
+            {/* L’aperçu n’est pas un ornement : le seul moyen de vérifier qu’on
+                n’a pas saisi 1800 pour 18 €, c’est de lire la phrase publiée. */}
+            <div className="mt-4 rounded-xl border-2 border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">
+                Ce que verront les parents
+              </p>
+              {cotisationCents === null ? (
+                <p className="mt-1.5 text-sm font-medium leading-6 text-slate-600">
+                  « Le montant et la façon de régler sont fixés par
+                  l’association pour l’année en cours : écrivez-nous, on vous le
+                  dit. »
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1.5 text-lg font-black tracking-[-0.02em] text-brand-950">
+                    {(cotisationCents / 100).toLocaleString("fr-FR", {
+                      style: "currency",
+                      currency: "EUR",
+                    })}{" "}
+                    {MEMBERSHIP_FEE_BASIS_SUFFIX[baseCotisation]}
+                  </p>
+                  {noteCotisation.trim() && (
+                    <p className="mt-1 text-sm font-medium leading-6 text-slate-600">
+                      {noteCotisation.trim()}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           </section>
 

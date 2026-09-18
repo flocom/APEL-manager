@@ -162,6 +162,13 @@
       "when": 1789646856683,
       "tag": "0022_ag_minutes_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789718093996,
+      "tag": "0023_cotisation_affichee",
+      "breakpoints": true
     }
   ]
 }
