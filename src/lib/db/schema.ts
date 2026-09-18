@@ -810,6 +810,59 @@ export const associationSettings = pgTable(
   }),
 );
 
+/**
+ * Ce qu'une écriture comptable couvre en cotisations, adhérent par adhérent.
+ *
+ * Une table de liaison, et non une colonne `member_id` sur l'écriture, parce
+ * qu'un encaissement groupé est le cas courant, pas l'exception : HelloAsso
+ * reverse en un seul virement les adhésions de plusieurs familles, et une
+ * remise de chèques en banque fait de même. Une écriture couvre donc N
+ * adhérents, chacun pour sa part.
+ *
+ * L'affectation reste modifiable sur une écriture validée, alors que
+ * l'écriture elle-même est immuable — et ce n'est pas une entorse : rattacher
+ * une adhésion ne change ni le montant, ni la date, ni le compte. C'est la
+ * marque de rapprochement qu'on porte en face d'une ligne de relevé, une fois
+ * qu'on a compris à quoi elle correspond.
+ *
+ * La somme des parts ne dépasse jamais le montant de l'écriture ; l'application
+ * le vérifie. Elle peut en revanche rester en deçà : un virement HelloAsso
+ * peut porter des cotisations, des billets de kermesse et un don dans la même
+ * ligne, et seule la part « cotisations » se rattache ici.
+ */
+export const membershipPayments = pgTable(
+  "membership_payments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => accountingEntries.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => associationMembers.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    /** Un adhérent n'apparaît qu'une fois par écriture : sa part y est unique. */
+    uniqueParEcriture: uniqueIndex("membership_payments_entry_member_unique").on(
+      t.entryId,
+      t.memberId,
+    ),
+    entryIdx: index("membership_payments_entry_idx").on(t.entryId),
+    memberIdx: index("membership_payments_member_idx").on(t.memberId),
+    amountCheck: check(
+      "membership_payments_amount_cents_check",
+      sql`${t.amountCents} > 0`,
+    ),
+  }),
+);
+
 /** Configuration unique du fournisseur de courrier sortant. */
 export const outboundMailSettings = pgTable(
   "outbound_mail_settings",

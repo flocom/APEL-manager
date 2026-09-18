@@ -26,6 +26,12 @@ import {
   updateFinancialAccount,
 } from "@/lib/services/accounting";
 import {
+  anneesScolaires,
+  etatDe,
+  rapprochement,
+  totaux,
+} from "@/lib/services/cotisations";
+import {
   archiveAssociationMember,
   createAssociationMember,
   listAssociationMembers,
@@ -237,6 +243,49 @@ export function registerAssociationTools(
         mcpAuditActor(principal),
       );
       return toolResult({ member, archived: true }, "Adhérent archivé.");
+    },
+  );
+
+  server.registerTool(
+    "get_membership_reconciliation",
+    {
+      title: "Rapprochement des cotisations",
+      description:
+        "Compare, pour une année scolaire, ce que les fiches d’adhérents disent encaissé et ce qui figure réellement dans les écritures comptables. Signale les adhésions réglées mais absentes des comptes.",
+      inputSchema: z.object({
+        schoolYear: z
+          .string()
+          .regex(/^\d{4}-\d{4}$/)
+          .optional()
+          .describe(
+            "Année scolaire, par exemple 2026-2027. Par défaut, la plus récente enregistrée.",
+          ),
+      }),
+      annotations: readOnlyTool,
+    },
+    async ({ schoolYear }) => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      const annees = await anneesScolaires();
+      const annee = schoolYear ?? annees[0];
+      if (!annee) {
+        return toolResult(
+          { annees, schoolYear: null, totaux: null, lignes: [] },
+          "Aucune adhésion enregistrée.",
+        );
+      }
+      const lignes = await rapprochement(annee);
+      return toolResult({
+        schoolYear: annee,
+        annees,
+        totaux: totaux(lignes),
+        lignes: lignes.map((ligne) => ({
+          nom: ligne.nom,
+          duCents: ligne.duCents,
+          regleLe: ligne.regleLe,
+          comptabiliseCents: ligne.comptabiliseCents,
+          etat: etatDe(ligne),
+        })),
+      });
     },
   );
 
