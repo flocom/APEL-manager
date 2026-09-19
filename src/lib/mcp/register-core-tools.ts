@@ -614,7 +614,22 @@ export function registerCoreTools(
       const slots = await db.query.volunteerSlots.findMany({
         where: eq(volunteerSlots.eventId, eventId),
         orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
-        with: { signups: true },
+        // Colonnes énumérées, comme le fait getEventWithDetails : `signups:
+        // true` renvoyait aussi `cancelToken`, qui n'est pas une donnée mais
+        // un pouvoir — qui le détient peut désinscrire la personne sans être
+        // authentifié. Un outil qui sert à lire des coordonnées n'a aucune
+        // raison de le distribuer.
+        with: {
+          signups: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              createdAt: true,
+            },
+          },
+        },
       });
       return toolResult({ eventId, slots });
     },

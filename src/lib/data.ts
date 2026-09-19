@@ -116,7 +116,13 @@ export const getEventByShareToken = cache(async (token: string) => {
         // les créneaux sans horaire ferment la liste, dans leur ordre de
         // création.
         orderBy: [asc(volunteerSlots.startAt), asc(volunteerSlots.createdAt)],
-        with: { signups: true },
+        // Seul le NOMBRE d'inscrits sert ici, pour afficher les places
+        // restantes. On ne charge donc que l'identifiant : cette requête
+        // alimente une page publique, et charger la ligne entière — nom,
+        // e-mail, téléphone, jeton d'annulation — laissait la fuite à un
+        // `.map()` distrait de distance. La colonne blanche coûte moins cher
+        // qu'une règle écrite en commentaire.
+        with: { signups: { columns: { id: true } } },
       },
     },
   });
