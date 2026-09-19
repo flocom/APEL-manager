@@ -208,7 +208,7 @@ export default async function EventDetailPage({
               >
                 {EVENT_STATUS_LABELS[event.status]}
               </Badge>
-              <span className="text-xs font-semibold text-slate-400">
+              <span className="text-xs font-semibold text-slate-600">
                 Fiche événement
               </span>
             </div>
@@ -284,7 +284,7 @@ export default async function EventDetailPage({
                   </span>
                 </p>
                 {gens.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-400">Personne pour l’instant.</p>
+                  <p className="mt-3 text-sm text-slate-600">Personne pour l’instant.</p>
                 ) : (
                   <ul className="mt-3 space-y-2">
                     {gens.map((r) => {
@@ -307,7 +307,7 @@ export default async function EventDetailPage({
                           {telephone && (
                             <a
                               href={`tel:${telephone.replace(/[^+0-9]/g, "")}`}
-                              className="mt-0.5 block rounded text-xs font-semibold text-slate-500 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                              className="mt-0.5 inline-flex min-h-11 items-center rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                             >
                               {telephone}
                             </a>

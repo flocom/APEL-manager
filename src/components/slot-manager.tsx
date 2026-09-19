@@ -160,7 +160,7 @@ export function SlotManager({
           className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
         >
           {error && (
-            <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="rounded bg-coral-50 px-3 py-2 text-sm font-semibold text-coral-800">
               {error}
             </p>
           )}
@@ -215,7 +215,7 @@ export function SlotManager({
       )}
 
       {slots.length === 0 ? (
-        <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-500">
+        <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">
           Aucun créneau de bénévolat. Ajoutez-en pour recueillir les inscriptions
           via le lien public.
         </p>
@@ -232,15 +232,18 @@ export function SlotManager({
                 key={slot.id}
                 className="rounded-xl border border-slate-200 bg-white p-4"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                {/* Enroulée, sinon la barre d'actions déborde de 115 px à
+                    320 px de large : elle était en shrink-0, donc elle refusait
+                    de passer à la ligne. */}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="font-medium text-slate-900">{slot.title}</p>
                     {slot.startAt && (
                       <p className="text-xs text-slate-500">
                         {formatDateTime(slot.startAt)}
                         {slot.endAt && (
                           <>
-                            <span className="mx-1 text-slate-400">→</span>
+                            <span className="mx-1 text-slate-500">→</span>
                             {formatDateTime(slot.endAt)}
                           </>
                         )}
@@ -253,7 +256,7 @@ export function SlotManager({
                       />
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge color={remaining > 0 ? "amber" : "green"}>
                       {slot.signups.length} inscrit
                       {slot.signups.length > 1 ? "s" : ""} sur {slot.capacity}
@@ -267,7 +270,7 @@ export function SlotManager({
                               editingId === slot.id ? null : slot.id,
                             )
                           }
-                          className="text-xs font-medium text-slate-400 hover:text-brand-700"
+                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           {editingId === slot.id ? "Fermer" : "Modifier"}
                         </button>
@@ -275,14 +278,14 @@ export function SlotManager({
                           type="button"
                           onClick={() => duplicateSlot(slot)}
                           disabled={busySlotId === slot.id}
-                          className="text-xs font-medium text-slate-400 hover:text-brand-700 disabled:opacity-50"
+                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
                         >
                           {busySlotId === slot.id ? "Copie…" : "Dupliquer"}
                         </button>
                         <button
                           type="button"
                           onClick={() => deleteSlot(slot.id)}
-                          className="text-xs font-medium text-slate-400 hover:text-red-600"
+                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           Supprimer
                         </button>
@@ -386,26 +389,51 @@ export function SlotManager({
                   />
                 </div>
 
+                {/* Les inscrits sont affichés, pas repliés.
+                    Ils l'étaient derrière un <details> fermé, et leurs
+                    coordonnées étaient écrites en slate-400 sur slate-50 —
+                    2,45:1, soit la moitié du minimum lisible. Qui cherchait un
+                    numéro de téléphone concluait qu'il n'avait pas été
+                    enregistré, alors qu'il l'était depuis le début.
+                    Le téléphone et l'adresse sont cliquables, comme du côté
+                    des réunions : on consulte cette liste la veille, depuis un
+                    téléphone, pour joindre quelqu'un. */}
                 {slot.signups.length > 0 && (
-                  <details className="mt-3 border-t border-slate-100 pt-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-brand-700 hover:text-brand-900">
-                      Voir les {slot.signups.length} personne
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">
+                      {slot.signups.length} personne
                       {slot.signups.length > 1 ? "s" : ""} inscrite
                       {slot.signups.length > 1 ? "s" : ""}
-                    </summary>
-                    <ul className="mt-3 space-y-2">
+                    </p>
+                    <ul className="mt-2 space-y-2">
                       {slot.signups.map((signup) => (
                         <li
                           key={signup.id}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                          className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm"
                         >
-                          <span className="min-w-0 text-slate-700">
-                            <span className="font-medium">{signup.name}</span>
-                            {(signup.email || signup.phone) && (
-                              <span className="block break-all text-xs text-slate-400">
-                                {[signup.email, signup.phone]
-                                  .filter(Boolean)
-                                  .join(" · ")}
+                          <span className="min-w-0">
+                            <span className="block font-bold text-slate-800">
+                              {signup.name}
+                            </span>
+                            {signup.phone && (
+                              <a
+                                href={`tel:${signup.phone.replace(/[^+0-9]/g, "")}`}
+                                className="mt-0.5 flex min-h-11 w-fit items-center rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                              >
+                                {signup.phone}
+                              </a>
+                            )}
+                            {signup.email && (
+                              <a
+                                href={`mailto:${signup.email}`}
+                                className="mt-0.5 flex min-h-11 w-fit max-w-full items-center break-all rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                              >
+                                {signup.email}
+                              </a>
+                            )}
+                            {!signup.phone && !signup.email && (
+                              <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                                Aucune coordonnée laissée
                               </span>
                             )}
                           </span>
@@ -413,15 +441,16 @@ export function SlotManager({
                             <button
                               type="button"
                               onClick={() => removeSignup(signup.id)}
-                              className="shrink-0 text-xs text-slate-400 hover:text-red-600"
+                              className="shrink-0 rounded px-1 text-xs font-semibold text-slate-500 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                             >
                               Retirer
+                              <span className="sr-only"> {signup.name}</span>
                             </button>
                           )}
                         </li>
                       ))}
                     </ul>
-                  </details>
+                  </div>
                 )}
               </li>
             );
