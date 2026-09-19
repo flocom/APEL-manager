@@ -1,6 +1,6 @@
 "use client";
 
-import { Mail, Phone } from "lucide-react";
+import { Mail, Phone, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -485,9 +485,23 @@ export function SlotManager({
                                 </span>
                               </a>
                             )}
-                            {!signup.phone && !signup.email && (
-                              <span className="mt-0.5 block text-xs font-medium text-slate-600">
-                                Aucune coordonnée laissée
+                            {/* L'e-mail est désormais exigé à l'inscription. Les
+                                inscriptions antérieures à cette règle n'en ont
+                                pas toujours, et celles-là ne reçoivent ni
+                                rappel, ni lien de désinscription : le dire ici
+                                transforme une panne silencieuse en coup de
+                                fil, puisque le numéro est juste au-dessus. */}
+                            {!signup.email && (
+                              <span className="mt-0.5 flex items-start gap-1.5 text-xs font-semibold text-sand-800">
+                                <TriangleAlert
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {signup.phone
+                                    ? "Sans e-mail : ne recevra ni rappel, ni lien de désinscription. Prévenez-la par téléphone."
+                                    : "Aucune coordonnée laissée : ni rappel, ni moyen de la joindre."}
+                                </span>
                               </span>
                             )}
                           </div>

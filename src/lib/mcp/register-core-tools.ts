@@ -1224,12 +1224,21 @@ export function registerCoreTools(
     {
       title: "Inscrire un bénévole",
       description:
-        "Inscrit manuellement un bénévole sur un créneau, par exemple après une réponse reçue de vive voix. Refuse un créneau complet ou un doublon d’e-mail, et envoie la confirmation si une adresse est fournie.",
+        "Inscrit manuellement un bénévole sur un créneau, par exemple après une réponse reçue de vive voix. E-mail et téléphone sont tous deux obligatoires, comme sur le formulaire public. Refuse un créneau complet ou un doublon d’e-mail, et envoie la confirmation.",
       inputSchema: z.object({
         slotId: z.string().uuid(),
         name: z.string().min(2).max(120),
-        email: z.string().email().nullable().optional(),
-        phone: z.string().max(40).nullable().optional(),
+        // Exigés, comme sur le formulaire public : une inscription créée ici
+        // sans e-mail donnerait à quelqu'un un engagement dont il ne pourrait
+        // pas se retirer, et que ni le rappel ni la diffusion n'atteindraient.
+        email: z
+          .string()
+          .email()
+          .describe("Obligatoire : porte la confirmation, le rappel et le lien de désinscription."),
+        phone: z
+          .string()
+          .max(40)
+          .describe("Obligatoire : pour joindre la personne le jour même."),
         notify: z
           .boolean()
           .default(true)
@@ -1244,11 +1253,8 @@ export function registerCoreTools(
         with: { event: true },
       });
       if (!slot) throw new Error("Créneau introuvable.");
-      if (!email && !phone) {
-        throw new Error("Indiquez au moins un e-mail ou un téléphone.");
-      }
 
-      const normalizedEmail = emptyToNull(email ?? null)?.toLowerCase() ?? null;
+      const normalizedEmail = emptyToNull(email)?.toLowerCase() ?? null;
       // Même longueur que l'inscription publique : ce jeton protège le lien de
       // désinscription envoyé au bénévole.
       const cancelToken = generateToken(18);
@@ -1263,7 +1269,7 @@ export function registerCoreTools(
             ${slot.id}::uuid,
             ${name},
             ${normalizedEmail},
-            ${emptyToNull(phone ?? null)},
+            ${emptyToNull(phone)},
             ${cancelToken}
           WHERE (
             SELECT count(*) FROM volunteer_signups WHERE slot_id = ${slot.id}::uuid

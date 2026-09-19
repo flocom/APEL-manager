@@ -30,19 +30,13 @@ import { publicMeetingAttendanceSchema } from "@/lib/validation";
  * Un membre connecté qui répond depuis cette page est reconnu : sa réponse est
  * rattachée à son compte plutôt qu'ajoutée en double sous son nom saisi.
  */
-const schemaPublic = publicMeetingAttendanceSchema
-  .extend({
-    token: z.string().min(8, "Lien invalide"),
-    // Pot de miel anti-robot : champ caché qui doit rester vide.
-    website: z.string().optional(),
-  })
-  .refine(
-    (d) => (d.email && d.email.length > 0) || (d.phone && d.phone.trim().length > 0),
-    {
-      message: "Indiquez au moins un e-mail ou un téléphone.",
-      path: ["email"],
-    },
-  );
+// Les deux coordonnées sont exigées par `publicMeetingAttendanceSchema` :
+// plus de règle « au moins l'un des deux » à poser ici.
+const schemaPublic = publicMeetingAttendanceSchema.extend({
+  token: z.string().min(8, "Lien invalide"),
+  // Pot de miel anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
+});
 
 export async function POST(req: Request) {
   try {

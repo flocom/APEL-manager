@@ -25,12 +25,18 @@ export function BroadcastForm({
     setLoading(true);
     const form = new FormData(e.currentTarget);
     try {
-      const res = await api<{ sent: number }>(endpoint, {
+      const res = await api<{ sent: number; sansEmail?: number }>(endpoint, {
         body: { subject: form.get("subject"), message: form.get("message") },
       });
+      // Qui n'a pas été joint compte autant que qui l'a été : sans cette
+      // mention, on croit avoir écrit à tout le monde.
+      const oublies = res.sansEmail ?? 0;
       toast(
         res.sent > 0
-          ? `Message envoyé à ${res.sent} destinataire(s).`
+          ? `Message envoyé à ${res.sent} destinataire(s).` +
+              (oublies > 0
+                ? ` ${oublies} inscrit(s) sans adresse e-mail n’ont pas pu être joints : appelez-les.`
+                : "")
           : "Aucun e-mail n'a pu être envoyé (vérifiez la configuration e-mail).",
         res.sent > 0 ? "success" : "error",
       );

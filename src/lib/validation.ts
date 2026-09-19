@@ -135,17 +135,51 @@ export const slotSchema = z.object({
   endAt: localDateTime.nullable().optional(),
 });
 
+/**
+ * Les deux coordonnées d'une personne qui s'engage sur un rendez-vous.
+ *
+ * Les deux sont exigées, et chacune pour une raison distincte. L'e-mail porte
+ * la confirmation, le rappel, et surtout le lien de désinscription : sans lui,
+ * la personne n'a aucun moyen de se retirer seule, alors que la page
+ * Confidentialité le lui promet. Le téléphone sert le jour même, quand il faut
+ * joindre quelqu'un qui ne lira pas ses courriels avant le lendemain.
+ *
+ * Auparavant l'un des deux suffisait, et cela fabriquait deux silences : un
+ * inscrit sans e-mail n'était jamais rappelé ni joignable par la diffusion, et
+ * il ne pouvait pas se désinscrire.
+ */
+export const emailRequis = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1, "E-mail requis")
+  .email("Adresse e-mail invalide")
+  .max(200);
+
+/**
+ * On compte les chiffres plutôt que d'imposer un format : 06 12 34 56 78,
+ * 0612345678 et +33 6 12 34 56 78 sont le même numéro, et refuser l'un des
+ * trois ferait abandonner le formulaire. La fourchette 9–15 couvre le plan de
+ * numérotation français comme la norme E.164.
+ */
+export const telephoneRequis = z
+  .string()
+  .trim()
+  .min(1, "Téléphone requis")
+  .max(40)
+  .refine(
+    (v) => {
+      const chiffres = (v.match(/\d/g) ?? []).length;
+      return chiffres >= 9 && chiffres <= 15;
+    },
+    "Numéro de téléphone incomplet",
+  );
+
 export const signupSchema = z.object({
   slotId: z.string().uuid("Créneau invalide"),
   name: z.string().trim().min(2, "Nom requis").max(120),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email("Adresse e-mail invalide")
-    .optional()
-    .or(z.literal("")),
-  phone: z.string().trim().max(40).optional(),
+  email: emailRequis,
+  phone: telephoneRequis,
   consent: z.boolean().refine((v) => v === true, {
     message: "Vous devez accepter la politique de confidentialité.",
   }),
@@ -249,14 +283,10 @@ export const meetingAttendanceSchema = z.object({
 export const publicMeetingAttendanceSchema = z.object({
   status: z.enum(["yes", "maybe", "no"]),
   name: z.string().trim().min(2, "Nom requis").max(120),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email("Adresse e-mail invalide")
-    .optional()
-    .or(z.literal("")),
-  phone: z.string().trim().max(40).optional(),
+  // Même exigence que pour une inscription bénévole, et pour les mêmes
+  // raisons : une présence annoncée porte aussi un lien de retrait.
+  email: emailRequis,
+  phone: telephoneRequis,
   consent: z.boolean().refine((v) => v === true, {
     message: "Vous devez accepter la politique de confidentialité.",
   }),
