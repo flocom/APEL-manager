@@ -18,6 +18,7 @@ import {
   MapPin,
   Paperclip,
   Pencil,
+  Phone,
   Ticket,
   UserRoundPlus,
   UsersRound,
@@ -297,19 +298,34 @@ export default async function EventDetailPage({
                               l'annuaire des membres, et rappelle que la
                               réunion est ouverte. */}
                           {!r.userId && (
-                            <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                            <span className="ml-1.5 rounded bg-slate-200 px-1.5 py-0.5 align-middle text-[11px] font-bold uppercase tracking-[0.08em] text-slate-600">
                               invité
                             </span>
                           )}
                           {/* Cliquable : celui qui consulte cette liste pour
                               relancer quelqu'un est le plus souvent sur son
-                              téléphone, la veille de la réunion. */}
+                              téléphone, la veille de la réunion.
+                              Même écriture que les inscrits d'un événement —
+                              icône, taille et couleur : les deux écrans
+                              montrent la même chose, ils doivent la montrer de
+                              la même façon. */}
                           {telephone && (
                             <a
                               href={`tel:${telephone.replace(/[^+0-9]/g, "")}`}
-                              className="mt-0.5 inline-flex min-h-11 items-center rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                              className="mt-0.5 flex min-h-11 w-fit max-w-full items-center gap-1.5 rounded text-sm font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                             >
-                              {telephone}
+                              <Phone
+                                className="h-3.5 w-3.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              {/* Préfixe lu, pas aria-label : le numéro doit
+                                  rester dans le nom accessible du lien. */}
+                              <span className="sr-only">
+                                Appeler {nomPresent(r)} au{" "}
+                              </span>
+                              <span className="[overflow-wrap:anywhere]">
+                                {telephone}
+                              </span>
                             </a>
                           )}
                         </li>

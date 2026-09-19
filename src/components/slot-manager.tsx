@@ -1,5 +1,6 @@
 "use client";
 
+import { Mail, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -128,14 +129,27 @@ export function SlotManager({
 
   async function deleteSlot(id: string) {
     if (!confirm("Supprimer ce créneau et ses inscriptions ?")) return;
-    await api(`/api/slots/${id}`, { method: "DELETE" });
-    router.refresh();
+    setBusySlotId(id);
+    setError(null);
+    try {
+      await api(`/api/slots/${id}`, { method: "DELETE" });
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusySlotId(null);
+    }
   }
 
   async function removeSignup(id: string) {
     if (!confirm("Retirer cette inscription ?")) return;
-    await api(`/api/signups/${id}`, { method: "DELETE" });
-    router.refresh();
+    setError(null);
+    try {
+      await api(`/api/signups/${id}`, { method: "DELETE" });
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
   return (
@@ -154,16 +168,21 @@ export function SlotManager({
         )}
       </div>
 
+      {/* Hors du formulaire d'ajout : il n'était rendu que si celui-ci était
+          ouvert, alors que la duplication, l'enregistrement, la suppression
+          d'un créneau et le retrait d'un inscrit alimentent le même `error`.
+          Une duplication qui échouait ne disait donc rien du tout. */}
+      {error && (
+        <p className="rounded bg-coral-50 px-3 py-2 text-sm font-semibold text-coral-800">
+          {error}
+        </p>
+      )}
+
       {canManage && showAdd && (
         <form
           onSubmit={addSlot}
           className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
         >
-          {error && (
-            <p className="rounded bg-coral-50 px-3 py-2 text-sm font-semibold text-coral-800">
-              {error}
-            </p>
-          )}
           <div>
             <Label htmlFor="slot-title">Intitulé du créneau / mission</Label>
             <Input
@@ -270,7 +289,7 @@ export function SlotManager({
                               editingId === slot.id ? null : slot.id,
                             )
                           }
-                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                          className="min-h-11 rounded px-2 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           {editingId === slot.id ? "Fermer" : "Modifier"}
                         </button>
@@ -278,14 +297,14 @@ export function SlotManager({
                           type="button"
                           onClick={() => duplicateSlot(slot)}
                           disabled={busySlotId === slot.id}
-                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+                          className="min-h-11 rounded px-2 text-xs font-semibold text-slate-600 transition-colors hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
                         >
                           {busySlotId === slot.id ? "Copie…" : "Dupliquer"}
                         </button>
                         <button
                           type="button"
                           onClick={() => deleteSlot(slot.id)}
-                          className="min-h-8 rounded px-1 text-xs font-semibold text-slate-600 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                          className="min-h-11 rounded px-2 text-xs font-semibold text-slate-600 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                         >
                           Supprimer
                         </button>
@@ -400,48 +419,83 @@ export function SlotManager({
                     téléphone, pour joindre quelqu'un. */}
                 {slot.signups.length > 0 && (
                   <div className="mt-3 border-t border-slate-100 pt-3">
-                    <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">
+                    <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-600">
                       {slot.signups.length} personne
                       {slot.signups.length > 1 ? "s" : ""} inscrite
                       {slot.signups.length > 1 ? "s" : ""}
                     </p>
-                    <ul className="mt-2 space-y-2">
+                    {/* Déplier la liste coûte de la hauteur : douze inscrits
+                        font environ 1 300 px sur une colonne. On la reprend en
+                        largeur — deux colonnes dès 640 px, trois dès 1280 px —
+                        plutôt qu'en repliant à nouveau ce qu'on vient de
+                        montrer. */}
+                    <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {slot.signups.map((signup) => (
                         <li
                           key={signup.id}
-                          className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm"
+                          className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2.5"
                         >
-                          <span className="min-w-0">
-                            <span className="block font-bold text-slate-800">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-slate-800 [overflow-wrap:anywhere]">
                               {signup.name}
-                            </span>
+                            </p>
+                            {/* Le téléphone d'abord, et plus gros que
+                                l'adresse : c'est la coordonnée qu'on vient
+                                chercher ici, la veille, debout, pour relancer
+                                quelqu'un. Les deux étaient jusqu'ici dans la
+                                même nuance et la même taille, donc rien ne
+                                distinguait la donnée demandée. */}
                             {signup.phone && (
                               <a
                                 href={`tel:${signup.phone.replace(/[^+0-9]/g, "")}`}
-                                className="mt-0.5 flex min-h-11 w-fit items-center rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                                className="mt-0.5 flex min-h-11 w-fit max-w-full items-center gap-1.5 rounded text-sm font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                               >
-                                {signup.phone}
+                                <Phone
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                {/* Le nom est dans le <li>, pas dans le lien :
+                                    un lecteur d'écran annonçait « lien,
+                                    +33634580545 » sans dire à qui. On le
+                                    préfixe plutôt qu'on ne pose un aria-label,
+                                    qui EFFACERAIT le numéro du nom accessible
+                                    et casserait la commande vocale. */}
+                                <span className="sr-only">
+                                  Appeler {signup.name} au{" "}
+                                </span>
+                                <span className="[overflow-wrap:anywhere]">
+                                  {signup.phone}
+                                </span>
                               </a>
                             )}
                             {signup.email && (
                               <a
                                 href={`mailto:${signup.email}`}
-                                className="mt-0.5 flex min-h-11 w-fit max-w-full items-center break-all rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                                className="mt-0.5 flex min-h-11 w-fit max-w-full items-center gap-1.5 rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                               >
-                                {signup.email}
+                                <Mail
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span className="sr-only">
+                                  Écrire à {signup.name} à{" "}
+                                </span>
+                                <span className="[overflow-wrap:anywhere]">
+                                  {signup.email}
+                                </span>
                               </a>
                             )}
                             {!signup.phone && !signup.email && (
-                              <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                              <span className="mt-0.5 block text-xs font-medium text-slate-600">
                                 Aucune coordonnée laissée
                               </span>
                             )}
-                          </span>
+                          </div>
                           {canManage && (
                             <button
                               type="button"
                               onClick={() => removeSignup(signup.id)}
-                              className="shrink-0 rounded px-1 text-xs font-semibold text-slate-500 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded px-2 text-xs font-semibold text-slate-600 transition-colors hover:text-coral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                             >
                               Retirer
                               <span className="sr-only"> {signup.name}</span>
