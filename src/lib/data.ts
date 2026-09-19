@@ -32,7 +32,15 @@ export async function getUpcomingPublishedEvents() {
     ),
     orderBy: [asc(events.startAt)],
     with: {
-      volunteerSlots: { with: { signups: true } },
+      // Seul le NOMBRE d'inscrits sert aux deux pages publiques qui appellent
+      // cette fonction — l'accueil et /rejoindre n'en lisent que `.length`,
+      // pour des places restantes. On ne charge donc que l'identifiant :
+      // charger la ligne entière — nom, e-mail, téléphone, jeton d'annulation
+      // — laissait la fuite à un `.map()` distrait de distance, sur une route
+      // ouverte. Même resserrement que getEventByShareToken ci-dessous : la
+      // règle de confidentialité tient mieux dans la requête que dans un
+      // commentaire.
+      volunteerSlots: { with: { signups: { columns: { id: true } } } },
     },
   });
 }
