@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { and, inArray, isNull, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { formatDateTime } from "@/lib/dates";
@@ -156,25 +156,28 @@ export async function GET(req: Request) {
       association.volunteerReminderWindowDays * 24 * 60 * 60 * 1000,
   );
   // Sans URL publique configurée, les liens des e-mails seraient cassés : on saute.
+  // On charge aussi les inscrits SANS e-mail, uniquement pour les compter :
+  // l'adresse est désormais exigée à l'inscription, mais les inscriptions
+  // antérieures à cette règle n'en ont pas toujours. Sans ce décompte, le
+  // rappel les sautait en silence, et le réglage « prévenir les inscrits »
+  // promettait ce qu'il ne tenait pas.
   const signups = appUrl
     ? await db.query.volunteerSignups.findMany({
-        where: and(
-          isNull(volunteerSignups.remindedAt),
-          isNotNull(volunteerSignups.email),
-        ),
+        where: isNull(volunteerSignups.remindedAt),
         with: { slot: { with: { event: true } } },
       })
     : [];
 
-  const eligibleSignups = signups.filter((s) => {
+  const dansLaFenetre = signups.filter((s) => {
     const ev = s.slot.event;
     return (
       ev.status === "published" &&
       ev.startAt > now &&
-      ev.startAt <= volunteerHorizon &&
-      !!s.email
+      ev.startAt <= volunteerHorizon
     );
   });
+  const eligibleSignups = dansLaFenetre.filter((s) => !!s.email);
+  const volunteersSansEmail = dansLaFenetre.length - eligibleSignups.length;
 
   // Envois en parallèle puis un seul UPDATE groupé (au lieu de N en série).
   const remindedIds = (
@@ -205,6 +208,11 @@ export async function GET(req: Request) {
       .where(inArray(volunteerSignups.id, remindedIds));
   }
   const volunteerReminders = remindedIds.length;
+  if (volunteersSansEmail > 0) {
+    console.warn(
+      `[cron] ${volunteersSansEmail} bénévole(s) à rappeler n'ont pas d'adresse e-mail : aucun rappel ne peut leur être envoyé.`,
+    );
+  }
 
   let orphanedUploadsRemoved = 0;
   try {
@@ -227,6 +235,8 @@ export async function GET(req: Request) {
     skipped,
     failed: results.length - succeeded.length,
     volunteerReminders,
+    /** Inscrits que le rappel ne peut pas atteindre, faute d'adresse. */
+    volunteersSansEmail,
     orphanedUploadsRemoved,
   });
 }

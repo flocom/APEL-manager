@@ -197,6 +197,7 @@ export function MeetingAttendanceForm({
             id="email"
             name="email"
             type="email"
+            required
             inputMode="email"
             autoComplete="email"
             defaultValue={defaultEmail}
@@ -208,14 +209,19 @@ export function MeetingAttendanceForm({
             id="phone"
             name="phone"
             type="tel"
+            required
             inputMode="tel"
             autoComplete="tel"
+            pattern="[0-9+().\\s-]{9,40}"
           />
         </div>
       </div>
-      <p className="text-xs text-slate-500">
-        Indiquez au moins un e-mail ou un téléphone. L’e-mail permet de recevoir
-        la confirmation et d’être prévenu si la réunion est déplacée.
+      {/* Même raison que pour une inscription bénévole : le lien de retrait ne
+          voyage que par e-mail. */}
+      <p className="text-xs leading-5 text-slate-600">
+        Les deux sont nécessaires. L’e-mail vous apporte la confirmation, vous
+        prévient si la réunion est déplacée, et porte le lien qui retire votre
+        réponse. Le téléphone sert à vous joindre le jour même.
       </p>
 
       {/* Pot de miel anti-robot : invisible pour les humains. */}

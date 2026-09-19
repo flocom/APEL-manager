@@ -43,10 +43,13 @@ export default async function PrivacyPage() {
       title: "Données collectées",
       content: (
         <>
-          Lors d&apos;une inscription comme bénévole : votre nom, et
-          l&apos;e-mail et/ou le téléphone que vous indiquez. Pour les membres
-          connectés : nom, e-mail et, si vous le renseignez, votre identifiant
-          Telegram.
+          Lors d&apos;une inscription comme bénévole, ou d&apos;une réponse à
+          une réunion : votre nom, votre e-mail et votre téléphone. Les deux
+          coordonnées sont demandées parce qu&apos;elles ne servent pas à la
+          même chose — l&apos;e-mail porte la confirmation, le rappel et le lien
+          qui vous permet de vous retirer ; le téléphone sert à vous joindre le
+          jour même. Pour les membres connectés : nom, e-mail et, si vous le
+          renseignez, votre identifiant Telegram.
         </>
       ),
     },
@@ -67,7 +70,12 @@ export default async function PrivacyPage() {
         <>
           Les inscriptions bénévoles sont conservées le temps de
           l&apos;organisation de l&apos;événement puis supprimées. Vous pouvez
-          vous désinscrire à tout moment via le lien reçu par e-mail.
+          vous désinscrire à tout moment via le lien reçu par e-mail. Si vous
+          vous êtes inscrit avant que l&apos;e-mail ne soit demandé et que vous
+          n&apos;avez reçu aucun message, écrivez ou téléphonez à
+          l&apos;association
+          {settings.contactEmail ? ` à ${settings.contactEmail}` : ""} : nous
+          vous retirons de la liste.
         </>
       ),
     },

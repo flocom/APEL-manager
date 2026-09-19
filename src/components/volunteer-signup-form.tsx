@@ -169,6 +169,7 @@ export function VolunteerSignupForm({
             id="email"
             name="email"
             type="email"
+            required
             inputMode="email"
             autoComplete="email"
             defaultValue={defaultEmail}
@@ -180,14 +181,20 @@ export function VolunteerSignupForm({
             id="phone"
             name="phone"
             type="tel"
+            required
             inputMode="tel"
             autoComplete="tel"
+            pattern="[0-9+().\\s-]{9,40}"
           />
         </div>
       </div>
-      <p className="text-xs text-slate-500">
-        Indiquez au moins un e-mail ou un téléphone. L’e-mail permet de recevoir
-        une confirmation et un rappel.
+      {/* Dire à quoi sert chaque champ, plutôt que d'exiger sans expliquer :
+          le lien de désinscription ne voyage que par e-mail, et le jour même
+          on téléphone. */}
+      <p className="text-xs leading-5 text-slate-600">
+        Les deux sont nécessaires. L’e-mail vous apporte la confirmation, un
+        rappel avant le jour J, et le lien qui vous permet de vous désinscrire
+        quand vous voulez. Le téléphone sert à vous joindre le jour même.
       </p>
 
       {/* Honeypot anti-bot : invisible pour les humains. */}
