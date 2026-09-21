@@ -9,7 +9,10 @@ import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, volunteerSignups } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
-import { volunteerConfirmationEmail } from "@/lib/notifications/emails";
+import {
+  volunteerConfirmationEmail,
+  volunteerSignupNoticeEmail,
+} from "@/lib/notifications/emails";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -111,12 +114,19 @@ export async function POST(req: Request) {
       throw new HttpError(409, "Ce créneau est complet.");
     }
 
-    // Confirmation par e-mail (avec lien de désinscription), si un e-mail est fourni.
+    const [baseUrl, association] = await Promise.all([
+      getBaseUrl(),
+      getAssociationSettings(),
+    ]);
+    const identity = {
+      associationName: association.associationName,
+      schoolName: association.schoolName,
+      rna: association.rna,
+    };
+
+    // Confirmation par e-mail (avec lien de désinscription), si un e-mail est
+    // fourni. Il l'est désormais toujours, mais la garde ne coûte rien.
     if (email) {
-      const [baseUrl, association] = await Promise.all([
-        getBaseUrl(),
-        getAssociationSettings(),
-      ]);
       const mail = volunteerConfirmationEmail({
         name: data.name,
         eventTitle: event.title,
@@ -124,13 +134,51 @@ export async function POST(req: Request) {
         slotTitle: slot.title,
         location: event.location,
         cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-        identity: {
-          associationName: association.associationName,
-          schoolName: association.schoolName,
-          rna: association.rna,
-        },
+        identity,
       });
       await sendEmail({ to: email, ...mail });
+    }
+
+    // Avis au bureau. Envoyé après coup et dans un try/catch : le créneau est
+    // déjà pris, et faire échouer une inscription réussie parce que le serveur
+    // de courrier tousse serait absurde — le bénévole reverrait le formulaire
+    // et croirait devoir recommencer.
+    const destinataire = association.contactEmail?.trim();
+    if (destinataire) {
+      try {
+        const [{ pris }] = await db
+          .select({ pris: sql<number>`count(*)::int` })
+          .from(volunteerSignups)
+          .where(eq(volunteerSignups.slotId, slot.id));
+        // `sendEmail` ne lève pas : il rend `false`. Sans ce contrôle, le
+        // bureau cesserait d'être prévenu sans que rien ne le signale.
+        const parti = await sendEmail({
+          to: destinataire,
+          // Répondre à l'avis écrit au bénévole, pas à la boîte de
+          // l'association.
+          replyTo: email ?? undefined,
+          ...volunteerSignupNoticeEmail({
+            name: data.name,
+            email,
+            phone,
+            eventTitle: event.title,
+            eventDate: formatDateTime(event.startAt),
+            slotTitle: slot.title,
+            location: event.location,
+            restantes: Math.max(0, slot.capacity - Number(pris)),
+            capacite: slot.capacity,
+            eventUrl: `${baseUrl}/dashboard/events/${event.id}?onglet=benevoles`,
+            identity,
+          }),
+        });
+        if (!parti) {
+          console.warn(
+            `[signup] avis au bureau non remis à ${destinataire} pour l'inscription de ${data.name}.`,
+          );
+        }
+      } catch (erreur) {
+        console.error("[signup] avis au bureau non envoyé", erreur);
+      }
     }
 
     return NextResponse.json({ ok: true });

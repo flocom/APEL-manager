@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { toSqlTimestamp } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { events } from "@/lib/db/schema";
+import { events, volunteerSignups, volunteerSlots } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
 
@@ -122,11 +123,49 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+/**
+ * Supprime un événement, et avec lui ses tâches, ses créneaux et les
+ * inscriptions de bénévoles qui en dépendent.
+ *
+ * C'est la seule action de l'application qui détruise en cascade des données
+ * de tiers, et elle ne laissait aucune trace : ni journal, ni distinction entre
+ * « supprimé » et « il n'y avait rien à supprimer » — un identifiant erroné
+ * renvoyait `ok: true`. On compte ce qui part avant de l'effacer, et on
+ * l'écrit au journal d'audit.
+ */
+export async function DELETE(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id } = await params;
+
+    const [evenement] = await db
+      .select({ id: events.id, title: events.title })
+      .from(events)
+      .where(eq(events.id, id))
+      .limit(1);
+    if (!evenement) throw new HttpError(404, "Événement introuvable.");
+
+    // Comptées avant la suppression : après, la cascade les a emportées et le
+    // journal ne saurait plus dire ce qu'on a détruit.
+    const [{ inscriptions }] = await db
+      .select({ inscriptions: sql<number>`count(*)::int` })
+      .from(volunteerSignups)
+      .innerJoin(
+        volunteerSlots,
+        eq(volunteerSignups.slotId, volunteerSlots.id),
+      )
+      .where(eq(volunteerSlots.eventId, id));
+
     await db.delete(events).where(eq(events.id, id));
+
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "event.delete",
+      "event",
+      id,
+      { title: evenement.title, inscriptions: Number(inscriptions) },
+    );
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

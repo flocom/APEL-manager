@@ -20,6 +20,7 @@ import {
   Pencil,
   Phone,
   Ticket,
+  Trash2,
   UserRoundPlus,
   UsersRound,
   WandSparkles,
@@ -484,19 +485,37 @@ export default async function EventDetailPage({
             </div>
           </Card>
 
+          {/* « Options avancées » ne disait pas que la suppression était là, et
+              le volet était replié : on cherchait où supprimer un événement sans
+              trouver. La zone est nommée et visible. Elle reste en bas de la
+              colonne, bordée de corail : on ne tombe pas dessus par hasard,
+              mais on la trouve quand on la cherche. */}
           {canManage && (
-            <details className="rounded-2xl border border-slate-200 bg-white">
-              <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-500 hover:text-slate-800">
-                Options avancées
-              </summary>
-              <div className="border-t border-slate-200 px-5 py-4">
-                <p className="mb-3 text-sm text-slate-500">
-                  La suppression efface aussi les tâches, créneaux et
-                  inscriptions associés.
-                </p>
-                <EventDeleteButton eventId={event.id} />
+            <Card className="!rounded-2xl !border-coral-200 !shadow-none p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-coral-700 text-white">
+                  <Trash2 className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="font-bold text-slate-950">
+                    Supprimer l’événement
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Efface aussi les tâches, les créneaux et les inscriptions
+                    des bénévoles. Personne n’est prévenu.
+                  </p>
+                </div>
               </div>
-            </details>
+              <div className="mt-4">
+                <EventDeleteButton
+                  eventId={event.id}
+                  eventTitle={event.title}
+                  taskCount={event.tasks.length}
+                  slotCount={event.volunteerSlots.length}
+                  signupCount={totalSignups}
+                />
+              </div>
+            </Card>
           )}
         </div>
       )}
