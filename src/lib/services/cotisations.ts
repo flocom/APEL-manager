@@ -79,7 +79,14 @@ export async function anneesScolaires(): Promise<string[]> {
   return lignes.map((l) => l.schoolYear);
 }
 
-export async function rapprochement(schoolYear: string) {
+/**
+ * L'état de chaque adhésion, pour une année scolaire ou pour toutes.
+ *
+ * `null` demande toutes les années : l'écran Adhérents affiche une seule liste
+ * pour toutes les années, chaque fiche portant son propre état comptable, et
+ * ne peut donc pas se limiter à l'une d'elles.
+ */
+export async function rapprochement(schoolYear: string | null) {
   const membres = await db
     .select({
       id: associationMembers.id,
@@ -91,7 +98,11 @@ export async function rapprochement(schoolYear: string) {
       feePaidAt: associationMembers.feePaidAt,
     })
     .from(associationMembers)
-    .where(eq(associationMembers.schoolYear, schoolYear))
+    .where(
+      schoolYear === null
+        ? undefined
+        : eq(associationMembers.schoolYear, schoolYear),
+    )
     .orderBy(asc(associationMembers.lastName), asc(associationMembers.firstName));
 
   if (membres.length === 0) return [] as LigneRapprochement[];

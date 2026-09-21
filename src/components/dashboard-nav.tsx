@@ -5,7 +5,6 @@ import {
   ContactRound,
   FileText,
   LayoutDashboard,
-  HandCoins,
   Landmark,
   ListChecks,
   LogOut,
@@ -56,12 +55,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
         href: "/dashboard/adherents",
         label: "Adhérents",
         icon: ContactRound,
-        minRole: "admin",
-      },
-      {
-        href: "/dashboard/cotisations",
-        label: "Cotisations",
-        icon: HandCoins,
         minRole: "admin",
       },
       {

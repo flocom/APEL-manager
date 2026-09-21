@@ -7,7 +7,6 @@ import {
   HandCoins,
   Link2,
   Loader2,
-  TriangleAlert,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -39,6 +38,7 @@ import { cn } from "@/lib/utils";
 export interface LigneRapprochementView {
   memberId: string;
   nom: string;
+  schoolYear: string;
   statut: "active" | "pending" | "inactive";
   duCents: number;
   regleLe: string | null;
@@ -56,7 +56,8 @@ export interface EcritureRecetteView {
   affecteCents: number;
 }
 
-const ETATS: Record<
+/** Le vocabulaire des états, partagé avec le tableau des adhérents. */
+export const ETATS: Record<
   LigneRapprochementView["etat"],
   { texte: string; classe: string }
 > = {
@@ -94,26 +95,16 @@ function aujourdhui(): string {
 }
 
 export function CotisationsRapprochement({
-  annees,
   anneeCourante,
   lignes,
-  totaux,
   comptes,
   categoriesRecette,
   ecrituresRecette,
 }: {
-  annees: string[];
+  /** L'année que les deux gestes visent, choisie dans la liste des adhérents. */
   anneeCourante: string;
+  /** Les adhésions de CETTE année : c'est sur elles qu'on pointe. */
   lignes: LigneRapprochementView[];
-  totaux: {
-    attendu: number;
-    encaisse: number;
-    comptabilise: number;
-    aRattraperCents: number;
-    aRattraperCount: number;
-    ecartCount: number;
-    nonPointeesCount: number;
-  };
   comptes: { id: string; name: string }[];
   categoriesRecette: { id: string; name: string }[];
   ecrituresRecette: EcritureRecetteView[];
@@ -141,6 +132,7 @@ export function CotisationsRapprochement({
     () => lignes.filter((l) => l.etat === "manquante" && l.duCents > 0),
     [lignes],
   );
+  const aRattraperCents = aRattraper.reduce((t, l) => t + l.duCents, 0);
 
   /**
    * Qui proposer au pointage : tout le monde sauf les familles déjà rapprochées
@@ -275,40 +267,7 @@ export function CotisationsRapprochement({
   const impossible = comptes.length === 0 || categoriesRecette.length === 0;
 
   return (
-    <div className="space-y-6">
-      {/* ————— Les quatre nombres du trésorier ————— */}
-      <section
-        aria-label="Synthèse des cotisations"
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        <Chiffre titre="Attendu" valeur={euros(totaux.attendu)} aide={`${lignes.length} adhérent${lignes.length > 1 ? "s" : ""}`} />
-        <Chiffre titre="Encaissé" valeur={euros(totaux.encaisse)} aide="d’après les fiches" />
-        <Chiffre
-          titre="Dans les comptes"
-          valeur={euros(totaux.comptabilise)}
-          aide="rattaché à une écriture"
-          accent={totaux.comptabilise === totaux.encaisse ? "bon" : undefined}
-        />
-        <Chiffre
-          titre="Hors comptes"
-          valeur={euros(totaux.aRattraperCents)}
-          aide={`${totaux.aRattraperCount} adhésion${totaux.aRattraperCount > 1 ? "s" : ""} encaissée${totaux.aRattraperCount > 1 ? "s" : ""}`}
-          accent={totaux.aRattraperCount > 0 ? "alerte" : "bon"}
-        />
-      </section>
-
-      {(totaux.ecartCount > 0 || totaux.nonPointeesCount > 0) && (
-        <p className="flex items-start gap-2.5 rounded-xl bg-sand-100 px-4 py-3 text-sm font-semibold leading-6 text-sand-900">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>
-            {totaux.ecartCount > 0 &&
-              `${totaux.ecartCount} adhésion${totaux.ecartCount > 1 ? "s sont comptabilisées" : " est comptabilisée"} pour un montant différent de la fiche. `}
-            {totaux.nonPointeesCount > 0 &&
-              `${totaux.nonPointeesCount} figure${totaux.nonPointeesCount > 1 ? "nt" : ""} dans les comptes sans être marquée${totaux.nonPointeesCount > 1 ? "s" : ""} réglée${totaux.nonPointeesCount > 1 ? "s" : ""} sur la fiche.`}
-          </span>
-        </p>
-      )}
-
+    <div className="space-y-4">
       {impossible ? (
         <Card className="p-5">
           <EmptyState
@@ -484,7 +443,7 @@ export function CotisationsRapprochement({
                     sur {aRattraper.length > 1 ? "leurs fiches" : "sa fiche"} sans
                     figurer dans les comptes, soit{" "}
                     <strong className="text-brand-950">
-                      {euros(totaux.aRattraperCents)}
+                      {euros(aRattraperCents)}
                     </strong>
                     . Les écritures créées ici naissent en brouillon : vous les
                     relisez, puis vous les validez.
@@ -504,7 +463,7 @@ export function CotisationsRapprochement({
                         }
                       >
                         <option value="groupee">
-                          Une écriture groupée ({euros(totaux.aRattraperCents)})
+                          Une écriture groupée ({euros(aRattraperCents)})
                         </option>
                         <option value="par_adherent">
                           Une écriture par adhérent ({aRattraper.length})
@@ -579,106 +538,7 @@ export function CotisationsRapprochement({
         </Card>
       )}
 
-      {/* ————— L'état, adhérent par adhérent ————— */}
-      <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 px-5 py-4">
-          <h3 className="font-bold text-brand-950">
-            Adhérent par adhérent · {anneeCourante}
-          </h3>
-          {annees.length > 1 && (
-            <Field label="" htmlFor="annee-rapprochement" className="w-48">
-              <Select
-                id="annee-rapprochement"
-                value={anneeCourante}
-                onChange={(e) => {
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("annee", e.target.value);
-                  router.push(`${url.pathname}${url.search}`);
-                }}
-                aria-label="Année scolaire"
-              >
-                {annees.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-        </div>
-
-        {lignes.length === 0 ? (
-          <div className="p-5">
-            <EmptyState
-              icon={HandCoins}
-              title={`Aucun adhérent pour ${anneeCourante}`}
-              description="Les adhésions enregistrées pour cette année scolaire apparaîtront ici avec leur état comptable."
-            />
-          </div>
-        ) : (
-          <ul className="divide-y-2 divide-slate-100">
-            {lignes.map((ligne) => (
-              <li
-                key={ligne.memberId}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5"
-              >
-                <span className="min-w-0 flex-1 basis-48">
-                  <span className="block truncate font-bold text-brand-950">
-                    {ligne.nom}
-                  </span>
-                  {ligne.ecritures.length > 0 && (
-                    <span className="block truncate text-xs font-semibold text-slate-500">
-                      {ligne.ecritures.map((e) => e.label).join(" · ")}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-xs font-extrabold ring-1 ring-inset",
-                    ETATS[ligne.etat].classe,
-                  )}
-                >
-                  {ETATS[ligne.etat].texte}
-                </span>
-                <span className="w-24 shrink-0 text-right text-sm font-extrabold tabular-nums text-brand-950">
-                  {euros(ligne.duCents)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
     </div>
-  );
-}
-
-function Chiffre({
-  titre,
-  valeur,
-  aide,
-  accent,
-}: {
-  titre: string;
-  valeur: string;
-  aide: string;
-  accent?: "bon" | "alerte";
-}) {
-  return (
-    <Card
-      className={cn(
-        "p-4",
-        accent === "bon" && "border-sea-300 bg-sea-50/60",
-        accent === "alerte" && "border-coral-300 bg-coral-50/60",
-      )}
-    >
-      <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">
-        {titre}
-      </p>
-      <p className="mt-1 text-2xl font-black tracking-[-0.03em] tabular-nums text-brand-950">
-        {valeur}
-      </p>
-      <p className="mt-0.5 text-xs font-semibold text-slate-500">{aide}</p>
-    </Card>
   );
 }
 
