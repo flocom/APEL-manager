@@ -263,8 +263,36 @@ Voir les réponses : ${ctx.eventUrl}`,
  * Groupé par rendez-vous, parce que c'est ainsi qu'on le lit : « où en est la
  * kermesse » plutôt que « qui s'est inscrit à 08h12 ».
  */
-export function signupDigestEmail(ctx: {
-  /** Un bloc par événement ou réunion concerné. */
+/** Une tâche d'événement telle qu'elle apparaît dans le récapitulatif. */
+type DigestTache = {
+  titre: string;
+  /** L'événement auquel elle se rattache : une tâche nue ne dit pas pour quoi. */
+  evenement: string;
+  url: string;
+  /** « 3 jours » : depuis quand elle est en retard, ou dans combien de temps. */
+  delai: string;
+  echeance: string;
+  /** Vide = personne d'assigné, ce que le message dit explicitement. */
+  responsables: string[];
+};
+
+/**
+ * Le récapitulatif quotidien adressé au bureau.
+ *
+ * Deux natures de contenu s'y croisent, et elles ne se comptent pas pareil :
+ * les inscriptions sont un *flux* (ce qui est arrivé depuis le dernier envoi,
+ * annoncé une fois), les tâches sont un *état* (ce qui reste à traiter
+ * aujourd'hui, redit chaque jour tant que ça traîne). C'est voulu : un retard
+ * qu'on n'annonce qu'une fois est un retard qu'on oublie. Ne pas « corriger »
+ * cette répétition en dédoublonnant les tâches déjà signalées.
+ *
+ * Les rappels individuels du cron visent les personnes assignées ; ce message
+ * vise l'adresse de contact. Même tâche, deux destinataires, deux usages : la
+ * vue d'ensemble du bureau d'un côté, le rappel personnel de l'autre.
+ */
+export function dailyDigestEmail(ctx: {
+  taches: { enRetard: DigestTache[]; aVenir: DigestTache[] };
+  /** Un bloc par événement ou réunion ayant reçu des réponses. */
   rendezVous: {
     titre: string;
     date: string;
@@ -291,7 +319,10 @@ export function signupDigestEmail(ctx: {
     (n, r) => n + r.inscriptions.length + r.presences.length,
     0,
   );
+  const nbRetard = ctx.taches.enRetard.length;
+  const nbAVenir = ctx.taches.aVenir.length;
   const REPONSE = { yes: "sera là", maybe: "peut-être", no: "ne viendra pas" };
+  const s = (n: number) => (n > 1 ? "s" : "");
 
   const coord = (phone: string | null, email: string | null) => {
     const bouts = [
@@ -303,10 +334,59 @@ export function signupDigestEmail(ctx: {
     return bouts.length ? ` — ${bouts.join(" · ")}` : "";
   };
 
-  const blocs = ctx.rendezVous
+  // Qui s'en occupe. L'absence de responsable est la vraie information : c'est
+  // la tâche que personne ne réclamera d'elle-même.
+  const qui = (noms: string[], couleur: string) =>
+    noms.length
+      ? `<span style="color:${couleur};">${noms.map(esc).join(", ")}</span>`
+      : `<span style="color:#914457;font-style:italic;">personne d’assigné</span>`;
+
+  const ligneTache = (t: DigestTache, retard: boolean) => `
+        <li style="margin:0 0 10px;">
+          <a href="${t.url}" style="color:#075d8d;font-weight:bold;">${esc(t.titre)}</a>
+          <span style="color:#64748b;"> — ${esc(t.evenement)}</span><br />
+          <span style="color:${retard ? "#783746" : "#475569"};font-weight:${retard ? "bold" : "normal"};">${
+            retard
+              ? `en retard depuis ${t.delai}`
+              : `à traiter dans ${t.delai}`
+          }</span>
+          <span style="color:#64748b;font-size:14px;"> · échéance ${t.echeance}</span><br />
+          <span style="font-size:14px;">${qui(t.responsables, "#475569")}</span>
+        </li>`;
+
+  const sectionTaches = (
+    titre: string,
+    couleur: string,
+    liste: DigestTache[],
+    retard: boolean,
+  ) =>
+    liste.length
+      ? `
+      <h3 style="margin:24px 0 8px;font-size:18px;color:${couleur};">${titre}</h3>
+      <ul style="padding-left:20px;margin:0;">${liste
+        .map((t) => ligneTache(t, retard))
+        .join("")}</ul>`
+      : "";
+
+  const blocsTaches =
+    nbRetard + nbAVenir > 0
+      ? `${sectionTaches(
+          `En retard — ${nbRetard} tâche${s(nbRetard)}`,
+          "#783746",
+          ctx.taches.enRetard,
+          true,
+        )}${sectionTaches(
+          `À traiter bientôt — ${nbAVenir} tâche${s(nbAVenir)}`,
+          "#075d8d",
+          ctx.taches.aVenir,
+          false,
+        )}`
+      : "";
+
+  const blocsInscriptions = ctx.rendezVous
     .map(
       (r) => `
-      <h3 style="margin:24px 0 4px;color:#075d8d;">${esc(r.titre)}</h3>
+      <p style="margin:18px 0 2px;font-weight:bold;font-size:16px;color:#075d8d;">${esc(r.titre)}</p>
       <p style="margin:0 0 8px;color:#64748b;font-size:14px;">${r.date}</p>
       <ul>
         ${r.inscriptions
@@ -326,7 +406,52 @@ export function signupDigestEmail(ctx: {
     )
     .join("");
 
-  const texte = ctx.rendezVous
+  const corps = [
+    blocsTaches,
+    total > 0
+      ? `<h3 style="margin:28px 0 8px;font-size:18px;color:#0f172a;">Nouvelles réponses depuis ${ctx.depuis}</h3>${blocsInscriptions}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  // Le sujet dit ce qu'il y a dedans : c'est souvent tout ce qu'on lira du
+  // message avant de décider d'y revenir ou non.
+  const partTaches =
+    nbRetard && nbAVenir
+      ? `${nbRetard} tâche${s(nbRetard)} en retard · ${nbAVenir} à venir`
+      : nbRetard
+        ? `${nbRetard} tâche${s(nbRetard)} en retard`
+        : nbAVenir
+          ? `${nbAVenir} tâche${s(nbAVenir)} à venir`
+          : null;
+  const subject =
+    [
+      partTaches,
+      total ? `${total} nouvelle${s(total)} inscription${s(total)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Rien à signaler";
+
+  const texteTaches = (titre: string, liste: DigestTache[], retard: boolean) =>
+    liste.length
+      ? `${titre}\n${liste
+          .map(
+            (t) =>
+              `  - ${t.titre} (${t.evenement}) — ${
+                retard
+                  ? `en retard depuis ${t.delai}`
+                  : `à traiter dans ${t.delai}`
+              }, échéance ${t.echeance}\n    ${
+                t.responsables.length
+                  ? t.responsables.join(", ")
+                  : "personne d’assigné"
+              }\n    ${t.url}`,
+          )
+          .join("\n")}`
+      : null;
+
+  const texteInscriptions = ctx.rendezVous
     .map((r) => {
       const lignes = [
         ...r.inscriptions.map(
@@ -342,14 +467,20 @@ export function signupDigestEmail(ctx: {
     })
     .join("\n\n");
 
+  const texte = [
+    texteTaches("EN RETARD", ctx.taches.enRetard, true),
+    texteTaches("À TRAITER BIENTÔT", ctx.taches.aVenir, false),
+    total
+      ? `NOUVELLES RÉPONSES DEPUIS ${ctx.depuis}\n${texteInscriptions}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   return {
-    subject: `${total} nouvelle${total > 1 ? "s" : ""} inscription${total > 1 ? "s" : ""} depuis le site`,
-    html: layout(
-      `${total} nouvelle${total > 1 ? "s" : ""} inscription${total > 1 ? "s" : ""}`,
-      `<p>Ce qui est arrivé depuis ${ctx.depuis} :</p>${blocs}`,
-      ctx.identity,
-    ),
-    text: `Ce qui est arrivé depuis ${ctx.depuis} :\n\n${texte}`,
+    subject,
+    html: layout("Le point du jour", corps, ctx.identity),
+    text: texte,
   };
 }
 

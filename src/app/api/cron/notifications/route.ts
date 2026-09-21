@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { and, eq, gt, inArray, isNull, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, formatDuree } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
   associationSettings,
@@ -17,7 +17,7 @@ import {
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
 import { sendEmail } from "@/lib/notifications/email";
 import {
-  signupDigestEmail,
+  dailyDigestEmail,
   volunteerReminderEmail,
 } from "@/lib/notifications/emails";
 import {
@@ -222,8 +222,11 @@ export async function GET(req: Request) {
     );
   }
 
-  // --- Récapitulatif quotidien des inscriptions venues du site ----------------
-  const digest = await envoyerRecapitulatif(association, now);
+  // --- Récapitulatif quotidien adressé au bureau ------------------------------
+  // `dueTasks` est réutilisé tel quel : c'est exactement la même sélection
+  // (non terminées, échéance dans la fenêtre de rappel) que celle qui vient de
+  // servir aux rappels individuels. Une seconde requête dirait la même chose.
+  const digest = await envoyerRecapitulatif(association, now, dueTasks);
 
   let orphanedUploadsRemoved = 0;
   try {
@@ -248,7 +251,7 @@ export async function GET(req: Request) {
     volunteerReminders,
     /** Inscrits que le rappel ne peut pas atteindre, faute d'adresse. */
     volunteersSansEmail,
-    signupDigest: digest,
+    recapQuotidien: digest,
     orphanedUploadsRemoved,
   });
 }
@@ -257,21 +260,45 @@ export async function GET(req: Request) {
  * Le récapitulatif quotidien, quand l'association a choisi ce mode plutôt qu'un
  * avis par inscription.
  *
- * La fenêtre part de la dernière fois où le récapitulatif a été rendu, et non
- * d'un « hier » calculé : le cron peut être relancé, retardé ou rejoué après
- * une panne, et une fenêtre fixe laisserait des inscriptions dans le trou. Elle
- * n'avance qu'après un envoi réussi, donc rien ne se perd si le courrier tombe.
+ * Deux horloges cohabitent ici, et les mélanger ferait perdre des données :
+ *
+ * - Les **inscriptions** sont une fenêtre. Elle part de la dernière fois où le
+ *   récapitulatif est parti, et non d'un « hier » calculé : le cron peut être
+ *   relancé, retardé ou rejoué après une panne, et une fenêtre fixe laisserait
+ *   des inscriptions dans le trou. Elle n'avance qu'après un envoi réussi.
+ * - Les **tâches** sont un instantané, recalculé à chaque passage. Une tâche
+ *   en retard doit revenir chaque jour tant qu'elle traîne ; elle ne « passe »
+ *   pas dans la fenêtre et n'a donc rien à voir avec son avancement.
  */
 async function envoyerRecapitulatif(
   association: Awaited<ReturnType<typeof getAssociationSettings>>,
   now: Date,
+  dueTasks: {
+    id: string;
+    title: string;
+    dueAt: Date;
+    event: { id: string; title: string };
+    assignees: { user: { name: string | null; email: string } | null }[];
+  }[],
 ) {
   if (association.signupNoticeMode !== "quotidien") {
-    return { mode: association.signupNoticeMode, envoye: false, nouvelles: 0 };
+    return {
+      mode: association.signupNoticeMode,
+      envoye: false,
+      nouvelles: 0,
+      tachesEnRetard: 0,
+      tachesAVenir: 0,
+    };
   }
   const destinataire = association.contactEmail?.trim();
   if (!destinataire) {
-    return { mode: "quotidien", envoye: false, nouvelles: 0 };
+    return {
+      mode: "quotidien",
+      envoye: false,
+      nouvelles: 0,
+      tachesEnRetard: 0,
+      tachesAVenir: 0,
+    };
   }
 
   // Première fois : on ne remonte que d'une journée, sinon un basculement de
@@ -311,20 +338,56 @@ async function envoyerRecapitulatif(
   ]);
 
   const nouvelles = inscriptions.length + presences.length;
-  if (nouvelles === 0) {
+
+  // La plus vieille dette d'abord dans les retards, la plus proche d'abord
+  // dans ce qui vient : dans les deux cas, ce qui presse est en haut.
+  const enRetard = dueTasks
+    .filter((t) => t.dueAt < now)
+    .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+  const aVenir = dueTasks
+    .filter((t) => t.dueAt >= now)
+    .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+
+  if (nouvelles === 0 && enRetard.length === 0 && aVenir.length === 0) {
     // Rien à dire : on avance quand même la fenêtre, sinon elle s'allonge sans
     // fin et finirait par reprendre des lignes déjà annoncées.
     await db
       .update(associationSettings)
       .set({ signupDigestSentAt: now })
       .where(eq(associationSettings.id, "default"));
-    return { mode: "quotidien", envoye: false, nouvelles: 0 };
+    return {
+      mode: "quotidien",
+      envoye: false,
+      nouvelles: 0,
+      tachesEnRetard: 0,
+      tachesAVenir: 0,
+    };
   }
 
   const baseUrl = await getBaseUrl();
+
+  const versTache = (t: (typeof dueTasks)[number], retard: boolean) => ({
+    titre: t.title,
+    evenement: t.event.title,
+    // L'onglet « préparation » est celui qui porte la check-list : le lien
+    // tombe sur la tâche, pas sur la fiche à charge de la chercher.
+    url: `${baseUrl}/dashboard/events/${t.event.id}?onglet=preparation`,
+    delai: retard ? formatDuree(t.dueAt, now) : formatDuree(now, t.dueAt),
+    echeance: formatDateTime(t.dueAt),
+    // Le nom d'abord ; l'adresse ne sert que si le compte n'en a pas.
+    responsables: t.assignees
+      .map((a) => a.user?.name?.trim() || a.user?.email)
+      .filter((nom): nom is string => !!nom),
+  });
+
+  const taches = {
+    enRetard: enRetard.map((t) => versTache(t, true)),
+    aVenir: aVenir.map((t) => versTache(t, false)),
+  };
+
   const parRendezVous = new Map<
     string,
-    Parameters<typeof signupDigestEmail>[0]["rendezVous"][number]
+    Parameters<typeof dailyDigestEmail>[0]["rendezVous"][number]
   >();
   const bloc = (
     id: string,
@@ -365,7 +428,8 @@ async function envoyerRecapitulatif(
 
   const parti = await sendEmail({
     to: destinataire,
-    ...signupDigestEmail({
+    ...dailyDigestEmail({
+      taches,
       rendezVous: [...parRendezVous.values()],
       depuis: formatDateTime(depuis),
       identity: {
@@ -385,9 +449,15 @@ async function envoyerRecapitulatif(
     // Fenêtre laissée ouverte à dessein : le passage suivant reprendra ces
     // inscriptions plutôt que de les perdre.
     console.warn(
-      `[cron] récapitulatif des inscriptions non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s).`,
+      `[cron] récapitulatif non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s), ${enRetard.length} tâche(s) en retard non signalée(s).`,
     );
   }
 
-  return { mode: "quotidien", envoye: parti, nouvelles };
+  return {
+    mode: "quotidien",
+    envoye: parti,
+    nouvelles,
+    tachesEnRetard: enRetard.length,
+    tachesAVenir: aVenir.length,
+  };
 }
