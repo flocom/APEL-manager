@@ -99,6 +99,7 @@ export default async function AdherentsPage() {
     schoolYear: member.schoolYear,
     membershipFeeCents: member.membershipFeeCents,
     feePaidAt: member.feePaidAt?.toISOString() ?? null,
+    feePaymentMethod: member.feePaymentMethod,
     joinedAt: member.joinedAt.toISOString(),
     notes: member.notes,
     version: member.version,
@@ -111,6 +112,7 @@ export default async function AdherentsPage() {
     statut: ligne.statut,
     duCents: ligne.duCents,
     regleLe: ligne.regleLe?.toISOString() ?? null,
+    mode: ligne.mode,
     comptabiliseCents: ligne.comptabiliseCents,
     etat: etatDe(ligne),
     ecritures: ligne.ecritures.map((e) => ({

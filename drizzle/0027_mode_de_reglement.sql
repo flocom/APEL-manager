@@ -1,0 +1,2 @@
+CREATE TYPE "public"."payment_method" AS ENUM('especes', 'cheque', 'virement', 'helloasso', 'autre');--> statement-breakpoint
+ALTER TABLE "association_members" ADD COLUMN "fee_payment_method" "payment_method";
