@@ -261,6 +261,8 @@ async function avertirLeBureau({
       getBaseUrl(),
       getAssociationSettings(),
     ]);
+    // Idem : en mode « quotidien » le récapitulatif reprendra la réponse.
+    if (association.signupNoticeMode !== "immediat") return;
     const destinataire = association.contactEmail?.trim();
     if (!destinataire) return;
 

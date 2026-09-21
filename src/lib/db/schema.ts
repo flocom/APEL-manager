@@ -39,6 +39,24 @@ export const eventKindEnum = pgEnum("event_kind", ["event", "meeting"]);
  * `non_precise` est la valeur de départ, et tant qu'elle tient, les pages
  * publiques n'affirment rien sur ce point.
  */
+/**
+ * Quand l'adresse de contact est prévenue d'une inscription venue du site.
+ *
+ * `immediat` est le comportement d'origine : un avis par inscription, au moment
+ * où elle arrive. C'est ce qu'on veut pour une APEL d'école, où le volume est
+ * faible et où l'intérêt est précisément de savoir tout de suite.
+ *
+ * `quotidien` regroupe tout dans un seul message envoyé avec les autres tâches
+ * planifiées. Ce n'est pas qu'une question de confort : le palier gratuit de
+ * Resend plafonne à 100 e-mails par jour, et une grosse opération peut y passer
+ * en une soirée — chaque inscription coûtant déjà une confirmation au bénévole.
+ */
+export const signupNoticeModeEnum = pgEnum("signup_notice_mode", [
+  "immediat",
+  "quotidien",
+  "aucun",
+]);
+
 export const membershipFeeBasisEnum = pgEnum("membership_fee_basis", [
   "famille",
   "enfant",
@@ -722,6 +740,17 @@ export const associationSettings = pgTable(
      * remis en classe au prélèvement sur la facture de scolarité.
      */
     membershipFeeNote: text("membership_fee_note").notNull().default(""),
+    signupNoticeMode: signupNoticeModeEnum("signup_notice_mode")
+      .notNull()
+      .default("immediat"),
+    /**
+     * Fin de la dernière fenêtre récapitulée. Elle n'avance qu'une fois le
+     * récapitulatif réellement parti : si l'envoi échoue, la fenêtre reste
+     * ouverte et rien n'est perdu au passage suivant.
+     */
+    signupDigestSentAt: timestamp("signup_digest_sent_at", {
+      withTimezone: true,
+    }),
     /**
      * Ce que prévoient les statuts : quorum, majorités, délai de convocation,
      * règle de voix. Lu une fois, réutilisé par toutes les assemblées. Vide,

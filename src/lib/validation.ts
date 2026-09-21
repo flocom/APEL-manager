@@ -514,6 +514,25 @@ export const eventAttachmentSchema = z.object({
  * bureau n’a pas tranché, les pages publiques se taisent sur ce point plutôt
  * que de supposer la règle la plus répandue.
  */
+/**
+ * Quand l'adresse de contact est prévenue d'une inscription venue du site.
+ * Le récapitulatif n'est pas qu'un confort : le palier gratuit de Resend
+ * plafonne à 100 e-mails par jour, confirmations aux bénévoles comprises.
+ */
+export const SIGNUP_NOTICE_MODES = [
+  "immediat",
+  "quotidien",
+  "aucun",
+] as const;
+
+export type SignupNoticeMode = (typeof SIGNUP_NOTICE_MODES)[number];
+
+export const SIGNUP_NOTICE_MODE_LABELS: Record<SignupNoticeMode, string> = {
+  immediat: "Un e-mail à chaque inscription",
+  quotidien: "Un récapitulatif par jour",
+  aucun: "Aucun avis",
+};
+
 export const MEMBERSHIP_FEE_BASES = ["famille", "enfant", "non_precise"] as const;
 
 export type MembershipFeeBasis = (typeof MEMBERSHIP_FEE_BASES)[number];
@@ -565,6 +584,7 @@ export const associationSettingsSchema = z.object({
   membershipFeeBasis: MEMBERSHIP_FEE_BASIS_SCHEMA,
   /** La marche à suivre pour régler, en une phrase écrite par le bureau. */
   membershipFeeNote: z.string().trim().max(300).default(""),
+  signupNoticeMode: z.enum(SIGNUP_NOTICE_MODES).default("immediat"),
   taskReminderWindowDays: z.coerce.number().int().min(0).max(30),
   volunteerReminderWindowDays: z.coerce.number().int().min(0).max(30),
   telegramEnabled: z.boolean().default(false),

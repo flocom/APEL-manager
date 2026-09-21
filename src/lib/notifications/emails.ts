@@ -250,6 +250,109 @@ Voir les réponses : ${ctx.eventUrl}`,
   };
 }
 
+/**
+ * Le récapitulatif quotidien : tout ce qui est arrivé depuis la veille, en un
+ * seul message.
+ *
+ * Il remplace les avis à l'unité quand l'association choisit ce mode. La raison
+ * n'est pas que le confort : chaque inscription coûte déjà une confirmation au
+ * bénévole, et le palier gratuit de Resend plafonne à 100 e-mails par jour —
+ * une grosse opération peut l'épuiser en une soirée, et ce sont alors les
+ * confirmations qui sautent.
+ *
+ * Groupé par rendez-vous, parce que c'est ainsi qu'on le lit : « où en est la
+ * kermesse » plutôt que « qui s'est inscrit à 08h12 ».
+ */
+export function signupDigestEmail(ctx: {
+  /** Un bloc par événement ou réunion concerné. */
+  rendezVous: {
+    titre: string;
+    date: string;
+    url: string;
+    /** Inscriptions de bénévoles arrivées dans la fenêtre. */
+    inscriptions: {
+      nom: string;
+      creneau: string;
+      phone: string | null;
+      email: string | null;
+    }[];
+    /** Réponses de présence arrivées dans la fenêtre. */
+    presences: {
+      nom: string;
+      statut: "yes" | "maybe" | "no";
+      phone: string | null;
+      email: string | null;
+    }[];
+  }[];
+  depuis: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const total = ctx.rendezVous.reduce(
+    (n, r) => n + r.inscriptions.length + r.presences.length,
+    0,
+  );
+  const REPONSE = { yes: "sera là", maybe: "peut-être", no: "ne viendra pas" };
+
+  const coord = (phone: string | null, email: string | null) => {
+    const bouts = [
+      phone
+        ? `<a href="tel:${esc(phone.replace(/[^+0-9]/g, ""))}">${esc(phone)}</a>`
+        : null,
+      email ? `<a href="mailto:${esc(email)}">${esc(email)}</a>` : null,
+    ].filter(Boolean);
+    return bouts.length ? ` — ${bouts.join(" · ")}` : "";
+  };
+
+  const blocs = ctx.rendezVous
+    .map(
+      (r) => `
+      <h3 style="margin:24px 0 4px;color:#075d8d;">${esc(r.titre)}</h3>
+      <p style="margin:0 0 8px;color:#64748b;font-size:14px;">${r.date}</p>
+      <ul>
+        ${r.inscriptions
+          .map(
+            (i) =>
+              `<li><strong>${esc(i.nom)}</strong> — ${esc(i.creneau)}${coord(i.phone, i.email)}</li>`,
+          )
+          .join("")}
+        ${r.presences
+          .map(
+            (p) =>
+              `<li><strong>${esc(p.nom)}</strong> — ${REPONSE[p.statut]}${coord(p.phone, p.email)}</li>`,
+          )
+          .join("")}
+      </ul>
+      <p>${button(r.url, "Ouvrir le rendez-vous")}</p>`,
+    )
+    .join("");
+
+  const texte = ctx.rendezVous
+    .map((r) => {
+      const lignes = [
+        ...r.inscriptions.map(
+          (i) =>
+            `  - ${i.nom} — ${i.creneau}${i.phone ? ` — ${i.phone}` : ""}${i.email ? ` — ${i.email}` : ""}`,
+        ),
+        ...r.presences.map(
+          (p) =>
+            `  - ${p.nom} — ${REPONSE[p.statut]}${p.phone ? ` — ${p.phone}` : ""}${p.email ? ` — ${p.email}` : ""}`,
+        ),
+      ];
+      return `${r.titre} (${r.date})\n${lignes.join("\n")}\n  ${r.url}`;
+    })
+    .join("\n\n");
+
+  return {
+    subject: `${total} nouvelle${total > 1 ? "s" : ""} inscription${total > 1 ? "s" : ""} depuis le site`,
+    html: layout(
+      `${total} nouvelle${total > 1 ? "s" : ""} inscription${total > 1 ? "s" : ""}`,
+      `<p>Ce qui est arrivé depuis ${ctx.depuis} :</p>${blocs}`,
+      ctx.identity,
+    ),
+    text: `Ce qui est arrivé depuis ${ctx.depuis} :\n\n${texte}`,
+  };
+}
+
 export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   return {
     subject: `Rappel — ${ctx.eventTitle}, c'est bientôt !`,

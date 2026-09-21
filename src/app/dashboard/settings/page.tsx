@@ -33,6 +33,7 @@ export default async function SettingsPage() {
     membershipFeeCents: associationStatus.membershipFeeCents,
     membershipFeeBasis: associationStatus.membershipFeeBasis,
     membershipFeeNote: associationStatus.membershipFeeNote,
+    signupNoticeMode: associationStatus.signupNoticeMode,
     logoUrl: associationStatus.logoUrl,
     taskReminderWindowDays: associationStatus.taskReminderWindowDays,
     volunteerReminderWindowDays:

@@ -143,7 +143,12 @@ export async function POST(req: Request) {
     // déjà pris, et faire échouer une inscription réussie parce que le serveur
     // de courrier tousse serait absurde — le bénévole reverrait le formulaire
     // et croirait devoir recommencer.
-    const destinataire = association.contactEmail?.trim();
+    // « quotidien » laisse le récapitulatif du lendemain s'en charger, « aucun »
+    // ne prévient personne. La confirmation au bénévole, elle, part toujours.
+    const destinataire =
+      association.signupNoticeMode === "immediat"
+        ? association.contactEmail?.trim()
+        : undefined;
     if (destinataire) {
       try {
         const [{ pris }] = await db

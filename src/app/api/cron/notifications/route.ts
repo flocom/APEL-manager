@@ -1,22 +1,30 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
+  associationSettings,
+  events,
+  meetingAttendance,
   notificationsLog,
   tasks,
   volunteerSignups,
+  volunteerSlots,
 } from "@/lib/db/schema";
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
 import { sendEmail } from "@/lib/notifications/email";
-import { volunteerReminderEmail } from "@/lib/notifications/emails";
+import {
+  signupDigestEmail,
+  volunteerReminderEmail,
+} from "@/lib/notifications/emails";
 import {
   getAssociationSettings,
   getTelegramBotToken,
 } from "@/lib/services/association-settings";
+import { getBaseUrl } from "@/lib/base-url";
 import { collectReferencedUploadIds } from "@/lib/services/uploads-references";
 import { cleanupOrphanedUploads } from "@/lib/uploads";
 
@@ -214,6 +222,9 @@ export async function GET(req: Request) {
     );
   }
 
+  // --- Récapitulatif quotidien des inscriptions venues du site ----------------
+  const digest = await envoyerRecapitulatif(association, now);
+
   let orphanedUploadsRemoved = 0;
   try {
     // Une erreur ici abandonne le nettoyage : mieux vaut garder des fichiers
@@ -237,6 +248,146 @@ export async function GET(req: Request) {
     volunteerReminders,
     /** Inscrits que le rappel ne peut pas atteindre, faute d'adresse. */
     volunteersSansEmail,
+    signupDigest: digest,
     orphanedUploadsRemoved,
   });
+}
+
+/**
+ * Le récapitulatif quotidien, quand l'association a choisi ce mode plutôt qu'un
+ * avis par inscription.
+ *
+ * La fenêtre part de la dernière fois où le récapitulatif a été rendu, et non
+ * d'un « hier » calculé : le cron peut être relancé, retardé ou rejoué après
+ * une panne, et une fenêtre fixe laisserait des inscriptions dans le trou. Elle
+ * n'avance qu'après un envoi réussi, donc rien ne se perd si le courrier tombe.
+ */
+async function envoyerRecapitulatif(
+  association: Awaited<ReturnType<typeof getAssociationSettings>>,
+  now: Date,
+) {
+  if (association.signupNoticeMode !== "quotidien") {
+    return { mode: association.signupNoticeMode, envoye: false, nouvelles: 0 };
+  }
+  const destinataire = association.contactEmail?.trim();
+  if (!destinataire) {
+    return { mode: "quotidien", envoye: false, nouvelles: 0 };
+  }
+
+  // Première fois : on ne remonte que d'une journée, sinon un basculement de
+  // mode déverserait l'historique entier dans le premier message.
+  const depuis =
+    association.signupDigestSentAt ??
+    new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const [inscriptions, presences] = await Promise.all([
+    db
+      .select({
+        nom: volunteerSignups.name,
+        phone: volunteerSignups.phone,
+        email: volunteerSignups.email,
+        creneau: volunteerSlots.title,
+        eventId: events.id,
+        titre: events.title,
+        startAt: events.startAt,
+      })
+      .from(volunteerSignups)
+      .innerJoin(volunteerSlots, eq(volunteerSignups.slotId, volunteerSlots.id))
+      .innerJoin(events, eq(volunteerSlots.eventId, events.id))
+      .where(gt(volunteerSignups.createdAt, depuis)),
+    db
+      .select({
+        nom: meetingAttendance.name,
+        phone: meetingAttendance.phone,
+        email: meetingAttendance.email,
+        statut: meetingAttendance.status,
+        eventId: events.id,
+        titre: events.title,
+        startAt: events.startAt,
+      })
+      .from(meetingAttendance)
+      .innerJoin(events, eq(meetingAttendance.eventId, events.id))
+      .where(gt(meetingAttendance.createdAt, depuis)),
+  ]);
+
+  const nouvelles = inscriptions.length + presences.length;
+  if (nouvelles === 0) {
+    // Rien à dire : on avance quand même la fenêtre, sinon elle s'allonge sans
+    // fin et finirait par reprendre des lignes déjà annoncées.
+    await db
+      .update(associationSettings)
+      .set({ signupDigestSentAt: now })
+      .where(eq(associationSettings.id, "default"));
+    return { mode: "quotidien", envoye: false, nouvelles: 0 };
+  }
+
+  const baseUrl = await getBaseUrl();
+  const parRendezVous = new Map<
+    string,
+    Parameters<typeof signupDigestEmail>[0]["rendezVous"][number]
+  >();
+  const bloc = (
+    id: string,
+    titre: string,
+    startAt: Date,
+    onglet: string,
+  ) => {
+    let b = parRendezVous.get(id);
+    if (!b) {
+      b = {
+        titre,
+        date: formatDateTime(startAt),
+        url: `${baseUrl}/dashboard/events/${id}?onglet=${onglet}`,
+        inscriptions: [],
+        presences: [],
+      };
+      parRendezVous.set(id, b);
+    }
+    return b;
+  };
+
+  for (const i of inscriptions) {
+    bloc(i.eventId, i.titre, i.startAt, "benevoles").inscriptions.push({
+      nom: i.nom,
+      creneau: i.creneau,
+      phone: i.phone,
+      email: i.email,
+    });
+  }
+  for (const p of presences) {
+    bloc(p.eventId, p.titre, p.startAt, "presences").presences.push({
+      nom: p.nom ?? "Un membre",
+      statut: p.statut,
+      phone: p.phone,
+      email: p.email,
+    });
+  }
+
+  const parti = await sendEmail({
+    to: destinataire,
+    ...signupDigestEmail({
+      rendezVous: [...parRendezVous.values()],
+      depuis: formatDateTime(depuis),
+      identity: {
+        associationName: association.associationName,
+        schoolName: association.schoolName,
+        rna: association.rna,
+      },
+    }),
+  });
+
+  if (parti) {
+    await db
+      .update(associationSettings)
+      .set({ signupDigestSentAt: now })
+      .where(eq(associationSettings.id, "default"));
+  } else {
+    // Fenêtre laissée ouverte à dessein : le passage suivant reprendra ces
+    // inscriptions plutôt que de les perdre.
+    console.warn(
+      `[cron] récapitulatif des inscriptions non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s).`,
+    );
+  }
+
+  return { mode: "quotidien", envoye: parti, nouvelles };
 }

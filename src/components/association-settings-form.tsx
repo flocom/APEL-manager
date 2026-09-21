@@ -6,6 +6,7 @@ import {
   Building2,
   CircleAlert,
   Coins,
+  Inbox,
   KeyRound,
   MessageCircle,
   Save,
@@ -20,7 +21,9 @@ import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import {
   MEMBERSHIP_FEE_BASIS_SUFFIX,
+  SIGNUP_NOTICE_MODE_LABELS,
   type MembershipFeeBasis,
+  type SignupNoticeMode,
 } from "@/lib/validation";
 import { checkWhatsappUrl, estInvitationGroupe } from "@/lib/whatsapp";
 
@@ -48,6 +51,7 @@ export interface AssociationSettingsView {
   membershipFeeCents: number | null;
   membershipFeeBasis: MembershipFeeBasis;
   membershipFeeNote: string;
+  signupNoticeMode: SignupNoticeMode;
   legacyEnvironment: boolean;
 }
 
@@ -87,6 +91,9 @@ export function AssociationSettingsForm({
   );
   const [noteCotisation, setNoteCotisation] = useState(
     settings.membershipFeeNote,
+  );
+  const [avisInscription, setAvisInscription] = useState<SignupNoticeMode>(
+    settings.signupNoticeMode,
   );
   const cotisationCents = eurosVersCents(cotisation);
   const verdictWhatsapp = checkWhatsappUrl(whatsappGroupUrl);
@@ -128,6 +135,7 @@ export function AssociationSettingsForm({
           membershipFeeCents: cotisationCents,
           membershipFeeBasis: baseCotisation,
           membershipFeeNote: noteCotisation,
+          signupNoticeMode: avisInscription,
           logoUrl: form.get("logoUrl") || null,
           taskReminderWindowDays: Number(
             form.get("taskReminderWindowDays"),
@@ -370,6 +378,64 @@ export function AssociationSettingsForm({
                 </>
               )}
             </div>
+          </section>
+
+          <section className="border-t-2 border-slate-100 pt-7">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-100 text-sea-800">
+                <Inbox className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="font-bold text-brand-950">
+                  Avis d’inscription
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Ce que reçoit l’adresse de contact quand quelqu’un s’inscrit
+                  depuis le site.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Quand prévenir"
+                htmlFor="signup-notice-mode"
+                hint="Le récapitulatif part avec les autres tâches planifiées, une fois par jour."
+              >
+                <Select
+                  id="signup-notice-mode"
+                  value={avisInscription}
+                  onChange={(e) =>
+                    setAvisInscription(e.target.value as SignupNoticeMode)
+                  }
+                >
+                  {(
+                    Object.keys(SIGNUP_NOTICE_MODE_LABELS) as SignupNoticeMode[]
+                  ).map((mode) => (
+                    <option key={mode} value={mode}>
+                      {SIGNUP_NOTICE_MODE_LABELS[mode]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            {/* La vraie raison de ce réglage : le quota. Le dire ici, où le choix
+                se fait, plutôt que de laisser découvrir la panne le jour d'une
+                grosse opération. */}
+            <p className="mt-4 flex items-start gap-2.5 rounded-xl bg-sand-100 px-4 py-3 text-sm font-semibold leading-6 text-sand-900">
+              <CircleAlert
+                className="mt-0.5 h-4 w-4 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                Le palier gratuit de Resend est limité à{" "}
+                <strong>100 e-mails par jour</strong>. Chaque inscription en
+                consomme déjà un pour la confirmation envoyée au bénévole : sur
+                une grosse opération, un avis à l’unité double la note et peut
+                épuiser le quota — ce sont alors les confirmations qui sautent.
+                Le récapitulatif n’en coûte qu’un seul par jour.
+              </span>
+            </p>
           </section>
 
           <section className="border-t-2 border-slate-100 pt-7">
