@@ -83,6 +83,24 @@ export const taskLeadTimeUnitEnum = pgEnum("task_lead_time_unit", [
   "months",
 ]);
 
+/**
+ * Comment la cotisation a été réglée.
+ *
+ * Ce n'est pas une information d'archive : elle décide si le règlement peut
+ * être porté aux comptes tout de suite. Encaissé par une plateforme, l'argent
+ * n'est pas encore sur le compte de l'association — il arrivera plus tard, en
+ * un versement groupé qui peut mêler cotisations, billetterie et dons. L'écrire
+ * en recette au moment de l'adhésion créerait une ligne qui ne correspond à
+ * aucun mouvement bancaire, puis un doublon le jour du versement.
+ */
+export const paymentMethodEnum = pgEnum("payment_method", [
+  "especes",
+  "cheque",
+  "virement",
+  "helloasso",
+  "autre",
+]);
+
 export const associationMemberStatusEnum = pgEnum(
   "association_member_status",
   ["active", "pending", "inactive"],
@@ -490,6 +508,8 @@ export const associationMembers = pgTable(
     schoolYear: text("school_year").notNull(),
     membershipFeeCents: integer("membership_fee_cents").notNull().default(0),
     feePaidAt: timestamp("fee_paid_at", { withTimezone: true }),
+    /** Null tant que le mode n'a pas été précisé : on ne devine pas. */
+    feePaymentMethod: paymentMethodEnum("fee_payment_method"),
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

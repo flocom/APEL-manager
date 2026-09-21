@@ -39,6 +39,11 @@ import {
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
+import {
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 export interface AdherentView {
@@ -56,6 +61,7 @@ export interface AdherentView {
   schoolYear: string;
   membershipFeeCents: number;
   feePaidAt: string | null;
+  feePaymentMethod: PaymentMethod | null;
   joinedAt: string;
   notes: string | null;
   version: number;
@@ -173,7 +179,15 @@ export function AdherentsManager({
     const horsComptes = filtered.filter(
       (m) => parAdherent.get(m.id)?.etat === "manquante" && m.membershipFeeCents > 0,
     );
+    // Encaissé par une plateforme, pas encore versé sur le compte : à ne pas
+    // confondre avec un retard, mais à ne pas taire non plus — « tout est
+    // rapproché » serait faux tant que ce versement n'est pas arrivé.
+    const enAttente = filtered.filter(
+      (m) => parAdherent.get(m.id)?.etat === "attente_versement",
+    );
     return {
+      attenteCents: enAttente.reduce((t, m) => t + m.membershipFeeCents, 0),
+      attenteCount: enAttente.length,
       attendu,
       encaisse,
       reglesCount: regles.length,
@@ -220,6 +234,7 @@ export function AdherentsManager({
       schoolYear: form.get("schoolYear"),
       membershipFeeCents: Math.round(feeInEuros * 100),
       feePaidAt: form.get("feePaidAt") || null,
+      feePaymentMethod: form.get("feePaymentMethod") || null,
       joinedAt: form.get("joinedAt"),
       notes: form.get("notes") || null,
       ...(editor !== "new" && editor ? { version: editor.version } : {}),
@@ -293,7 +308,9 @@ export function AdherentsManager({
           helper={
             argent.horsComptesCount > 0
               ? `${formatEuros(argent.horsComptesCents)} encaissés hors comptes`
-              : "tout est rapproché"
+              : argent.attenteCount > 0
+                ? `${formatEuros(argent.attenteCents)} en attente du versement`
+                : "tout est rapproché"
           }
           icon={CircleDollarSign}
           tone={argent.horsComptesCount > 0 ? "coral" : "sea"}
@@ -831,6 +848,24 @@ function AdherentForm({
               type="date"
               defaultValue={dateInput(member?.feePaidAt ?? null)}
             />
+          </Field>
+          <Field
+            label="Mode de règlement"
+            htmlFor="feePaymentMethod"
+            hint="Encaissé par HelloAsso, l’argent n’est pas encore sur le compte : la cotisation attendra le versement pour entrer en comptabilité."
+          >
+            <Select
+              id="feePaymentMethod"
+              name="feePaymentMethod"
+              defaultValue={member?.feePaymentMethod ?? ""}
+            >
+              <option value="">Non précisé</option>
+              {PAYMENT_METHODS.map((mode) => (
+                <option key={mode} value={mode}>
+                  {PAYMENT_METHOD_LABELS[mode]}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="Adhérent depuis le" htmlFor="joinedAt">
             <Input

@@ -430,6 +430,10 @@ export const associationMemberSchema = z.object({
     .max(10_000_000)
     .default(0),
   feePaidAt: localDateTime.nullable().optional(),
+  feePaymentMethod: z
+    .enum(["especes", "cheque", "virement", "helloasso", "autre"])
+    .nullable()
+    .optional(),
   joinedAt: localDateTime.optional(),
   notes: optionalText(10_000),
   version: optimisticVersion,

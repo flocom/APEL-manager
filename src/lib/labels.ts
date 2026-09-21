@@ -21,6 +21,41 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 /**
+ * Les modes de règlement d'une cotisation, dans l'ordre où on les propose.
+ *
+ * « HelloAsso » est à part, et c'est tout l'intérêt de ce champ : l'argent
+ * encaissé par la plateforme n'est pas encore sur le compte de l'association.
+ */
+export const PAYMENT_METHODS = [
+  "especes",
+  "cheque",
+  "virement",
+  "helloasso",
+  "autre",
+] as const;
+
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  especes: "Espèces",
+  cheque: "Chèque",
+  virement: "Virement",
+  helloasso: "HelloAsso",
+  autre: "Autre",
+};
+
+/**
+ * Les modes dont l'argent est déjà sur un compte de l'association, donc
+ * immédiatement portables en comptabilité. Les autres attendent leur versement.
+ */
+export const PAYMENT_METHODS_DIRECTS: readonly PaymentMethod[] = [
+  "especes",
+  "cheque",
+  "virement",
+  "autre",
+];
+
+/**
  * Natures de document, dans l'ordre où elles sont proposées. Les deux
  * premières ont leur propre onglet ; les suivantes forment le classeur des
  * documents officiels de l'association — ceux qu'une mairie, une banque ou

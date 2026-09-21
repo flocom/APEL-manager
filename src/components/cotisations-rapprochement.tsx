@@ -14,6 +14,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Button, Card, EmptyState, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,8 +43,16 @@ export interface LigneRapprochementView {
   statut: "active" | "pending" | "inactive";
   duCents: number;
   regleLe: string | null;
+  /** Mode de règlement, pour reconnaître les encaissements de plateforme. */
+  mode: PaymentMethod | null;
   comptabiliseCents: number;
-  etat: "rapprochee" | "manquante" | "ecart" | "attendue" | "non_pointee";
+  etat:
+    | "rapprochee"
+    | "manquante"
+    | "ecart"
+    | "attendue"
+    | "non_pointee"
+    | "attente_versement";
   ecritures: { id: string; label: string; partCents: number }[];
 }
 
@@ -68,6 +77,12 @@ export const ETATS: Record<
   manquante: {
     texte: "Encaissée, hors comptes",
     classe: "bg-coral-50 text-coral-800 ring-coral-300",
+  },
+  // Ni vert ni rouge : ce n'est pas rapproché, mais rien ne cloche. L'argent
+  // est encaissé, il n'est simplement pas encore arrivé sur le compte.
+  attente_versement: {
+    texte: "En attente du versement",
+    classe: "bg-brand-50 text-brand-800 ring-brand-200",
   },
   ecart: {
     texte: "Montant différent",
@@ -144,6 +159,10 @@ export function CotisationsRapprochement({
     [lignes],
   );
   const aRattraperCents = aRattraper.reduce((t, l) => t + l.duCents, 0);
+  const enAttenteVersement = useMemo(
+    () => lignes.filter((l) => l.etat === "attente_versement"),
+    [lignes],
+  );
 
   /**
    * Qui proposer au pointage : tout le monde sauf les familles déjà rapprochées
@@ -165,6 +184,11 @@ export function CotisationsRapprochement({
               l.ecritures.some((e) => e.id === ecritureId)),
         )
         .sort((a, b) => {
+          // Les encaissements de plateforme d'abord : un versement groupé les
+          // couvre presque toujours, et ce sont eux qu'on vient pointer.
+          const aPlateforme = a.mode === "helloasso";
+          const bPlateforme = b.mode === "helloasso";
+          if (aPlateforme !== bPlateforme) return aPlateforme ? -1 : 1;
           if ((a.regleLe === null) !== (b.regleLe === null)) {
             return a.regleLe === null ? 1 : -1;
           }
@@ -412,10 +436,16 @@ export function CotisationsRapprochement({
                               <span className="block truncate text-sm font-bold text-brand-950">
                                 {ligne.nom}
                               </span>
-                              <span className="block text-xs font-semibold text-slate-500">
+                              <span className="block text-xs font-semibold text-slate-600">
                                 {ligne.regleLe
                                   ? `Réglée le ${new Date(ligne.regleLe).toLocaleDateString("fr-FR")}`
                                   : "Non marquée réglée sur la fiche"}
+                                {ligne.mode && (
+                                  <span className="text-slate-500">
+                                    {" · "}
+                                    {PAYMENT_METHOD_LABELS[ligne.mode]}
+                                  </span>
+                                )}
                               </span>
                             </span>
                             <span className="shrink-0 text-sm font-extrabold tabular-nums text-brand-950">
@@ -459,6 +489,25 @@ export function CotisationsRapprochement({
                     . Les écritures créées ici naissent en brouillon : vous les
                     relisez, puis vous les validez.
                   </p>
+                  {enAttenteVersement.length > 0 && (
+                    <p className="rounded-xl bg-brand-50 px-4 py-3 text-sm font-medium leading-6 text-brand-900">
+                      {enAttenteVersement.length} autre
+                      {enAttenteVersement.length > 1 ? "s adhésions sont" : " adhésion est"}{" "}
+                      encaissée{enAttenteVersement.length > 1 ? "s" : ""} par
+                      HelloAsso, soit{" "}
+                      <strong>
+                        {euros(
+                          enAttenteVersement.reduce((t, l) => t + l.duCents, 0),
+                        )}
+                      </strong>
+                      . Cette reprise les laisse de côté, et c’est voulu : cet
+                      argent n’est pas encore sur le compte de l’association. Il
+                      arrivera en un versement groupé, qui peut mêler
+                      cotisations, billetterie et dons — c’est ce versement-là
+                      qu’on saisira, puis qu’on pointera avec « Pointer un
+                      encaissement ».
+                    </p>
+                  )}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field

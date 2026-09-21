@@ -29,6 +29,7 @@ function normalizedValues(
     schoolYear: data.schoolYear,
     membershipFeeCents: data.membershipFeeCents,
     feePaidAt: data.feePaidAt ?? null,
+    feePaymentMethod: data.feePaymentMethod ?? null,
     joinedAt: data.joinedAt ?? new Date(),
     notes: emptyToNull(data.notes),
   };
@@ -95,6 +96,8 @@ export async function updateAssociationMember(
   if (data.membershipFeeCents !== undefined)
     updates.membershipFeeCents = data.membershipFeeCents;
   if (data.feePaidAt !== undefined) updates.feePaidAt = data.feePaidAt ?? null;
+  if (data.feePaymentMethod !== undefined)
+    updates.feePaymentMethod = data.feePaymentMethod ?? null;
   if (data.joinedAt !== undefined) updates.joinedAt = data.joinedAt;
   if (data.notes !== undefined) updates.notes = emptyToNull(data.notes);
 

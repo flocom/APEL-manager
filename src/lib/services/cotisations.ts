@@ -14,6 +14,11 @@ import {
   cotisationRattrapageSchema,
 } from "@/lib/validation";
 
+import {
+  PAYMENT_METHODS_DIRECTS,
+  type PaymentMethod,
+} from "@/lib/labels";
+
 import { recordAudit, type AuditActor } from "./audit";
 
 /**
@@ -45,6 +50,8 @@ export interface LigneRapprochement {
   duCents: number;
   /** Ce qui est marqué réglé sur la fiche, sans préjuger de la comptabilité. */
   regleLe: Date | null;
+  /** Comment la famille a réglé : décide si l'argent est déjà sur un compte. */
+  mode: PaymentMethod | null;
   /** Ce qui est réellement rattaché à une écriture comptable. */
   comptabiliseCents: number;
   /** Les écritures qui le portent, pour pouvoir y retourner. */
@@ -56,6 +63,14 @@ export type EtatRapprochement =
   | "rapprochee"
   /** Réglée sur la fiche, absente des comptes : c'est ce que le rattrapage vise. */
   | "manquante"
+  /**
+   * Réglée par une plateforme, pas encore dans les comptes — et c'est normal :
+   * l'argent n'est pas encore arrivé sur le compte de l'association. Il viendra
+   * en un versement groupé, qu'on pointera alors. Ce n'est pas un retard, et le
+   * rattrapage doit s'en abstenir sous peine de créer une recette fantôme puis
+   * un doublon le jour du versement.
+   */
+  | "attente_versement"
   /** Dans les comptes pour un montant différent de ce que dit la fiche. */
   | "ecart"
   /** Ni réglée, ni comptabilisée : il n'y a rien à rapprocher. */
@@ -65,7 +80,12 @@ export type EtatRapprochement =
 
 export function etatDe(ligne: LigneRapprochement): EtatRapprochement {
   const regle = ligne.regleLe !== null;
-  if (ligne.comptabiliseCents === 0) return regle ? "manquante" : "attendue";
+  if (ligne.comptabiliseCents === 0) {
+    if (!regle) return "attendue";
+    return PAYMENT_METHODS_DIRECTS.includes(ligne.mode ?? "autre")
+      ? "manquante"
+      : "attente_versement";
+  }
   if (!regle) return "non_pointee";
   return ligne.comptabiliseCents === ligne.duCents ? "rapprochee" : "ecart";
 }
@@ -96,6 +116,7 @@ export async function rapprochement(schoolYear: string | null) {
       status: associationMembers.status,
       membershipFeeCents: associationMembers.membershipFeeCents,
       feePaidAt: associationMembers.feePaidAt,
+      feePaymentMethod: associationMembers.feePaymentMethod,
     })
     .from(associationMembers)
     .where(
@@ -148,6 +169,7 @@ export async function rapprochement(schoolYear: string | null) {
       statut: membre.status,
       duCents: membre.membershipFeeCents,
       regleLe: membre.feePaidAt,
+      mode: membre.feePaymentMethod,
       comptabiliseCents: ecritures.reduce((t, e) => t + e.partCents, 0),
       ecritures,
     };
@@ -162,6 +184,7 @@ export function totaux(lignes: LigneRapprochement[]) {
     .reduce((t, l) => t + l.duCents, 0);
   const comptabilise = lignes.reduce((t, l) => t + l.comptabiliseCents, 0);
   const manquantes = lignes.filter((l) => etatDe(l) === "manquante");
+  const enAttente = lignes.filter((l) => etatDe(l) === "attente_versement");
   return {
     attendu,
     encaisse,
@@ -169,6 +192,9 @@ export function totaux(lignes: LigneRapprochement[]) {
     /** Ce que le rattrapage porterait aux comptes s'il tournait maintenant. */
     aRattraperCents: manquantes.reduce((t, l) => t + l.duCents, 0),
     aRattraperCount: manquantes.length,
+    /** Encaissé par une plateforme, en attente du versement sur le compte. */
+    attenteVersementCents: enAttente.reduce((t, l) => t + l.duCents, 0),
+    attenteVersementCount: enAttente.length,
     ecartCount: lignes.filter((l) => etatDe(l) === "ecart").length,
     nonPointeesCount: lignes.filter((l) => etatDe(l) === "non_pointee").length,
   };
