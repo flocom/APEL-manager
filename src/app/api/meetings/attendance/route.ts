@@ -278,7 +278,7 @@ async function avertirLeBureau({
         eventDate: formatDateTime(reunion.startAt),
         location: reunion.location,
         status: statut,
-        eventUrl: `${baseUrl}/dashboard/events/${reunion.id}?onglet=presences`,
+        eventUrl: `${baseUrl}/dashboard/events/${reunion.id}/presences`,
         identity: {
           associationName: association.associationName,
           schoolName: association.schoolName,
