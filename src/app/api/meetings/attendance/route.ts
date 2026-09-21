@@ -9,7 +9,10 @@ import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/notifications/email";
-import { meetingAttendanceConfirmationEmail } from "@/lib/notifications/emails";
+import {
+  meetingAttendanceConfirmationEmail,
+  meetingAttendanceNoticeEmail,
+} from "@/lib/notifications/emails";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -99,6 +102,13 @@ export async function POST(req: Request) {
           target: [meetingAttendance.eventId, meetingAttendance.userId],
           set: { status: data.status, updatedAt: new Date() },
         });
+      await avertirLeBureau({
+        nom: currentUser.name,
+        email: currentUser.email,
+        phone,
+        statut: data.status,
+        reunion,
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -138,6 +148,15 @@ export async function POST(req: Request) {
           reunion,
           cancelToken: existant.cancelToken ?? cancelToken,
         });
+        // Une réponse qui change est une nouvelle, pas un doublon : « ne
+        // pourra finalement pas venir » est justement ce qu'on veut apprendre.
+        await avertirLeBureau({
+          nom: data.name,
+          email,
+          phone,
+          statut: data.status,
+          reunion,
+        });
         return NextResponse.json({ ok: true });
       }
     }
@@ -168,6 +187,13 @@ export async function POST(req: Request) {
         cancelToken,
       });
     }
+    await avertirLeBureau({
+      nom: data.name,
+      email,
+      phone,
+      statut: data.status,
+      reunion,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -206,4 +232,64 @@ async function envoyerConfirmation({
     },
   });
   await sendEmail({ to: email, ...mail });
+}
+
+/**
+ * Avertit l'adresse de contact de l'association qu'une réponse vient
+ * d'arriver.
+ *
+ * Silencieux en cas d'échec, et à dessein : la réponse est enregistrée, la
+ * confirmation est partie, et rendre une erreur maintenant ferait croire au
+ * parent que sa réponse n'a pas été prise. Sans adresse de contact publiée,
+ * il n'y a personne à prévenir.
+ */
+async function avertirLeBureau({
+  nom,
+  email,
+  phone,
+  statut,
+  reunion,
+}: {
+  nom: string;
+  email: string | null;
+  phone: string | null;
+  statut: "yes" | "maybe" | "no";
+  reunion: { id: string; title: string; startAt: Date; location: string | null };
+}) {
+  try {
+    const [baseUrl, association] = await Promise.all([
+      getBaseUrl(),
+      getAssociationSettings(),
+    ]);
+    const destinataire = association.contactEmail?.trim();
+    if (!destinataire) return;
+
+    // Comme ailleurs : `sendEmail` rend `false` au lieu de lever.
+    const parti = await sendEmail({
+      to: destinataire,
+      replyTo: email ?? undefined,
+      ...meetingAttendanceNoticeEmail({
+        name: nom,
+        email,
+        phone,
+        eventTitle: reunion.title,
+        eventDate: formatDateTime(reunion.startAt),
+        location: reunion.location,
+        status: statut,
+        eventUrl: `${baseUrl}/dashboard/events/${reunion.id}?onglet=presences`,
+        identity: {
+          associationName: association.associationName,
+          schoolName: association.schoolName,
+          rna: association.rna,
+        },
+      }),
+    });
+    if (!parti) {
+      console.warn(
+        `[presences] avis au bureau non remis à ${destinataire} pour la réponse de ${nom}.`,
+      );
+    }
+  } catch (erreur) {
+    console.error("[presences] avis au bureau non envoyé", erreur);
+  }
 }

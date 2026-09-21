@@ -126,6 +126,130 @@ export function meetingAttendanceConfirmationEmail(ctx: {
   };
 }
 
+/**
+ * L'avis envoyé au bureau quand quelqu'un s'inscrit depuis le site.
+ *
+ * Jusqu'ici seul le bénévole recevait un e-mail : l'association n'apprenait
+ * l'inscription qu'en ouvrant le tableau de bord, donc parfois jamais avant le
+ * jour J. Un créneau qui se remplit est pourtant une nouvelle qu'on veut
+ * connaître le jour même — c'est elle qui dit s'il faut encore relancer.
+ *
+ * Les coordonnées sont dans le corps du message et le `Reply-To` porte celle du
+ * bénévole : répondre à l'avis écrit à la bonne personne, sans passer par
+ * l'écran. Le nombre de places restantes évite d'avoir à vérifier.
+ */
+export function volunteerSignupNoticeEmail(ctx: {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  eventTitle: string;
+  eventDate: string;
+  slotTitle: string;
+  location?: string | null;
+  /** Places encore libres sur ce créneau après cette inscription. */
+  restantes: number;
+  capacite: number;
+  eventUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const reste =
+    ctx.restantes === 0
+      ? "Le créneau est complet."
+      : `Il reste ${ctx.restantes} place${ctx.restantes > 1 ? "s" : ""} sur ${ctx.capacite}.`;
+  const coordonnees = [
+    ctx.phone
+      ? `<li>Téléphone : <a href="tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}"><strong>${esc(ctx.phone)}</strong></a></li>`
+      : "",
+    ctx.email
+      ? `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`
+      : "",
+  ].join("");
+  const loc = ctx.location
+    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
+    : "";
+
+  return {
+    // Le nom d'abord : c'est ce qu'on lit dans la liste des objets, sur un
+    // téléphone, sans ouvrir.
+    subject: `${ctx.name} s’inscrit — ${ctx.eventTitle}`,
+    html: layout(
+      "Une nouvelle inscription",
+      `<p><strong>${esc(ctx.name)}</strong> vient de prendre un créneau depuis le site.</p>
+       <ul>
+         <li>Événement : <strong>${esc(ctx.eventTitle)}</strong></li>
+         <li>Date : <strong>${ctx.eventDate}</strong></li>
+         <li>Mission / créneau : <strong>${esc(ctx.slotTitle)}</strong></li>
+         ${loc}
+         ${coordonnees}
+       </ul>
+       <p style="color:#0e6d68;font-weight:600;">${reste}</p>
+       <p>${button(ctx.eventUrl, "Voir les inscrits")}</p>`,
+      ctx.identity,
+    ),
+    text: `${ctx.name} vient de prendre un créneau depuis le site.
+
+- Événement : ${ctx.eventTitle}
+- Date : ${ctx.eventDate}
+- Créneau : ${ctx.slotTitle}${ctx.location ? `\n- Lieu : ${ctx.location}` : ""}${ctx.phone ? `\n- Téléphone : ${ctx.phone}` : ""}${ctx.email ? `\n- E-mail : ${ctx.email}` : ""}
+
+${reste}
+
+Voir les inscrits : ${ctx.eventUrl}`,
+  };
+}
+
+/** Le même avis, pour une réponse de présence à une réunion. */
+export function meetingAttendanceNoticeEmail(ctx: {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  eventTitle: string;
+  eventDate: string;
+  location?: string | null;
+  status: "yes" | "maybe" | "no";
+  eventUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const reponse = {
+    yes: "sera là",
+    maybe: "viendra peut-être",
+    no: "ne pourra pas venir",
+  }[ctx.status];
+  const coordonnees = [
+    ctx.phone
+      ? `<li>Téléphone : <a href="tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}"><strong>${esc(ctx.phone)}</strong></a></li>`
+      : "",
+    ctx.email
+      ? `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`
+      : "",
+  ].join("");
+  const loc = ctx.location
+    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
+    : "";
+
+  return {
+    subject: `${ctx.name} ${reponse} — ${ctx.eventTitle}`,
+    html: layout(
+      "Une réponse de présence",
+      `<p><strong>${esc(ctx.name)}</strong> a répondu depuis le site : <strong>${reponse}</strong>.</p>
+       <ul>
+         <li>Réunion : <strong>${esc(ctx.eventTitle)}</strong></li>
+         <li>Date : <strong>${ctx.eventDate}</strong></li>
+         ${loc}
+         ${coordonnees}
+       </ul>
+       <p>${button(ctx.eventUrl, "Voir les réponses")}</p>`,
+      ctx.identity,
+    ),
+    text: `${ctx.name} a répondu depuis le site : ${reponse}.
+
+- Réunion : ${ctx.eventTitle}
+- Date : ${ctx.eventDate}${ctx.location ? `\n- Lieu : ${ctx.location}` : ""}${ctx.phone ? `\n- Téléphone : ${ctx.phone}` : ""}${ctx.email ? `\n- E-mail : ${ctx.email}` : ""}
+
+Voir les réponses : ${ctx.eventUrl}`,
+  };
+}
+
 export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   return {
     subject: `Rappel — ${ctx.eventTitle}, c'est bientôt !`,
