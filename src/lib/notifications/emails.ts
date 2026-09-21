@@ -1,4 +1,18 @@
 import { APP_NAME } from "@/lib/app-config";
+import {
+  bouton,
+  citation,
+  COULEURS,
+  encart,
+  esc,
+  escLignes,
+  fiche,
+  lien,
+  p,
+  pDiscret,
+  POLICE,
+  section,
+} from "@/lib/notifications/theme";
 
 interface EmailContent {
   subject: string;
@@ -12,9 +26,27 @@ export interface NotificationIdentity {
   rna?: string | null;
 }
 
+/**
+ * Le document complet : fond coloré, carte blanche de 600 px centrée, bandeau
+ * d'en-tête au nom de l'association, contenu, pied de page.
+ *
+ * La carte est fluide (`width:100%`) et plafonnée à 600 px : figée à 600 px,
+ * elle débordait de l'écran d'un téléphone, qu'il fallait alors balayer
+ * horizontalement pour lire une ligne. Outlook, qui ne comprend pas
+ * `max-width`, reçoit sa largeur fixe par le commentaire conditionnel
+ * `[if mso]` — c'est lui qui borne la carte là-bas.
+ *
+ * Le centrage passe par `align="center"` sur la cellule *et* `margin:0 auto` :
+ * Outlook ne connaît que le premier, les webmails modernes que le second.
+ *
+ * `apercu` est le texte d'aperçu affiché dans la liste des messages, à côté de
+ * l'objet. Sans lui, les clients y recopient le début du HTML — souvent le nom
+ * de l'association, déjà dans l'expéditeur, donc une ligne perdue.
+ */
 function layout(
-  title: string,
-  bodyHtml: string,
+  titre: string,
+  apercu: string,
+  corps: string,
   identity?: NotificationIdentity,
 ): string {
   const associationName = identity?.associationName || APP_NAME;
@@ -23,26 +55,48 @@ function layout(
     identity?.rna?.trim() ? `RNA ${identity.rna.trim()}` : null,
   ].filter((value): value is string => Boolean(value));
 
-  return `
-  <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
-    <h2 style="color:#075d8d;">${title}</h2>
-    ${bodyHtml}
-    <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${esc(associationName)} — message automatique${details.length ? `<br>${details.map(esc).join(" · ")}` : ""}</p>
-  </div>`;
-}
-
-function button(href: string, label: string): string {
-  return `<a href="${href}" style="display:inline-block;background:#075d8d;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">${label}</a>`;
-}
-
-/** Échappe les valeurs non maîtrisées (nom, titres…) injectées dans le HTML. */
-function esc(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="fr">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="color-scheme" content="light" />
+<meta name="supported-color-schemes" content="light" />
+<!--[if mso]><xml><o:OfficeDocumentSettings xmlns:o="urn:schemas-microsoft-com:office:office"><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<title>${esc(titre)}</title>
+</head>
+<body style="margin:0;padding:0;width:100%;background-color:${COULEURS.page};">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${COULEURS.page};">${esc(apercu)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COULEURS.page}" style="width:100%;background-color:${COULEURS.page};">
+  <tr>
+    <td align="center" style="padding:24px 12px;">
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COULEURS.carte}" style="width:100%;max-width:600px;margin:0 auto;background-color:${COULEURS.carte};border-radius:14px;">
+        <tr>
+          <td bgcolor="${COULEURS.bandeau}" style="padding:16px 28px;background-color:${COULEURS.bandeau};border-radius:14px 14px 0 0;font-family:${POLICE};font-size:14px;line-height:20px;font-weight:bold;color:#ffffff;letter-spacing:0.4px;">${esc(associationName)}</td>
+        </tr>
+        <tr>
+          <td style="padding:28px 28px 8px;">
+            <h1 style="margin:0 0 18px;font-family:${POLICE};font-size:24px;line-height:31px;mso-line-height-rule:exactly;font-weight:bold;color:${COULEURS.titre};">${titre}</h1>
+${corps}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 28px 26px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+              <tr><td height="1" bgcolor="${COULEURS.bordure}" style="height:1px;background-color:${COULEURS.bordure};font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+            <p style="margin:16px 0 0;font-family:${POLICE};font-size:13px;line-height:19px;mso-line-height-rule:exactly;color:${COULEURS.discret};">${esc(associationName)} — message automatique${details.length ? `<br />${details.map(esc).join(" · ")}` : ""}</p>
+          </td>
+        </tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 }
 
 interface VolunteerCtx {
@@ -56,25 +110,23 @@ interface VolunteerCtx {
 }
 
 export function volunteerConfirmationEmail(ctx: VolunteerCtx): EmailContent {
-  const loc = ctx.location
-    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
-    : "";
   return {
     // « Inscription confirmée », lu seul dans une boîte mail trois jours plus
     // tard, se prend pour une confirmation de billet.
     subject: `Votre créneau du ${ctx.eventDate} — ${ctx.eventTitle}`,
     html: layout(
-      "Merci pour votre coup de main ! 🎉",
-      `<p>Bonjour ${esc(ctx.name)},</p>
-       <p>Votre créneau de bénévole est bien enregistré :</p>
-       <ul>
-         <li>Événement : <strong>${esc(ctx.eventTitle)}</strong></li>
-         <li>Date : <strong>${ctx.eventDate}</strong></li>
-         <li>Mission / créneau : <strong>${esc(ctx.slotTitle)}</strong></li>
-         ${loc}
-       </ul>
-       <p>Si vous ne pouvez finalement pas venir, vous pouvez vous désinscrire en un clic :</p>
-       <p>${button(ctx.cancelUrl, "Me désinscrire")}</p>`,
+      "Merci pour votre coup de main !",
+      `${ctx.slotTitle} — ${ctx.eventDate}`,
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p("Votre créneau de bénévole est bien enregistré :")}
+       ${fiche([
+         { label: "Événement", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Mission / créneau", valeur: esc(ctx.slotTitle) },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+       ])}
+       ${p("Si vous ne pouvez finalement pas venir, prévenez-nous en un clic :")}
+       ${bouton(ctx.cancelUrl, "Me désinscrire")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nCréneau de bénévole confirmé :\n- Événement : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n- Créneau : ${ctx.slotTitle}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nMe désinscrire : ${ctx.cancelUrl}`,
@@ -103,23 +155,22 @@ export function meetingAttendanceConfirmationEmail(ctx: {
     maybe: "vous viendrez peut-être",
     no: "vous ne pourrez pas venir",
   }[ctx.status];
-  const titre = ctx.status === "no" ? "Merci de nous avoir prévenus" : "À bientôt !";
-  const loc = ctx.location
-    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
-    : "";
+  const titre =
+    ctx.status === "no" ? "Merci de nous avoir prévenus" : "À bientôt !";
   return {
     subject: `Votre réponse pour la réunion du ${ctx.eventDate}`,
     html: layout(
       titre,
-      `<p>Bonjour ${esc(ctx.name)},</p>
-       <p>Nous avons noté que <strong>${reponse}</strong> :</p>
-       <ul>
-         <li>Réunion : <strong>${esc(ctx.eventTitle)}</strong></li>
-         <li>Date : <strong>${ctx.eventDate}</strong></li>
-         ${loc}
-       </ul>
-       <p>Changement de programme ? Vous pouvez retirer votre réponse en un clic :</p>
-       <p>${button(ctx.cancelUrl, "Retirer ma réponse")}</p>`,
+      `Nous avons noté que ${reponse}.`,
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p(`Nous avons noté que <strong>${reponse}</strong> :`)}
+       ${fiche([
+         { label: "Réunion", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+       ])}
+       ${p("Changement de programme ? Vous pouvez retirer votre réponse en un clic :")}
+       ${bouton(ctx.cancelUrl, "Retirer ma réponse")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nNous avons noté que ${reponse} :\n- Réunion : ${ctx.eventTitle}\n- Date : ${ctx.eventDate}\n${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}\nRetirer ma réponse : ${ctx.cancelUrl}`,
@@ -156,34 +207,37 @@ export function volunteerSignupNoticeEmail(ctx: {
     ctx.restantes === 0
       ? "Le créneau est complet."
       : `Il reste ${ctx.restantes} place${ctx.restantes > 1 ? "s" : ""} sur ${ctx.capacite}.`;
-  const coordonnees = [
-    ctx.phone
-      ? `<li>Téléphone : <a href="tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}"><strong>${esc(ctx.phone)}</strong></a></li>`
-      : "",
-    ctx.email
-      ? `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`
-      : "",
-  ].join("");
-  const loc = ctx.location
-    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
-    : "";
-
   return {
     // Le nom d'abord : c'est ce qu'on lit dans la liste des objets, sur un
     // téléphone, sans ouvrir.
     subject: `${ctx.name} s’inscrit — ${ctx.eventTitle}`,
     html: layout(
       "Une nouvelle inscription",
-      `<p><strong>${esc(ctx.name)}</strong> vient de prendre un créneau depuis le site.</p>
-       <ul>
-         <li>Événement : <strong>${esc(ctx.eventTitle)}</strong></li>
-         <li>Date : <strong>${ctx.eventDate}</strong></li>
-         <li>Mission / créneau : <strong>${esc(ctx.slotTitle)}</strong></li>
-         ${loc}
-         ${coordonnees}
-       </ul>
-       <p style="color:#0e6d68;font-weight:600;">${reste}</p>
-       <p>${button(ctx.eventUrl, "Voir les inscrits")}</p>`,
+      `${ctx.name} — ${ctx.slotTitle}. ${reste}`,
+      `${p(`<strong>${esc(ctx.name)}</strong> vient de prendre un créneau depuis le site.`)}
+       ${fiche([
+         { label: "Événement", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Mission / créneau", valeur: esc(ctx.slotTitle) },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+         {
+           label: "Téléphone",
+           valeur: ctx.phone
+             ? lien(
+                 `tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}`,
+                 esc(ctx.phone),
+               )
+             : null,
+         },
+         {
+           label: "E-mail",
+           valeur: ctx.email
+             ? lien(`mailto:${esc(ctx.email)}`, esc(ctx.email))
+             : null,
+         },
+       ])}
+       ${encart(reste)}
+       ${bouton(ctx.eventUrl, "Voir les inscrits")}`,
       ctx.identity,
     ),
     text: `${ctx.name} vient de prendre un créneau depuis le site.
@@ -215,30 +269,33 @@ export function meetingAttendanceNoticeEmail(ctx: {
     maybe: "viendra peut-être",
     no: "ne pourra pas venir",
   }[ctx.status];
-  const coordonnees = [
-    ctx.phone
-      ? `<li>Téléphone : <a href="tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}"><strong>${esc(ctx.phone)}</strong></a></li>`
-      : "",
-    ctx.email
-      ? `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`
-      : "",
-  ].join("");
-  const loc = ctx.location
-    ? `<li>Lieu : <strong>${esc(ctx.location)}</strong></li>`
-    : "";
-
   return {
     subject: `${ctx.name} ${reponse} — ${ctx.eventTitle}`,
     html: layout(
       "Une réponse de présence",
-      `<p><strong>${esc(ctx.name)}</strong> a répondu depuis le site : <strong>${reponse}</strong>.</p>
-       <ul>
-         <li>Réunion : <strong>${esc(ctx.eventTitle)}</strong></li>
-         <li>Date : <strong>${ctx.eventDate}</strong></li>
-         ${loc}
-         ${coordonnees}
-       </ul>
-       <p>${button(ctx.eventUrl, "Voir les réponses")}</p>`,
+      `${ctx.name} ${reponse} — ${ctx.eventTitle}`,
+      `${p(`<strong>${esc(ctx.name)}</strong> a répondu depuis le site : <strong>${reponse}</strong>.`)}
+       ${fiche([
+         { label: "Réunion", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+         {
+           label: "Téléphone",
+           valeur: ctx.phone
+             ? lien(
+                 `tel:${esc(ctx.phone.replace(/[^+0-9]/g, ""))}`,
+                 esc(ctx.phone),
+               )
+             : null,
+         },
+         {
+           label: "E-mail",
+           valeur: ctx.email
+             ? lien(`mailto:${esc(ctx.email)}`, esc(ctx.email))
+             : null,
+         },
+       ])}
+       ${bouton(ctx.eventUrl, "Voir les réponses")}`,
       ctx.identity,
     ),
     text: `${ctx.name} a répondu depuis le site : ${reponse}.
@@ -327,32 +384,45 @@ export function dailyDigestEmail(ctx: {
   const coord = (phone: string | null, email: string | null) => {
     const bouts = [
       phone
-        ? `<a href="tel:${esc(phone.replace(/[^+0-9]/g, ""))}">${esc(phone)}</a>`
+        ? lien(`tel:${esc(phone.replace(/[^+0-9]/g, ""))}`, esc(phone))
         : null,
-      email ? `<a href="mailto:${esc(email)}">${esc(email)}</a>` : null,
+      email ? lien(`mailto:${esc(email)}`, esc(email)) : null,
     ].filter(Boolean);
-    return bouts.length ? ` — ${bouts.join(" · ")}` : "";
+    return bouts.length ? ` · ${bouts.join(" · ")}` : "";
   };
 
   // Qui s'en occupe. L'absence de responsable est la vraie information : c'est
   // la tâche que personne ne réclamera d'elle-même.
-  const qui = (noms: string[], couleur: string) =>
+  const qui = (noms: string[]) =>
     noms.length
-      ? `<span style="color:${couleur};">${noms.map(esc).join(", ")}</span>`
-      : `<span style="color:#914457;font-style:italic;">personne d’assigné</span>`;
+      ? `<span style="color:${COULEURS.discret};">${noms.map(esc).join(", ")}</span>`
+      : `<span style="color:${COULEURS.alerte};font-style:italic;">personne d’assigné</span>`;
 
-  const ligneTache = (t: DigestTache, retard: boolean) => `
-        <li style="margin:0 0 10px;">
-          <a href="${t.url}" style="color:#075d8d;font-weight:bold;">${esc(t.titre)}</a>
-          <span style="color:#64748b;"> — ${esc(t.evenement)}</span><br />
-          <span style="color:${retard ? "#783746" : "#475569"};font-weight:${retard ? "bold" : "normal"};">${
-            retard
-              ? `en retard depuis ${t.delai}`
-              : `à traiter dans ${t.delai}`
-          }</span>
-          <span style="color:#64748b;font-size:14px;"> · échéance ${t.echeance}</span><br />
-          <span style="font-size:14px;">${qui(t.responsables, "#475569")}</span>
-        </li>`;
+  /**
+   * Une tâche, en carte : filet coloré à gauche, fond teinté. Le filet dit
+   * l'urgence même en noir et blanc, puisque sa largeur ne dépend d'aucune
+   * couleur.
+   */
+  const carteTache = (t: DigestTache, retard: boolean) => {
+    const couleur = retard ? COULEURS.alerte : COULEURS.bandeau;
+    const fond = retard ? COULEURS.alerteFond : COULEURS.encadre;
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 10px;">
+        <tr>
+          <td width="4" bgcolor="${couleur}" style="width:4px;background-color:${couleur};font-size:0;line-height:0;">&nbsp;</td>
+          <td bgcolor="${fond}" style="padding:13px 16px;background-color:${fond};font-family:${POLICE};font-size:15px;line-height:22px;mso-line-height-rule:exactly;color:${COULEURS.texte};">
+            <a href="${t.url}" style="color:${COULEURS.lien};font-weight:bold;text-decoration:none;">${esc(t.titre)}</a>
+            <span style="color:${COULEURS.discret};"> — ${esc(t.evenement)}</span><br />
+            <span style="color:${couleur};font-weight:bold;">${
+              retard
+                ? `en retard depuis ${t.delai}`
+                : `à traiter dans ${t.delai}`
+            }</span><span style="color:${COULEURS.discret};font-size:14px;"> · échéance ${t.echeance}</span><br />
+            <span style="font-size:14px;">${qui(t.responsables)}</span>
+          </td>
+        </tr>
+      </table>`;
+  };
 
   const sectionTaches = (
     titre: string,
@@ -361,55 +431,56 @@ export function dailyDigestEmail(ctx: {
     retard: boolean,
   ) =>
     liste.length
-      ? `
-      <h3 style="margin:24px 0 8px;font-size:18px;color:${couleur};">${titre}</h3>
-      <ul style="padding-left:20px;margin:0;">${liste
-        .map((t) => ligneTache(t, retard))
-        .join("")}</ul>`
-      : "";
-
-  const blocsTaches =
-    nbRetard + nbAVenir > 0
-      ? `${sectionTaches(
-          `En retard — ${nbRetard} tâche${s(nbRetard)}`,
-          "#783746",
-          ctx.taches.enRetard,
-          true,
-        )}${sectionTaches(
-          `À traiter bientôt — ${nbAVenir} tâche${s(nbAVenir)}`,
-          "#075d8d",
-          ctx.taches.aVenir,
-          false,
-        )}`
+      ? `${section(titre, couleur)}${liste.map((t) => carteTache(t, retard)).join("")}`
       : "";
 
   const blocsInscriptions = ctx.rendezVous
     .map(
       (r) => `
-      <p style="margin:18px 0 2px;font-weight:bold;font-size:16px;color:#075d8d;">${esc(r.titre)}</p>
-      <p style="margin:0 0 8px;color:#64748b;font-size:14px;">${r.date}</p>
-      <ul>
-        ${r.inscriptions
-          .map(
-            (i) =>
-              `<li><strong>${esc(i.nom)}</strong> — ${esc(i.creneau)}${coord(i.phone, i.email)}</li>`,
-          )
-          .join("")}
-        ${r.presences
-          .map(
-            (p) =>
-              `<li><strong>${esc(p.nom)}</strong> — ${REPONSE[p.statut]}${coord(p.phone, p.email)}</li>`,
-          )
-          .join("")}
-      </ul>
-      <p>${button(r.url, "Ouvrir le rendez-vous")}</p>`,
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COULEURS.encadre}" style="width:100%;margin:0 0 12px;background-color:${COULEURS.encadre};border:1px solid ${COULEURS.bordure};border-radius:10px;">
+        <tr>
+          <td style="padding:16px 18px;font-family:${POLICE};font-size:15px;line-height:22px;mso-line-height-rule:exactly;color:${COULEURS.texte};">
+            <span style="font-size:16px;font-weight:bold;color:${COULEURS.titre};">${esc(r.titre)}</span><br />
+            <span style="font-size:14px;color:${COULEURS.discret};">${r.date}</span>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 0;">
+              ${[
+                ...r.inscriptions.map(
+                  (i) =>
+                    `<strong>${esc(i.nom)}</strong> — ${esc(i.creneau)}${coord(i.phone, i.email)}`,
+                ),
+                ...r.presences.map(
+                  (pr) =>
+                    `<strong>${esc(pr.nom)}</strong> — ${REPONSE[pr.statut]}${coord(pr.phone, pr.email)}`,
+                ),
+              ]
+                .map(
+                  (ligne) =>
+                    `<tr><td style="padding:0 0 6px;font-family:${POLICE};font-size:15px;line-height:22px;mso-line-height-rule:exactly;color:${COULEURS.texte};">${ligne}</td></tr>`,
+                )
+                .join("")}
+            </table>
+            <a href="${r.url}" style="display:inline-block;margin-top:6px;font-family:${POLICE};font-size:14px;font-weight:bold;color:${COULEURS.lien};text-decoration:underline;">Ouvrir le rendez-vous</a>
+          </td>
+        </tr>
+      </table>`,
     )
     .join("");
 
   const corps = [
-    blocsTaches,
+    sectionTaches(
+      `En retard — ${nbRetard} tâche${s(nbRetard)}`,
+      COULEURS.alerte,
+      ctx.taches.enRetard,
+      true,
+    ),
+    sectionTaches(
+      `À traiter bientôt — ${nbAVenir} tâche${s(nbAVenir)}`,
+      COULEURS.bandeau,
+      ctx.taches.aVenir,
+      false,
+    ),
     total > 0
-      ? `<h3 style="margin:28px 0 8px;font-size:18px;color:#0f172a;">Nouvelles réponses depuis ${ctx.depuis}</h3>${blocsInscriptions}`
+      ? `${section(`Nouvelles réponses depuis ${ctx.depuis}`)}${blocsInscriptions}`
       : "",
   ]
     .filter(Boolean)
@@ -479,7 +550,7 @@ export function dailyDigestEmail(ctx: {
 
   return {
     subject,
-    html: layout("Le point du jour", corps, ctx.identity),
+    html: layout("Le point du jour", subject, corps, ctx.identity),
     text: texte,
   };
 }
@@ -488,12 +559,18 @@ export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   return {
     subject: `Rappel — ${ctx.eventTitle}, c'est bientôt !`,
     html: layout(
-      "🔔 C'est pour bientôt !",
-      `<p>Bonjour ${esc(ctx.name)},</p>
-       <p>Petit rappel : vous êtes inscrit·e comme bénévole pour <strong>${esc(ctx.eventTitle)}</strong>
-       (<strong>${ctx.eventDate}</strong>) — créneau « <strong>${esc(ctx.slotTitle)}</strong> »${ctx.location ? `, ${esc(ctx.location)}` : ""}.</p>
-       <p>Merci pour votre aide ! Empêchement de dernière minute ?</p>
-       <p>${button(ctx.cancelUrl, "Me désinscrire")}</p>`,
+      "C'est pour bientôt !",
+      `${ctx.slotTitle} — ${ctx.eventDate}`,
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p("Petit rappel : vous êtes inscrit·e comme bénévole.")}
+       ${fiche([
+         { label: "Événement", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Mission / créneau", valeur: esc(ctx.slotTitle) },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+       ])}
+       ${p("Merci pour votre aide ! Empêchement de dernière minute ?")}
+       ${bouton(ctx.cancelUrl, "Me désinscrire")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nRappel : bénévole pour ${ctx.eventTitle} (${ctx.eventDate}), créneau ${ctx.slotTitle}.\nMe désinscrire : ${ctx.cancelUrl}`,
@@ -506,15 +583,16 @@ export function broadcastEmail(ctx: {
   senderName?: string;
   identity?: NotificationIdentity;
 }): EmailContent {
-  const paragraphs = ctx.message
+  const paragraphes = ctx.message
     .split(/\n{2,}/)
-    .map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`)
+    .map((bloc) => p(escLignes(bloc)))
     .join("");
   return {
     subject: ctx.subject,
     html: layout(
       esc(ctx.subject),
-      `${paragraphs}${ctx.senderName ? `<p style="color:#64748b;">— ${esc(ctx.senderName)}</p>` : ""}`,
+      ctx.message.slice(0, 120),
+      `${paragraphes}${ctx.senderName ? pDiscret(`— ${esc(ctx.senderName)}`) : ""}`,
       ctx.identity,
     ),
     text: `${ctx.message}${ctx.senderName ? `\n\n— ${ctx.senderName}` : ""}`,
@@ -531,10 +609,11 @@ export function passwordResetEmail(ctx: {
     subject: `Réinitialisation de votre mot de passe — ${associationName}`,
     html: layout(
       "Réinitialisation du mot de passe",
-      `<p>Bonjour ${ctx.name},</p>
-       <p>Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable 1 heure :</p>
-       <p>${button(ctx.resetUrl, "Choisir un nouveau mot de passe")}</p>
-       <p style="color:#64748b;font-size:13px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
+      "Votre lien est valable une heure.",
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p("Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable <strong>1 heure</strong> :")}
+       ${bouton(ctx.resetUrl, "Choisir un nouveau mot de passe")}
+       ${pDiscret("Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail : rien ne change tant que le lien n'est pas ouvert.")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nRéinitialisez votre mot de passe (valable 1h) : ${ctx.resetUrl}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.`,
@@ -545,18 +624,24 @@ export function mailSettingsTestEmail(
   identity: NotificationIdentity,
 ): EmailContent {
   const associationName = identity.associationName.trim() || APP_NAME;
-  const schoolLine = identity.schoolName?.trim()
-    ? `<p>Établissement : <strong>${esc(identity.schoolName.trim())}</strong></p>`
-    : "";
-  const rnaLine = identity.rna?.trim()
-    ? `<p style="color:#64748b;font-size:13px">RNA ${esc(identity.rna.trim())}</p>`
-    : "";
-
   return {
     subject: `Test de messagerie — ${associationName}`,
     html: layout(
-      "La messagerie fonctionne.",
-      `<p>Ce message confirme que l’envoi sortant de <strong>${esc(associationName)}</strong> est correctement configuré.</p>${schoolLine}${rnaLine}`,
+      "La messagerie fonctionne",
+      `L’envoi sortant de ${associationName} est correctement configuré.`,
+      `${p(`Ce message confirme que l’envoi sortant de <strong>${esc(associationName)}</strong> est correctement configuré.`)}
+       ${fiche([
+         {
+           label: "Établissement",
+           valeur: identity.schoolName?.trim()
+             ? esc(identity.schoolName.trim())
+             : null,
+         },
+         {
+           label: "RNA",
+           valeur: identity.rna?.trim() ? esc(identity.rna.trim()) : null,
+         },
+       ])}`,
       identity,
     ),
     text: [
@@ -597,25 +682,33 @@ export function familyMessageEmail(ctx: {
 }): EmailContent {
   const association = ctx.identity?.associationName || APP_NAME;
   const sujet = SUJET_LABELS[ctx.topic] ?? SUJET_LABELS.autre;
-  const lignes = [
-    `<li>Sujet : <strong>${esc(sujet)}</strong></li>`,
-    `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
-    `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`,
-    ctx.phone?.trim()
-      ? `<li>Téléphone : <strong>${esc(ctx.phone.trim())}</strong></li>`
-      : "",
-    ctx.schoolClass?.trim()
-      ? `<li>Classe : <strong>${esc(ctx.schoolClass.trim())}</strong></li>`
-      : "",
-  ].join("");
-
   return {
     subject: `Une famille vous écrit — ${ctx.name}`,
+    // L'aperçu reste neutre lui aussi : il s'affiche dans la liste des
+    // messages, à côté de l'objet, et ne doit pas plus exposer la situation.
     html: layout(
       "Une famille demande à être accompagnée",
-      `<ul>${lignes}</ul>
-       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;">${esc(ctx.message)}</p>
-       <p>${button(`mailto:${esc(ctx.email)}`, "Répondre à la famille")}</p>`,
+      `${ctx.name} vous écrit depuis le site.`,
+      `${fiche([
+         { label: "Sujet", valeur: esc(sujet) },
+         { label: "Nom", valeur: esc(ctx.name) },
+         {
+           label: "E-mail",
+           valeur: lien(`mailto:${esc(ctx.email)}`, esc(ctx.email)),
+         },
+         {
+           label: "Téléphone",
+           valeur: ctx.phone?.trim() ? esc(ctx.phone.trim()) : null,
+         },
+         {
+           label: "Classe",
+           valeur: ctx.schoolClass?.trim()
+             ? esc(ctx.schoolClass.trim())
+             : null,
+         },
+       ])}
+       ${citation(escLignes(ctx.message))}
+       ${bouton(`mailto:${esc(ctx.email)}`, "Répondre à la famille")}`,
       ctx.identity,
     ),
     text: `Une famille vous écrit depuis le site de ${association}.
@@ -676,22 +769,25 @@ export function joinRequestEmail(ctx: {
     },
   } as const;
   const intention = intentions[ctx.intention ?? "inconnue"];
-  const contact = [
-    `<li>Nom : <strong>${esc(ctx.name)}</strong></li>`,
-    `<li>E-mail : <a href="mailto:${esc(ctx.email)}">${esc(ctx.email)}</a></li>`,
-    ctx.phone?.trim()
-      ? `<li>Téléphone : <strong>${esc(ctx.phone.trim())}</strong></li>`
-      : "",
-  ].join("");
-
   return {
     subject: `${intention.objet} — ${ctx.name}`,
     html: layout(
       intention.titre,
-      `<ul>${contact}</ul>
-       ${intention.ligne ? `<p style="color:#0e6d68;font-weight:600;">${intention.ligne}</p>` : ""}
-       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;">${esc(ctx.message)}</p>
-       <p>${button(`mailto:${esc(ctx.email)}`, "Répondre")}</p>`,
+      `${ctx.name} — ${intention.objet.toLowerCase()}`,
+      `${fiche([
+         { label: "Nom", valeur: esc(ctx.name) },
+         {
+           label: "E-mail",
+           valeur: lien(`mailto:${esc(ctx.email)}`, esc(ctx.email)),
+         },
+         {
+           label: "Téléphone",
+           valeur: ctx.phone?.trim() ? esc(ctx.phone.trim()) : null,
+         },
+       ])}
+       ${intention.ligne ? encart(esc(intention.ligne)) : ""}
+       ${citation(escLignes(ctx.message))}
+       ${bouton(`mailto:${esc(ctx.email)}`, "Répondre")}`,
       ctx.identity,
     ),
     text: `${intention.objet} sur le site de ${association}.
@@ -739,11 +835,12 @@ export function joinRequestAckEmail(ctx: {
     subject: `${titre} — ${association}`,
     html: layout(
       titre,
-      `<p>Bonjour ${esc(ctx.name)},</p>
-       <p>Nous avons bien reçu ce que vous nous avez écrit sur le site de ${esc(association)}. ${suite} Comptez quelques jours ; sans nouvelles, écrivez-nous directement.</p>
-       <p style="color:#64748b;font-size:14px;">Votre message :</p>
-       <p style="white-space:pre-wrap;border-left:3px solid #cbd5e1;padding-left:12px;color:#475569;">${esc(ctx.message)}</p>
-       <p>${button(`mailto:${esc(ctx.contactEmail)}`, "Nous écrire")}</p>`,
+      suite,
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p(`Nous avons bien reçu ce que vous nous avez écrit sur le site de ${esc(association)}. ${esc(suite)} Comptez quelques jours ; sans nouvelles, écrivez-nous directement.`)}
+       ${pDiscret("Votre message :")}
+       ${citation(escLignes(ctx.message))}
+       ${bouton(`mailto:${esc(ctx.contactEmail)}`, "Nous écrire")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},
