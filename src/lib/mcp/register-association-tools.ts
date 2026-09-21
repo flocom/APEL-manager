@@ -840,10 +840,10 @@ export function registerAssociationTools(
           .optional()
           .describe("La marche à suivre pour régler, en une phrase."),
         signupNoticeMode: z
-          .enum(["immediat", "quotidien", "aucun"])
+          .enum(["quotidien", "immediat", "aucun"])
           .optional()
           .describe(
-            "Quand prévenir l'adresse de contact d'une inscription venue du site. « quotidien » regroupe tout dans un seul message, ce qui économise le quota de 100 e-mails par jour du palier gratuit de Resend.",
+            "Quand prévenir l'adresse de contact d'une inscription venue du site. « quotidien » (par défaut) regroupe tout dans un seul message, ce qui économise le quota de 100 e-mails par jour du palier gratuit de Resend ; « immediat » envoie un avis par inscription.",
           ),
         taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
         volunteerReminderWindowDays: z
