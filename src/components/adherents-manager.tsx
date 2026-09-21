@@ -18,6 +18,12 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import {
+  CotisationsRapprochement,
+  type EcritureRecetteView,
+  ETATS,
+  type LigneRapprochementView,
+} from "@/components/cotisations-rapprochement";
 import { ModuleStat } from "@/components/module-stat";
 import { useToast } from "@/components/toast";
 import {
@@ -33,6 +39,7 @@ import {
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
+import { cn } from "@/lib/utils";
 
 export interface AdherentView {
   id: string;
@@ -79,6 +86,10 @@ function dateInput(value: string | null) {
 export function AdherentsManager({
   members,
   cotisationParDefautCents = null,
+  rapprochements,
+  comptes,
+  categoriesRecette,
+  ecrituresRecette,
 }: {
   members: AdherentView[];
   /**
@@ -87,6 +98,11 @@ export function AdherentsManager({
    * famille peut régler autre chose — mais on évite de le retaper à chaque fois.
    */
   cotisationParDefautCents?: number | null;
+  /** L'état comptable de chaque adhésion, toutes années confondues. */
+  rapprochements: LigneRapprochementView[];
+  comptes: { id: string; name: string }[];
+  categoriesRecette: { id: string; name: string }[];
+  ecrituresRecette: EcritureRecetteView[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -135,7 +151,55 @@ export function AdherentsManager({
   const pendingCount = members.filter(
     (member) => member.status === "pending",
   ).length;
-  const paidCount = members.filter((member) => member.feePaidAt).length;
+
+  const parAdherent = useMemo(
+    () => new Map(rapprochements.map((l) => [l.memberId, l])),
+    [rapprochements],
+  );
+
+  /**
+   * L'argent se compte sur ce que la liste montre, pas sur la base entière :
+   * filtrer sur une année puis lire un total qui en couvre trois donnerait un
+   * chiffre que rien à l'écran ne justifie.
+   */
+  const argent = useMemo(() => {
+    const attendu = filtered.reduce((t, m) => t + m.membershipFeeCents, 0);
+    const regles = filtered.filter((m) => m.feePaidAt);
+    const encaisse = regles.reduce((t, m) => t + m.membershipFeeCents, 0);
+    const comptabilise = filtered.reduce(
+      (t, m) => t + (parAdherent.get(m.id)?.comptabiliseCents ?? 0),
+      0,
+    );
+    const horsComptes = filtered.filter(
+      (m) => parAdherent.get(m.id)?.etat === "manquante" && m.membershipFeeCents > 0,
+    );
+    return {
+      attendu,
+      encaisse,
+      reglesCount: regles.length,
+      comptabilise,
+      horsComptesCents: horsComptes.reduce((t, m) => t + m.membershipFeeCents, 0),
+      horsComptesCount: horsComptes.length,
+    };
+  }, [filtered, parAdherent]);
+
+  /**
+   * L'année que les deux gestes de rapprochement visent. Ils créent des
+   * écritures pour une année donnée : « toutes les années » n'en est pas une,
+   * et on retombe alors sur la plus récente, annoncée en clair dans le panneau.
+   */
+  const libelleCadrage =
+    schoolYear === "all"
+      ? status === "all" && !query.trim()
+        ? "toutes années"
+        : `${filtered.length} fiche${filtered.length > 1 ? "s" : ""} filtrée${filtered.length > 1 ? "s" : ""}`
+      : schoolYear;
+
+  const anneeCible = schoolYear === "all" ? (schoolYears[0] ?? "") : schoolYear;
+  const lignesDeLAnnee = useMemo(
+    () => rapprochements.filter((l) => l.schoolYear === anneeCible),
+    [rapprochements, anneeCible],
+  );
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -205,30 +269,34 @@ export function AdherentsManager({
         <ModuleStat
           label="Adhérents"
           value={members.length}
-          helper="Toutes années"
+          helper={`${activeCount} actif${activeCount > 1 ? "s" : ""}, ${pendingCount} en attente`}
           icon={UsersRound}
           tone="brand"
         />
         <ModuleStat
-          label="Actifs"
-          value={activeCount}
-          helper="Adhésion en cours"
+          label="Attendu"
+          value={formatEuros(argent.attendu)}
+          helper={libelleCadrage}
+          icon={ContactRound}
+          tone="slate"
+        />
+        <ModuleStat
+          label="Encaissé"
+          value={formatEuros(argent.encaisse)}
+          helper={`${argent.reglesCount} fiche${argent.reglesCount > 1 ? "s" : ""} sur ${filtered.length}`}
           icon={UserRoundCheck}
           tone="sea"
         />
         <ModuleStat
-          label="En attente"
-          value={pendingCount}
-          helper="À valider"
-          icon={ContactRound}
-          tone="coral"
-        />
-        <ModuleStat
-          label="Cotisations réglées"
-          value={paidCount}
-          helper={`${members.length - paidCount} à régulariser`}
+          label="Dans les comptes"
+          value={formatEuros(argent.comptabilise)}
+          helper={
+            argent.horsComptesCount > 0
+              ? `${formatEuros(argent.horsComptesCents)} encaissés hors comptes`
+              : "tout est rapproché"
+          }
           icon={CircleDollarSign}
-          tone="slate"
+          tone={argent.horsComptesCount > 0 ? "coral" : "sea"}
         />
       </section>
 
@@ -363,6 +431,7 @@ export function AdherentsManager({
               <AdherentMobileCard
                 key={member.id}
                 member={member}
+                rapprochement={parAdherent.get(member.id)}
                 onEdit={() => setEditor(member)}
                 onDelete={() => setPendingDelete(member)}
               />
@@ -413,11 +482,12 @@ export function AdherentsManager({
                       <p className="font-bold tabular-nums text-slate-950">
                         {formatEuros(member.membershipFeeCents)}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-slate-600">
                         {member.feePaidAt
                           ? `Réglée le ${formatShortDate(member.feePaidAt)}`
                           : "À régulariser"}
                       </p>
+                      <EtatComptable ligne={parAdherent.get(member.id)} />
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
@@ -453,6 +523,31 @@ export function AdherentsManager({
         </>
       )}
 
+      {schoolYears.length > 0 && (
+        <section aria-label="Rapprocher les cotisations avec la comptabilité">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="text-lg font-bold text-brand-950">
+              Rapprocher les cotisations
+            </h2>
+            <p className="text-sm font-semibold text-slate-600">
+              Écritures de l’année {anneeCible}
+            </p>
+          </div>
+          <p className="mb-3 mt-1 text-sm leading-6 text-slate-600">
+            Marquer une cotisation réglée sur une fiche ne crée aucune
+            écriture : la comptabilité ne se remplit pas dans le dos du
+            trésorier. Ces deux gestes font le lien, quand il le décide.
+          </p>
+          <CotisationsRapprochement
+            anneeCourante={anneeCible}
+            lignes={lignesDeLAnnee}
+            comptes={comptes}
+            categoriesRecette={categoriesRecette}
+            ecrituresRecette={ecrituresRecette}
+          />
+        </section>
+      )}
+
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title="Archiver cet adhérent ?"
@@ -470,12 +565,40 @@ export function AdherentsManager({
   );
 }
 
+/**
+ * L'état comptable d'une adhésion, sous son montant.
+ *
+ * Muet quand il n'y a rien à dire — ni règlement, ni écriture : afficher
+ * « Pas encore réglée » sous un « À régulariser » déjà écrit ajouterait du
+ * bruit sans information. Le badge ne parle que lorsqu'il apprend quelque
+ * chose que la ligne ne dit pas déjà.
+ */
+function EtatComptable({
+  ligne,
+}: {
+  ligne: LigneRapprochementView | undefined;
+}) {
+  if (!ligne || ligne.etat === "attendue") return null;
+  return (
+    <span
+      className={cn(
+        "mt-1.5 inline-block rounded-lg px-2 py-0.5 text-[11px] font-extrabold ring-1 ring-inset",
+        ETATS[ligne.etat].classe,
+      )}
+    >
+      {ETATS[ligne.etat].texte}
+    </span>
+  );
+}
+
 function AdherentMobileCard({
   member,
+  rapprochement,
   onEdit,
   onDelete,
 }: {
   member: AdherentView;
+  rapprochement: LigneRapprochementView | undefined;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -514,6 +637,7 @@ function AdherentMobileCard({
             {member.feePaidAt
               ? `Cotisation réglée · ${formatEuros(member.membershipFeeCents)}`
               : `Cotisation à régulariser · ${formatEuros(member.membershipFeeCents)}`}
+            <EtatComptable ligne={rapprochement} />
           </p>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">

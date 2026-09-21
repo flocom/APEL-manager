@@ -1,49 +1,88 @@
-import { asc } from "drizzle-orm";
-import { ContactRound, HandCoins } from "lucide-react";
-import Link from "next/link";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { ContactRound } from "lucide-react";
 
 import {
   AdherentsManager,
   type AdherentView,
 } from "@/components/adherents-manager";
+import {
+  type EcritureRecetteView,
+  type LigneRapprochementView,
+} from "@/components/cotisations-rapprochement";
 import { PageHeader } from "@/components/ui";
 import { requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
-import { associationMembers } from "@/lib/db/schema";
+import {
+  accountingCategories,
+  accountingEntries,
+  associationMembers,
+  financialAccounts,
+  membershipPayments,
+} from "@/lib/db/schema";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { etatDe, rapprochement } from "@/lib/services/cotisations";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Les adhérents, et pour chacun ce qu'il doit, ce qu'il a réglé, et si ce
+ * règlement est passé dans les comptes.
+ *
+ * Ces trois choses vivaient sur deux écrans : « Adhérents » tenait la fiche et
+ * la date de règlement, « Cotisations » disait l'état comptable de la même
+ * adhésion — et les deux affichaient la même liste de familles, dans le même
+ * ordre, avec les mêmes montants. On y répondait à une seule question, « cette
+ * famille est-elle à jour ? », en deux endroits, reliés par un bandeau. Le
+ * paiement appartient à l'adhérent : il est désormais sur sa ligne.
+ *
+ * Les deux gestes de rapprochement — pointer un encaissement groupé, reprendre
+ * l'historique — restent nécessaires et portent sur plusieurs familles à la
+ * fois. Ils vivent sous la liste, là où sont les familles qu'ils désignent.
+ */
 export default async function AdherentsPage() {
   await requireRole("admin");
-  const [members, settings] = await Promise.all([
-    db
-      .select()
-      .from(associationMembers)
-      .orderBy(
-        asc(associationMembers.lastName),
-        asc(associationMembers.firstName),
-      ),
-    getAssociationSettings(),
-  ]);
-
-  /**
-   * Marquer une cotisation « réglée » ici ne crée aucune écriture : c'est un
-   * choix, la comptabilité ne doit pas se remplir dans le dos du trésorier.
-   * Encore faut-il que le décalage se voie, sinon il s'accumule en silence
-   * jusqu'à l'assemblée générale. On ne regarde que l'année la plus représentée
-   * parmi les fiches, celle sur laquelle on travaille.
-   */
-  const anneeActive = members.length > 0
-    ? [...members].sort((a, b) => b.schoolYear.localeCompare(a.schoolYear))[0]
-        .schoolYear
-    : null;
-  const horsComptes = anneeActive
-    ? (await rapprochement(anneeActive)).filter(
-        (ligne) => etatDe(ligne) === "manquante" && ligne.duCents > 0,
-      )
-    : [];
+  const [members, settings, lignes, comptes, categories, recettes] =
+    await Promise.all([
+      db
+        .select()
+        .from(associationMembers)
+        .orderBy(
+          asc(associationMembers.lastName),
+          asc(associationMembers.firstName),
+        ),
+      getAssociationSettings(),
+      rapprochement(null),
+      db
+        .select({ id: financialAccounts.id, name: financialAccounts.name })
+        .from(financialAccounts)
+        .where(eq(financialAccounts.isActive, true)),
+      db
+        .select({ id: accountingCategories.id, name: accountingCategories.name })
+        .from(accountingCategories)
+        .where(
+          and(
+            eq(accountingCategories.isActive, true),
+            eq(accountingCategories.type, "income"),
+          ),
+        ),
+      db
+        .select({
+          id: accountingEntries.id,
+          label: accountingEntries.label,
+          occurredAt: accountingEntries.occurredAt,
+          amountCents: accountingEntries.amountCents,
+          status: accountingEntries.status,
+          affecteCents: sql<number>`coalesce((
+            select sum(${membershipPayments.amountCents})
+            from ${membershipPayments}
+            where ${membershipPayments.entryId} = ${accountingEntries.id}
+          ), 0)::int`,
+        })
+        .from(accountingEntries)
+        .where(eq(accountingEntries.type, "income"))
+        .orderBy(desc(accountingEntries.occurredAt))
+        .limit(200),
+    ]);
 
   const serialized: AdherentView[] = members.map((member) => ({
     id: member.id,
@@ -65,40 +104,45 @@ export default async function AdherentsPage() {
     version: member.version,
   }));
 
+  const rapprochements: LigneRapprochementView[] = lignes.map((ligne) => ({
+    memberId: ligne.memberId,
+    nom: ligne.nom,
+    schoolYear: ligne.schoolYear,
+    statut: ligne.statut,
+    duCents: ligne.duCents,
+    regleLe: ligne.regleLe?.toISOString() ?? null,
+    comptabiliseCents: ligne.comptabiliseCents,
+    etat: etatDe(ligne),
+    ecritures: ligne.ecritures.map((e) => ({
+      id: e.id,
+      label: e.label,
+      partCents: e.partCents,
+    })),
+  }));
+
+  const ecrituresRecette: EcritureRecetteView[] = recettes.map((e) => ({
+    id: e.id,
+    label: e.label,
+    occurredAt: e.occurredAt.toISOString(),
+    amountCents: e.amountCents,
+    status: e.status,
+    affecteCents: Number(e.affecteCents),
+  }));
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
         title="Adhérents"
-        description="Suivez les adhésions, les coordonnées et les cotisations de l'association."
+        description="Les adhésions, les coordonnées, et le règlement de chaque cotisation jusque dans les comptes."
         icon={ContactRound}
       />
-      {horsComptes.length > 0 && (
-        <Link
-          href="/dashboard/cotisations"
-          className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-sand-300 bg-sand-100 px-5 py-4 transition-colors hover:border-sand-400 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
-        >
-          <HandCoins
-            className="h-5 w-5 shrink-0 text-sand-900"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 text-sm font-semibold leading-6 text-sand-900">
-            {horsComptes.length} cotisation
-            {horsComptes.length > 1 ? "s sont marquées réglées" : " est marquée réglée"}{" "}
-            pour {anneeActive} sans figurer dans les comptes, soit{" "}
-            {(horsComptes.reduce((t, l) => t + l.duCents, 0) / 100).toLocaleString(
-              "fr-FR",
-              { style: "currency", currency: "EUR" },
-            )}
-            .
-          </span>
-          <span className="shrink-0 text-sm font-extrabold text-brand-800 underline underline-offset-4">
-            Rapprocher les cotisations
-          </span>
-        </Link>
-      )}
       <AdherentsManager
         members={serialized}
         cotisationParDefautCents={settings.membershipFeeCents}
+        rapprochements={rapprochements}
+        comptes={comptes}
+        categoriesRecette={categories}
+        ecrituresRecette={ecrituresRecette}
       />
     </div>
   );
