@@ -21,6 +21,12 @@ import { api } from "@/lib/client";
  * Le dialogue partagé du reste de l'application nomme l'événement et énumère ce
  * qui part avec lui. C'est la seule action de l'application qui détruise en
  * cascade des inscriptions de tiers : elle mérite de dire combien.
+ *
+ * Le bouton vit dans la barre d'actions, à côté de « Modifier », et non plus au
+ * bas d'un onglet : on le cherchait sans le trouver. En contour corail plutôt
+ * qu'en aplat rouge — deux boutons pleins côte à côte feraient crier la
+ * suppression à chaque visite, alors que le poids doit être dans le dialogue,
+ * pas dans la barre qu'on regarde vingt fois par jour.
  */
 export function EventDeleteButton({
   eventId,
@@ -74,13 +80,17 @@ export function EventDeleteButton({
   return (
     <>
       <Button
-        variant="danger"
+        variant="dangerOutline"
         size="sm"
         icon={Trash2}
         onClick={() => setOpen(true)}
         disabled={loading}
       >
-        Supprimer l’événement
+        Supprimer
+        {/* Le mot seul suffit dans la barre de CE rendez-vous, comme
+            « Modifier » juste à côté. Hors contexte visuel — lecteur d'écran,
+            liste de liens — il faut dire quoi. */}
+        <span className="sr-only"> l’événement {eventTitle}</span>
       </Button>
       <ConfirmDialog
         open={open}

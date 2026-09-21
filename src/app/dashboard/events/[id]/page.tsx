@@ -20,7 +20,6 @@ import {
   Pencil,
   Phone,
   Ticket,
-  Trash2,
   UserRoundPlus,
   UsersRound,
   WandSparkles,
@@ -189,13 +188,27 @@ export default async function EventDetailPage({
             Ajouter à l’agenda
           </a>
           {canManage && (
-            <Link
-              href={`/dashboard/events/${event.id}/edit`}
-              className={buttonClasses("primary", "sm")}
-            >
-              <Pencil className="h-4 w-4" />
-              Modifier
-            </Link>
+            <>
+              <Link
+                href={`/dashboard/events/${event.id}/edit`}
+                className={buttonClasses("primary", "sm")}
+              >
+                <Pencil className="h-4 w-4" />
+                Modifier
+              </Link>
+              {/* La suppression vivait au bas d'un onglet : on la cherchait
+                  sans la trouver. Ici elle suit « Modifier » — les deux gestes
+                  qui touchent l'événement lui-même sont au même endroit, sur
+                  tous les onglets. Le dialogue de confirmation porte le poids
+                  du geste, pas la barre. */}
+              <EventDeleteButton
+                eventId={event.id}
+                eventTitle={event.title}
+                taskCount={event.tasks.length}
+                slotCount={event.volunteerSlots.length}
+                signupCount={totalSignups}
+              />
+            </>
           )}
         </div>
       </div>
@@ -484,39 +497,6 @@ export default async function EventDetailPage({
               )}
             </div>
           </Card>
-
-          {/* « Options avancées » ne disait pas que la suppression était là, et
-              le volet était replié : on cherchait où supprimer un événement sans
-              trouver. La zone est nommée et visible. Elle reste en bas de la
-              colonne, bordée de corail : on ne tombe pas dessus par hasard,
-              mais on la trouve quand on la cherche. */}
-          {canManage && (
-            <Card className="!rounded-2xl !border-coral-200 !shadow-none p-5 sm:p-6">
-              <div className="flex items-start gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-coral-700 text-white">
-                  <Trash2 className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <h2 className="font-bold text-slate-950">
-                    Supprimer l’événement
-                  </h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Efface aussi les tâches, les créneaux et les inscriptions
-                    des bénévoles. Personne n’est prévenu.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4">
-                <EventDeleteButton
-                  eventId={event.id}
-                  eventTitle={event.title}
-                  taskCount={event.tasks.length}
-                  slotCount={event.volunteerSlots.length}
-                  signupCount={totalSignups}
-                />
-              </div>
-            </Card>
-          )}
         </div>
       )}
 

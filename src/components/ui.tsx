@@ -23,6 +23,13 @@ type Variant =
   | "outline"
   | "danger"
   | "ghost"
+  /**
+   * Contour corail : une action destructrice posée à côté d'actions ordinaires.
+   * `danger` en aplat ferait crier la suppression dans une barre qu'on regarde
+   * vingt fois par jour ; le contour la distingue sans la mettre en avant, et
+   * le poids du geste revient au dialogue de confirmation.
+   */
+  | "dangerOutline"
   /** Bouton clair posé sur un fond sombre (en-têtes de section colorés). */
   | "inverse";
 type Size = "sm" | "md";
@@ -48,6 +55,8 @@ export function buttonClasses(
       "border-slate-300 bg-white text-slate-700 hover:border-brand-700 hover:bg-brand-50 hover:text-brand-800",
     danger:
       "border-coral-700 bg-coral-700 text-white hover:border-coral-800 hover:bg-coral-800",
+    dangerOutline:
+      "border-coral-400 bg-white text-coral-700 hover:border-coral-700 hover:bg-coral-50 hover:text-coral-800",
     ghost:
       "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950",
     inverse:
