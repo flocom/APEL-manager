@@ -9,7 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { useToast } from "@/components/toast";
 import { Button, Card, EmptyState, Field, Input, Select } from "@/components/ui";
@@ -113,6 +113,17 @@ export function CotisationsRapprochement({
   const toast = useToast();
   const [geste, setGeste] = useState<"pointer" | "reprise">("pointer");
   const [enCours, setEnCours] = useState(false);
+  /**
+   * `router.refresh()` ne rend pas la main : il rejoue le rendu serveur et
+   * l'écran met de quelques dixièmes à plusieurs secondes à suivre. Rendre le
+   * bouton dès la réponse de l'API le laissait annoncer « Porter 7 adhésions
+   * aux comptes » alors qu'elles venaient d'y être portées — invitant à
+   * recliquer sur un geste déjà fait. Le serveur recalcule l'état et ne crée
+   * pas de doublon, mais un bouton qui ment sur ce qu'il reste à faire reste
+   * un bouton qui ment. La transition tient le verrou jusqu'au rendu.
+   */
+  const [rafraichit, demarrerRafraichissement] = useTransition();
+  const verrouille = enCours || rafraichit;
 
   // — Pointer une écriture existante
   const [ecritureId, setEcritureId] = useState("");
@@ -228,7 +239,7 @@ export function CotisationsRapprochement({
           ? "Écriture détachée de toute cotisation."
           : `${Object.keys(coches).length} adhésion${Object.keys(coches).length > 1 ? "s" : ""} rattachée${Object.keys(coches).length > 1 ? "s" : ""} à cette écriture.`,
       );
-      router.refresh();
+      demarrerRafraichissement(() => router.refresh());
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
@@ -256,7 +267,7 @@ export function CotisationsRapprochement({
       toast(
         `${bilan.adherents} adhésion${bilan.adherents > 1 ? "s" : ""} portée${bilan.adherents > 1 ? "s" : ""} aux comptes : ${bilan.ecritures} écriture${bilan.ecritures > 1 ? "s" : ""} en brouillon, à relire puis valider.`,
       );
-      router.refresh();
+      demarrerRafraichissement(() => router.refresh());
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
@@ -416,8 +427,8 @@ export function CotisationsRapprochement({
                     })}
                   </ul>
 
-                  <Button type="button" onClick={pointer} disabled={enCours}>
-                    {enCours ? (
+                  <Button type="button" onClick={pointer} disabled={verrouille}>
+                    {verrouille ? (
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                     ) : (
                       <Check className="h-4 w-4" aria-hidden="true" />
@@ -522,8 +533,8 @@ export function CotisationsRapprochement({
                     </Field>
                   </div>
 
-                  <Button type="button" onClick={reprendre} disabled={enCours}>
-                    {enCours ? (
+                  <Button type="button" onClick={reprendre} disabled={verrouille}>
+                    {verrouille ? (
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                     ) : (
                       <ArrowRight className="h-4 w-4" aria-hidden="true" />
