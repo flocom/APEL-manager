@@ -399,7 +399,7 @@ export function AssociationSettingsForm({
               <Field
                 label="Quand prévenir"
                 htmlFor="signup-notice-mode"
-                hint="Le récapitulatif part avec les autres tâches planifiées, une fois par jour."
+                hint="Le récapitulatif, retenu par défaut, part une fois par jour avec les autres tâches planifiées."
               >
                 <Select
                   id="signup-notice-mode"

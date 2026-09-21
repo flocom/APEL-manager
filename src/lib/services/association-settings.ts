@@ -129,7 +129,7 @@ export async function getAssociationSettings() {
     membershipFeeBasis: "non_precise" as const,
     membershipFeeNote: "",
     membershipFeePublished: false,
-    signupNoticeMode: "immediat" as const,
+    signupNoticeMode: "quotidien" as const,
     signupDigestSentAt: null,
     statutoryRules: {},
     logoUrl: null,

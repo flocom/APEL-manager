@@ -183,6 +183,13 @@
       "when": 1789979843718,
       "tag": "0025_recapitulatif_inscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789980533842,
+      "tag": "0026_recapitulatif_par_defaut",
+      "breakpoints": true
     }
   ]
 }

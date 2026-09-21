@@ -42,14 +42,16 @@ export const eventKindEnum = pgEnum("event_kind", ["event", "meeting"]);
 /**
  * Quand l'adresse de contact est prévenue d'une inscription venue du site.
  *
- * `immediat` est le comportement d'origine : un avis par inscription, au moment
- * où elle arrive. C'est ce qu'on veut pour une APEL d'école, où le volume est
- * faible et où l'intérêt est précisément de savoir tout de suite.
+ * `quotidien` est la valeur par défaut : tout est regroupé dans un seul message
+ * envoyé avec les autres tâches planifiées. Ce n'est pas qu'une question de
+ * confort. Le palier gratuit de Resend plafonne à 100 e-mails par jour, et
+ * chaque inscription en consomme déjà un pour la confirmation au bénévole : un
+ * avis à l'unité double la note, et une grosse opération peut épuiser le quota
+ * en une soirée. Ce sont alors les confirmations qui sautent. Un défaut qui
+ * peut casser l'envoi des confirmations n'est pas un bon défaut.
  *
- * `quotidien` regroupe tout dans un seul message envoyé avec les autres tâches
- * planifiées. Ce n'est pas qu'une question de confort : le palier gratuit de
- * Resend plafonne à 100 e-mails par jour, et une grosse opération peut y passer
- * en une soirée — chaque inscription coûtant déjà une confirmation au bénévole.
+ * `immediat` reste offert à qui veut savoir tout de suite, en connaissance du
+ * coût.
  */
 export const signupNoticeModeEnum = pgEnum("signup_notice_mode", [
   "immediat",
@@ -742,7 +744,7 @@ export const associationSettings = pgTable(
     membershipFeeNote: text("membership_fee_note").notNull().default(""),
     signupNoticeMode: signupNoticeModeEnum("signup_notice_mode")
       .notNull()
-      .default("immediat"),
+      .default("quotidien"),
     /**
      * Fin de la dernière fenêtre récapitulée. Elle n'avance qu'une fois le
      * récapitulatif réellement parti : si l'envoi échoue, la fenêtre reste

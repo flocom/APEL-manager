@@ -520,16 +520,17 @@ export const eventAttachmentSchema = z.object({
  * plafonne à 100 e-mails par jour, confirmations aux bénévoles comprises.
  */
 export const SIGNUP_NOTICE_MODES = [
-  "immediat",
   "quotidien",
+  "immediat",
   "aucun",
 ] as const;
 
 export type SignupNoticeMode = (typeof SIGNUP_NOTICE_MODES)[number];
 
+/** L'ordre est celui du menu : la valeur par défaut en tête. */
 export const SIGNUP_NOTICE_MODE_LABELS: Record<SignupNoticeMode, string> = {
-  immediat: "Un e-mail à chaque inscription",
   quotidien: "Un récapitulatif par jour",
+  immediat: "Un e-mail à chaque inscription",
   aucun: "Aucun avis",
 };
 
@@ -584,7 +585,7 @@ export const associationSettingsSchema = z.object({
   membershipFeeBasis: MEMBERSHIP_FEE_BASIS_SCHEMA,
   /** La marche à suivre pour régler, en une phrase écrite par le bureau. */
   membershipFeeNote: z.string().trim().max(300).default(""),
-  signupNoticeMode: z.enum(SIGNUP_NOTICE_MODES).default("immediat"),
+  signupNoticeMode: z.enum(SIGNUP_NOTICE_MODES).default("quotidien"),
   taskReminderWindowDays: z.coerce.number().int().min(0).max(30),
   volunteerReminderWindowDays: z.coerce.number().int().min(0).max(30),
   telegramEnabled: z.boolean().default(false),
