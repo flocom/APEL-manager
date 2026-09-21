@@ -1,4 +1,4 @@
-import { formatDistanceToNow, isPast } from "date-fns";
+import { formatDistanceStrict, formatDistanceToNow, isPast } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 
@@ -48,6 +48,18 @@ export function formatTimeOfDay(d: Date | string): string {
 
 export function formatRelative(d: Date | string): string {
   return formatDistanceToNow(new Date(d), { addSuffix: true, locale: fr });
+}
+
+/**
+ * Durée nue entre deux instants : « 3 jours », « 5 heures », « 2 mois ».
+ *
+ * `formatDistanceToNow` arrondit en « environ 2 mois » et lit l'horloge
+ * elle-même ; ici l'appelant fournit les deux bornes (le cron fige son `now`)
+ * et la durée est annoncée sans préfixe, pour se composer librement :
+ * « en retard depuis … », « à traiter dans … ».
+ */
+export function formatDuree(from: Date | string, to: Date | string): string {
+  return formatDistanceStrict(new Date(from), new Date(to), { locale: fr });
 }
 
 export function isOverdue(d: Date | string): boolean {
