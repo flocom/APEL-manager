@@ -371,7 +371,7 @@ async function envoyerRecapitulatif(
     evenement: t.event.title,
     // L'onglet « préparation » est celui qui porte la check-list : le lien
     // tombe sur la tâche, pas sur la fiche à charge de la chercher.
-    url: `${baseUrl}/dashboard/events/${t.event.id}?onglet=preparation`,
+    url: `${baseUrl}/dashboard/events/${t.event.id}/preparation`,
     delai: retard ? formatDuree(t.dueAt, now) : formatDuree(now, t.dueAt),
     echeance: formatDateTime(t.dueAt),
     // Le nom d'abord ; l'adresse ne sert que si le compte n'en a pas.
@@ -400,7 +400,7 @@ async function envoyerRecapitulatif(
       b = {
         titre,
         date: formatDateTime(startAt),
-        url: `${baseUrl}/dashboard/events/${id}?onglet=${onglet}`,
+        url: `${baseUrl}/dashboard/events/${id}/${onglet}`,
         inscriptions: [],
         presences: [],
       };

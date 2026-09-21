@@ -172,7 +172,7 @@ export async function POST(req: Request) {
             location: event.location,
             restantes: Math.max(0, slot.capacity - Number(pris)),
             capacite: slot.capacity,
-            eventUrl: `${baseUrl}/dashboard/events/${event.id}?onglet=benevoles`,
+            eventUrl: `${baseUrl}/dashboard/events/${event.id}/benevoles`,
             identity,
           }),
         });
