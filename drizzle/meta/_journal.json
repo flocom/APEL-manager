@@ -176,6 +176,13 @@
       "when": 1789718968672,
       "tag": "0024_cotisations_rapprochees",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789979843718,
+      "tag": "0025_recapitulatif_inscriptions",
+      "breakpoints": true
     }
   ]
 }

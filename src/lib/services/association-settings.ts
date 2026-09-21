@@ -82,6 +82,8 @@ export async function getAssociationSettings() {
        * installation neuve afficherait « 0 € » à tous les parents.
        */
       membershipFeePublished: settings.membershipFeeCents !== null,
+      signupNoticeMode: settings.signupNoticeMode,
+      signupDigestSentAt: settings.signupDigestSentAt,
       statutoryRules: settings.statutoryRules ?? {},
       logoUrl: settings.logoUrl,
       taskReminderWindowDays: settings.taskReminderWindowDays,
@@ -127,6 +129,8 @@ export async function getAssociationSettings() {
     membershipFeeBasis: "non_precise" as const,
     membershipFeeNote: "",
     membershipFeePublished: false,
+    signupNoticeMode: "immediat" as const,
+    signupDigestSentAt: null,
     statutoryRules: {},
     logoUrl: null,
     taskReminderWindowDays: legacyReminderWindow("REMINDER_WINDOW_DAYS", 3),
@@ -276,6 +280,7 @@ export async function saveAssociationSettings(
     membershipFeeCents: data.membershipFeeCents,
     membershipFeeBasis: data.membershipFeeBasis,
     membershipFeeNote: data.membershipFeeNote,
+    signupNoticeMode: data.signupNoticeMode,
     logoUrl: emptyToNull(data.logoUrl),
     taskReminderWindowDays: data.taskReminderWindowDays,
     volunteerReminderWindowDays: data.volunteerReminderWindowDays,
@@ -321,6 +326,7 @@ export async function saveAssociationSettings(
       // divulgue rien, et savoir quand il a changé sert aux comptes.
       membershipFeeCents: data.membershipFeeCents,
       membershipFeeBasis: data.membershipFeeBasis,
+      signupNoticeMode: data.signupNoticeMode,
     },
   );
 

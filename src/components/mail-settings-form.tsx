@@ -210,7 +210,25 @@ export function MailSettingsForm({
           </div>
 
           {provider === "resend" ? (
-            <div className="grid gap-4 rounded-2xl border-2 border-brand-100 bg-brand-50/70 p-4 sm:grid-cols-2">
+            <div className="rounded-2xl border-2 border-brand-100 bg-brand-50/70 p-4">
+              {/* Le quota, là où l'on choisit le fournisseur : il décide du
+                  réglage des avis d'inscription, et il se découvre sinon le jour
+                  d'une grosse opération, quand les envois s'arrêtent. */}
+              <p className="mb-4 flex items-start gap-2.5 rounded-xl bg-sand-100 px-4 py-3 text-sm font-semibold leading-6 text-sand-900">
+                <CircleAlert
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>
+                  Le palier gratuit de Resend est limité à{" "}
+                  <strong>100 e-mails par jour</strong>, toutes destinations
+                  confondues : confirmations d’inscription, rappels, messages
+                  aux bénévoles et avis au bureau. Au-delà, les envois sont
+                  refusés jusqu’au lendemain. Le réglage « Avis d’inscription »
+                  de la configuration permet d’en économiser une bonne part.
+                </span>
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="Domaine d'envoi"
                 htmlFor="mail-domain"
@@ -262,6 +280,7 @@ export function MailSettingsForm({
                   </label>
                 )}
               </Field>
+              </div>
             </div>
           ) : (
             <div className="space-y-4 rounded-2xl border-2 border-brand-100 bg-brand-50/70 p-4">

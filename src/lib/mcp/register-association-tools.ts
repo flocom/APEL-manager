@@ -839,6 +839,12 @@ export function registerAssociationTools(
           .max(300)
           .optional()
           .describe("La marche à suivre pour régler, en une phrase."),
+        signupNoticeMode: z
+          .enum(["immediat", "quotidien", "aucun"])
+          .optional()
+          .describe(
+            "Quand prévenir l'adresse de contact d'une inscription venue du site. « quotidien » regroupe tout dans un seul message, ce qui économise le quota de 100 e-mails par jour du palier gratuit de Resend.",
+          ),
         taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
         volunteerReminderWindowDays: z
           .number()
@@ -875,6 +881,8 @@ export function registerAssociationTools(
             args.membershipFeeBasis ?? current.membershipFeeBasis,
           membershipFeeNote:
             args.membershipFeeNote ?? current.membershipFeeNote,
+          signupNoticeMode:
+            args.signupNoticeMode ?? current.signupNoticeMode,
           taskReminderWindowDays:
             args.taskReminderWindowDays ??
             current.taskReminderWindowDays,
