@@ -4,6 +4,7 @@ import {
   ArrowUp,
   ArrowUpRight,
   CalendarDays,
+  CalendarX2,
   Coins,
   Hand,
   HeartHandshake,
@@ -202,7 +203,10 @@ export default async function RejoindrePage() {
 
   // Agrégats calculés ici, côté serveur : rien de ce qui vient de la base ne
   // descend jusqu'au navigateur en dehors de ces nombres et de ces chaînes.
-  const placesOuvertes = events.reduce(
+  // Un rendez-vous annulé ne compte plus dans les places à pourvoir : le
+  // nombre sert à dire « il y a besoin de bras », et il n'y en a plus.
+  const actifs = events.filter((event) => event.cancelledAt === null);
+  const placesOuvertes = actifs.reduce(
     (total, event) =>
       total +
       event.volunteerSlots.reduce(
@@ -218,22 +222,25 @@ export default async function RejoindrePage() {
     date: formatDateTime(event.startAt),
     lieu: event.location,
     jeton: event.shareToken,
+    annule: event.cancelledAt !== null,
     restantes: event.volunteerSlots.reduce(
       (somme, slot) => somme + Math.max(0, slot.capacity - slot.signups.length),
       0,
     ),
     filet:
-      event.kind === "meeting"
-        ? "bg-coral-600"
-        : index % 2 === 0
-          ? "bg-brand-700"
-          : "bg-sea-500",
+      event.cancelledAt !== null
+        ? "bg-slate-300"
+        : event.kind === "meeting"
+          ? "bg-coral-600"
+          : index % 2 === 0
+            ? "bg-brand-700"
+            : "bg-sea-500",
   }));
-  const prochain = events[0]
+  const prochain = actifs[0]
     ? {
-        titre: events[0].title,
-        date: formatLongDateTime(events[0].startAt),
-        jeton: events[0].shareToken,
+        titre: actifs[0].title,
+        date: formatLongDateTime(actifs[0].startAt),
+        jeton: actifs[0].shareToken,
       }
     : null;
   const contactEmail = settings.contactEmail?.trim() || null;
@@ -448,10 +455,13 @@ export default async function RejoindrePage() {
               </p>
             )}
 
-            {events.length > 0 && (
+            {actifs.length > 0 && (
               <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 border-t-2 border-brand-800 pt-6 text-sm font-semibold text-brand-100">
                 <p>
-                  <strong className="text-white">{events.length}</strong>{" "}
+                  {/* Les annulés ne comptent pas ici : ce nombre invite à
+                      venir, et on ne convie personne à un rendez-vous
+                      décommandé. La liste, plus bas, les montre barrés. */}
+                  <strong className="text-white">{actifs.length}</strong>{" "}
                   rendez-vous à venir
                 </p>
                 {placesOuvertes > 0 ? (
@@ -758,20 +768,38 @@ export default async function RejoindrePage() {
                         href={`/inscription/${event.jeton}`}
                         className="group block rounded-2xl focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-300"
                       >
-                        <article className="flex overflow-hidden rounded-2xl border-2 border-slate-200 bg-white transition-colors group-hover:border-brand-600">
+                        <article
+                          className={`flex overflow-hidden rounded-2xl border-2 border-slate-200 transition-colors ${
+                            event.annule
+                              ? "bg-slate-50"
+                              : "bg-white group-hover:border-brand-600"
+                          }`}
+                        >
                           <span
                             aria-hidden="true"
                             className={`w-2 shrink-0 ${event.filet}`}
                           />
                           <div className="flex flex-1 flex-wrap items-center gap-x-5 gap-y-2 p-5">
-                            <p className="flex items-center gap-2 text-sm font-extrabold text-brand-700">
+                            <p
+                              className={`flex items-center gap-2 text-sm font-extrabold ${
+                                event.annule
+                                  ? "text-slate-500 line-through"
+                                  : "text-brand-700"
+                              }`}
+                            >
                               <CalendarDays
-                                className="h-4 w-4"
+                                className="h-4 w-4 shrink-0"
                                 aria-hidden="true"
                               />
                               {event.date}
                             </p>
-                            <h3 className="text-lg font-black leading-tight tracking-[-0.02em] text-brand-950">
+                            <h3
+                              className={`text-lg font-black leading-tight tracking-[-0.02em] ${
+                                event.annule
+                                  ? "text-slate-500 line-through"
+                                  : "text-brand-950"
+                              }`}
+                            >
                               {event.titre}
                             </h3>
                             {event.lieu && (
@@ -781,23 +809,37 @@ export default async function RejoindrePage() {
                               </p>
                             )}
                             <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
-                              {event.reunion && (
+                              {event.annule && (
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-700 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                  <CalendarX2 className="h-3.5 w-3.5" />
+                                  Annulé
+                                </span>
+                              )}
+                              {event.reunion && !event.annule && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-600 px-2.5 py-1.5 text-xs font-extrabold text-white">
                                   <Users className="h-3.5 w-3.5" />
                                   Réunion
                                 </span>
                               )}
-                              {event.restantes > 0 && !event.reunion && (
+                              {!event.annule && event.restantes > 0 && !event.reunion && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-sea-200 px-2.5 py-1.5 text-xs font-extrabold text-brand-950">
                                   <Hand className="h-3.5 w-3.5" />
                                   {event.restantes} place
                                   {event.restantes > 1 ? "s" : ""}
                                 </span>
                               )}
-                              <span className="flex items-center gap-2 text-sm font-extrabold text-brand-700">
-                                {event.restantes > 0 && !event.reunion
-                                  ? "Se proposer"
-                                  : "Voir le rendez-vous"}
+                              <span
+                                className={`flex items-center gap-2 text-sm font-extrabold ${
+                                  event.annule
+                                    ? "text-slate-600"
+                                    : "text-brand-700"
+                                }`}
+                              >
+                                {event.annule
+                                  ? "En savoir plus"
+                                  : event.restantes > 0 && !event.reunion
+                                    ? "Se proposer"
+                                    : "Voir le rendez-vous"}
                                 <ArrowUpRight
                                   className="h-4 w-4"
                                   aria-hidden="true"

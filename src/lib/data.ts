@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
@@ -18,6 +18,11 @@ import {
  * Rendez-vous publiés à venir — pour les pages publiques. Réunions comprises :
  * l'association veut que son agenda complet soit lisible des familles.
  *
+ * Un rendez-vous ANNULÉ reste dans cette liste, et c'est voulu : une famille
+ * qui l'a vu annoncé doit le retrouver, barré, plutôt que de le chercher en
+ * vain et de se déplacer. Les pages publiques le présentent donc rayé et
+ * marqué « Annulé », sans proposition de s'inscrire.
+ *
  * Ce qui protège une réunion n'est donc plus son type mais son STATUT : tant
  * qu'elle est en brouillon, elle reste interne. Ce que les pages publiques
  * affichent d'un rendez-vous se limite au titre, à la date, au lieu et à la
@@ -28,11 +33,6 @@ export async function getUpcomingPublishedEvents() {
   return db.query.events.findMany({
     where: and(
       eq(events.status, "published"),
-      // Un rendez-vous annulé quitte l'accueil public : le garder barré sur
-      // une page que des familles découvrent ferait annoncer une fête qui
-      // n'aura pas lieu. Les personnes déjà inscrites, elles, ont reçu le
-      // message et retrouvent l'événement barré dans l'espace de l'équipe.
-      isNull(events.cancelledAt),
       gte(events.startAt, new Date()),
     ),
     orderBy: [asc(events.startAt)],

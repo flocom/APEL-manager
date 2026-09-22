@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   CalendarDays,
+  CalendarX2,
   CheckCircle2,
   Hand,
   HeartHandshake,
@@ -47,7 +48,12 @@ export default async function HomePage() {
     getUpcomingPublishedEvents(),
     getAssociationSettings(),
   ]);
-  const openPlaces = events.reduce(
+  // Les compteurs ne comptent que ce qui aura lieu : annoncer « 2 événements
+  // à venir » dont un annulé, ou des coups de main sur une fête décommandée,
+  // ferait venir quelqu'un pour rien. Les cartes, elles, les montrent tous —
+  // barrés — pour qu'une famille qui l'a vu annoncé le retrouve.
+  const aVenir = events.filter((event) => event.cancelledAt === null);
+  const openPlaces = aVenir.reduce(
     (sum, event) =>
       sum +
       event.volunteerSlots.reduce(
@@ -147,10 +153,10 @@ export default async function HomePage() {
                   >
                     <CalendarDays className="h-5 w-5 text-brand-700" />
                     <p className="mt-5 text-4xl font-black tracking-[-0.04em] text-brand-950">
-                      {events.length}
+                      {aVenir.length}
                     </p>
                     <p className="mt-1 flex items-center gap-1 text-sm font-bold text-slate-600">
-                      événement{events.length > 1 ? "s" : ""} à venir
+                      événement{aVenir.length > 1 ? "s" : ""} à venir
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-1" />
                     </p>
                   </a>
@@ -227,6 +233,10 @@ export default async function HomePage() {
                     0,
                   );
                   const remaining = Math.max(0, capacity - taken);
+                  // Annulé : la carte reste, mais elle n'appelle plus à rien.
+                  // Proposer « se proposer » ou compter des coups de main sur
+                  // une fête décommandée enverrait quelqu'un pour rien.
+                  const annule = event.cancelledAt !== null;
 
                   return (
                     <Link
@@ -242,24 +252,34 @@ export default async function HomePage() {
                           filet et badge. C'est le seul objet encadré de
                           l'agenda, donc celui que l'œil trouve en premier. */}
                       <article
-                        className={`flex h-full flex-col overflow-hidden rounded-2xl border-2 bg-white transition-colors ${
-                          event.kind === "meeting"
-                            ? "border-coral-600 group-hover:border-coral-700"
-                            : "border-slate-200 group-hover:border-brand-600"
+                        className={`flex h-full flex-col overflow-hidden rounded-2xl border-2 transition-colors ${
+                          annule
+                            ? "border-slate-200 bg-slate-50"
+                            : event.kind === "meeting"
+                              ? "border-coral-600 bg-white group-hover:border-coral-700"
+                              : "border-slate-200 bg-white group-hover:border-brand-600"
                         }`}
                       >
                         <div
                           className={`h-2 ${
-                            event.kind === "meeting"
-                              ? "bg-coral-600"
-                              : index % 2 === 0
-                                ? "bg-brand-700"
-                                : "bg-sea-500"
+                            annule
+                              ? "bg-slate-300"
+                              : event.kind === "meeting"
+                                ? "bg-coral-600"
+                                : index % 2 === 0
+                                  ? "bg-brand-700"
+                                  : "bg-sea-500"
                           }`}
                         />
                         <div className="flex flex-1 flex-col p-6">
                           <div className="flex items-start justify-between gap-3">
-                            <h3 className="text-xl font-black leading-tight tracking-[-0.025em] text-brand-950">
+                            <h3
+                              className={`text-xl font-black leading-tight tracking-[-0.025em] ${
+                                annule
+                                  ? "text-slate-500 line-through"
+                                  : "text-brand-950"
+                              }`}
+                            >
                               {event.title}
                             </h3>
                             <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -267,19 +287,25 @@ export default async function HomePage() {
                                   lien, une ancre imbriquée serait invalide — et
                                   personne ne doit partir payer depuis l'accueil
                                   sans avoir lu la date ni le lieu. */}
+                              {annule && (
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-700 px-2.5 py-1.5 text-xs font-extrabold text-white">
+                                  <CalendarX2 className="h-3.5 w-3.5" />
+                                  Annulé
+                                </span>
+                              )}
                               {event.kind === "meeting" && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-coral-600 px-2.5 py-1.5 text-xs font-extrabold text-white">
                                   <Users className="h-3.5 w-3.5" />
                                   Réunion
                                 </span>
                               )}
-                              {event.ticketingUrl && (
+                              {!annule && event.ticketingUrl && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-100 px-2.5 py-1.5 text-xs font-extrabold text-brand-900">
                                   <Ticket className="h-3.5 w-3.5" />
                                   Billetterie
                                 </span>
                               )}
-                              {remaining > 0 && (
+                              {!annule && remaining > 0 && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-sea-200 px-2.5 py-1.5 text-xs font-extrabold text-brand-950">
                                   <Hand className="h-3.5 w-3.5" />
                                   {remaining} coup{remaining > 1 ? "s" : ""} de
@@ -288,10 +314,23 @@ export default async function HomePage() {
                               )}
                             </span>
                           </div>
-                          <p className="mt-4 flex items-center gap-2 text-sm font-extrabold text-brand-700">
-                            <CalendarDays className="h-4 w-4" />
+                          <p
+                            className={`mt-4 flex items-center gap-2 text-sm font-extrabold ${
+                              annule
+                                ? "text-slate-500 line-through"
+                                : "text-brand-700"
+                            }`}
+                          >
+                            <CalendarDays className="h-4 w-4 shrink-0" />
                             {formatDateTime(event.startAt)}
                           </p>
+                          {annule && (
+                            <p className="mt-2 text-sm font-bold leading-6 text-coral-800">
+                              {event.kind === "meeting"
+                                ? "Cette réunion n’aura pas lieu."
+                                : "Cet événement n’aura pas lieu."}
+                            </p>
+                          )}
                           {event.location && (
                             <p className="mt-2 flex items-center gap-2 text-sm font-medium text-slate-500">
                               <MapPin className="h-4 w-4" />
@@ -304,12 +343,18 @@ export default async function HomePage() {
                               className="mt-4 break-words text-sm font-medium leading-6 text-slate-600"
                             />
                           )}
-                          <div className="mt-auto flex items-center gap-2 pt-6 text-sm font-extrabold text-brand-700">
-                            {event.kind === "meeting"
-                              ? "Voir la réunion"
-                              : remaining > 0 && !event.ticketingUrl
-                                ? "Voir et se proposer"
-                                : "Voir l’événement"}
+                          <div
+                            className={`mt-auto flex items-center gap-2 pt-6 text-sm font-extrabold ${
+                              annule ? "text-slate-600" : "text-brand-700"
+                            }`}
+                          >
+                            {annule
+                              ? "En savoir plus"
+                              : event.kind === "meeting"
+                                ? "Voir la réunion"
+                                : remaining > 0 && !event.ticketingUrl
+                                  ? "Voir et se proposer"
+                                  : "Voir l’événement"}
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                           </div>
                         </div>
