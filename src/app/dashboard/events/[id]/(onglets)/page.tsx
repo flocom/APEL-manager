@@ -127,12 +127,20 @@ export default async function ApercuPage({
           icon={Link2}
           label="Page d’inscription"
           value={
-            event.status === "published" ? "Accessible" : "Non publiée"
+            // L'annulation prime : la page publique refuse désormais toute
+            // inscription, annoncer « accessible » serait faux.
+            event.cancelledAt
+              ? "Fermée"
+              : event.status === "published"
+                ? "Accessible"
+                : "Non publiée"
           }
           hint={
-            event.status === "published"
-              ? "Le lien peut être partagé"
-              : "Publiez l’événement pour ouvrir le lien"
+            event.cancelledAt
+              ? "Le rendez-vous est annulé"
+              : event.status === "published"
+                ? "Le lien peut être partagé"
+                : "Publiez l’événement pour ouvrir le lien"
           }
         />
       </div>

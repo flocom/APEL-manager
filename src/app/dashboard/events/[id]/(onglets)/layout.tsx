@@ -9,6 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AutoRefresh } from "@/components/auto-refresh";
+import { EventCancelButton } from "@/components/event-cancel-button";
 import { EventDeleteButton } from "@/components/event-delete-button";
 import { EventDetailNav } from "@/components/event-detail-nav";
 import { Badge, buttonClasses, Card } from "@/components/ui";
@@ -16,6 +17,7 @@ import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getEventWithDetails, getMeetingAttendance } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { EVENT_STATUS_LABELS } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -55,12 +57,17 @@ export default async function EventDetailLayout({
   if (!event) notFound();
 
   const estReunion = event.kind === "meeting";
+  const annule = event.cancelledAt !== null;
   const canManage = canManageEvents(user);
   const canSeeBudget = user.role === "admin";
   const totalSignups = event.volunteerSlots.reduce(
     (sum, s) => sum + s.signups.length,
     0,
   );
+  const inscrits = event.volunteerSlots.flatMap((s) => s.signups);
+  const contactables = new Set(
+    inscrits.map((s) => s.email?.trim().toLowerCase()).filter(Boolean),
+  ).size;
   const presents = estReunion
     ? (await getMeetingAttendance(event.id)).filter((r) => r.status === "yes")
         .length
@@ -99,6 +106,15 @@ export default async function EventDetailLayout({
                   qui touchent l'événement lui-même sont au même endroit, sur
                   tous les onglets. Le dialogue de confirmation porte le poids
                   du geste, pas la barre. */}
+              <EventCancelButton
+                eventId={event.id}
+                eventTitle={event.title}
+                eventVersion={event.version}
+                isCancelled={event.cancelledAt !== null}
+                isMeeting={estReunion}
+                contactables={contactables}
+                sansEmail={inscrits.length - contactables}
+              />
               <EventDeleteButton
                 eventId={event.id}
                 eventTitle={event.title}
@@ -115,19 +131,40 @@ export default async function EventDetailLayout({
         <div className="grid lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="border-l-4 border-brand-600 p-5 sm:p-7">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                color={eventStatusBadge[event.status]}
-                className="!rounded-md"
-              >
-                {EVENT_STATUS_LABELS[event.status]}
-              </Badge>
+              {annule ? (
+                <Badge color="coral" className="!rounded-md">
+                  Annulé
+                </Badge>
+              ) : (
+                <Badge
+                  color={eventStatusBadge[event.status]}
+                  className="!rounded-md"
+                >
+                  {EVENT_STATUS_LABELS[event.status]}
+                </Badge>
+              )}
               <span className="text-xs font-semibold text-slate-600">
                 Fiche événement
               </span>
             </div>
-            <h1 className="mt-3 text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl">
+            {/* Barré ET annoncé : la barre seule se perd sur un petit écran ou
+                dans une impression en noir et blanc, et ne se lit pas à voix
+                haute. La mention porte l'information, la barre la rappelle. */}
+            <h1
+              className={cn(
+                "mt-3 text-2xl font-black tracking-[-0.035em] sm:text-3xl",
+                annule ? "text-slate-500 line-through" : "text-slate-950",
+              )}
+            >
               {event.title}
             </h1>
+            {annule && (
+              <p className="mt-2 text-sm font-bold text-coral-700">
+                {estReunion ? "Réunion annulée" : "Événement annulé"} le{" "}
+                {formatDateTime(event.cancelledAt!)}. Les inscrits ont été
+                prévenus ; les tâches ne sont plus rappelées.
+              </p>
+            )}
             <div className="mt-4 flex flex-col gap-2 text-sm text-slate-600 sm:flex-row sm:flex-wrap sm:gap-x-5">
               <p className="inline-flex items-start gap-2 font-semibold text-slate-800">
                 <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />

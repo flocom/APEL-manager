@@ -11,6 +11,7 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Confirmer",
   loading = false,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -19,6 +20,12 @@ export function ConfirmDialog({
   description: string;
   confirmLabel?: string;
   loading?: boolean;
+  /**
+   * De quoi compléter la décision avant de la prendre — un motif à joindre,
+   * une case à cocher. Rare : un dialogue de confirmation qui demande à
+   * remplir un formulaire n'en est plus un.
+   */
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -84,6 +91,7 @@ export function ConfirmDialog({
         >
           {description}
         </p>
+        {children && <div className="mt-4">{children}</div>}
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
             type="button"

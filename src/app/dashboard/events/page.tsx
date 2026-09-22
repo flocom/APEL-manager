@@ -329,16 +329,32 @@ function EventRows({
 
               <div className="min-w-0 px-4 py-4 sm:px-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="min-w-0 break-words font-bold tracking-tight text-slate-950 transition-colors group-hover:text-brand-700">
+                  <h3
+                    className={cn(
+                      "min-w-0 break-words font-bold tracking-tight transition-colors",
+                      event.cancelledAt
+                        ? "text-slate-500 line-through"
+                        : "text-slate-950 group-hover:text-brand-700",
+                    )}
+                  >
                     {event.title}
                   </h3>
-                  <Badge
-                    color={eventStatusBadge[event.status]}
-                    className="!rounded-md"
-                  >
-                    {EVENT_STATUS_LABELS[event.status]}
-                  </Badge>
-                  {lateTasks.length > 0 && (
+                  {event.cancelledAt ? (
+                    <Badge color="coral" className="!rounded-md">
+                      Annulé
+                    </Badge>
+                  ) : (
+                    <Badge
+                      color={eventStatusBadge[event.status]}
+                      className="!rounded-md"
+                    >
+                      {EVENT_STATUS_LABELS[event.status]}
+                    </Badge>
+                  )}
+                  {/* Les tâches en retard d'un événement annulé ne sont plus
+                      en retard de rien : elles disparaissent du décompte
+                      comme elles ont disparu des rappels. */}
+                  {!event.cancelledAt && lateTasks.length > 0 && (
                     <span className="rounded-md bg-coral-50 px-2 py-1 text-[11px] font-bold text-coral-800">
                       {lateTasks.length} à traiter
                     </span>

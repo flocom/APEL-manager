@@ -555,6 +555,52 @@ export function dailyDigestEmail(ctx: {
   };
 }
 
+/**
+ * L'annonce d'une annulation aux personnes inscrites.
+ *
+ * Le sujet dit « Annulé » en premier mot : c'est ce qu'on lit dans une liste
+ * de messages, sur un téléphone, sans ouvrir — et c'est l'information qui
+ * évite un déplacement pour rien.
+ *
+ * Le motif est facultatif parce qu'il l'est souvent en vrai : une annulation
+ * se décide parfois vite, et attendre d'avoir la bonne formule retarderait le
+ * message. Sans motif, le message reste franc plutôt que d'en inventer un.
+ */
+export function eventCancelledEmail(ctx: {
+  eventTitle: string;
+  eventDate: string;
+  location?: string | null;
+  /** Ce que l'équipe a bien voulu dire, s'il y a lieu. */
+  raison?: string | null;
+  /** Une réunion s'annule aussi, et ne se dit pas comme une fête. */
+  isMeeting?: boolean;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const mot = ctx.isMeeting ? "La réunion" : "L\u2019événement";
+  const raison = ctx.raison?.trim();
+  return {
+    subject: `Annulé — ${ctx.eventTitle}`,
+    html: layout(
+      "C\u2019est annulé",
+      `${ctx.eventTitle} du ${ctx.eventDate} n\u2019aura pas lieu.`,
+      `${p(`${mot} <strong>${esc(ctx.eventTitle)}</strong> n\u2019aura pas lieu.`)}
+       ${fiche([
+         { label: ctx.isMeeting ? "Réunion" : "Événement", valeur: esc(ctx.eventTitle) },
+         { label: "Date prévue", valeur: ctx.eventDate },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+       ])}
+       ${raison ? citation(escLignes(raison)) : ""}
+       ${p("Vous n\u2019avez rien à faire : votre inscription est sans suite. Merci d\u2019y avoir répondu, et à une prochaine fois.")}`,
+      ctx.identity,
+    ),
+    text: `${mot} ${ctx.eventTitle} n\u2019aura pas lieu.
+
+Date prévue : ${ctx.eventDate}${ctx.location ? `\nLieu : ${ctx.location}` : ""}${raison ? `\n\n${raison}` : ""}
+
+Vous n\u2019avez rien à faire : votre inscription est sans suite. Merci d\u2019y avoir répondu, et à une prochaine fois.`,
+  };
+}
+
 export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
   return {
     subject: `Rappel — ${ctx.eventTitle}, c'est bientôt !`,

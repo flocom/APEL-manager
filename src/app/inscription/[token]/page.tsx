@@ -62,6 +62,41 @@ export default async function InscriptionPage({
   const { token } = await params;
   const event = await getEventByShareToken(token);
 
+  // Annulé : on le DIT, au lieu de renvoyer « lien indisponible ». Quelqu'un
+  // qui ouvre son lien d'inscription la veille doit comprendre que la fête
+  // n'aura pas lieu, et non croire à un lien cassé.
+  if (event && event.cancelledAt) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50">
+        <SiteHeader />
+        <main className="mx-auto flex w-full max-w-2xl flex-1 items-center px-4 py-12 sm:px-6">
+          <section className="w-full rounded-2xl border-2 border-coral-200 bg-white p-8 text-center">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-coral-700 text-white">
+              <CalendarX2 className="h-7 w-7" />
+            </span>
+            <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-coral-700">
+              Annulé
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-500 line-through">
+              {event.title}
+            </h1>
+            <p className="mx-auto mt-3 max-w-md text-sm font-medium leading-6 text-slate-600">
+              Ce rendez-vous n&apos;aura pas lieu. Les personnes déjà inscrites
+              ont été prévenues par e-mail. Il n&apos;y a rien à faire de votre
+              côté.
+            </p>
+            <Link
+              href="/"
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-950 px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+            >
+              Retour à l&apos;accueil
+            </Link>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   if (!event || event.status !== "published") {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">

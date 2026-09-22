@@ -23,6 +23,7 @@ import {
 } from "@/lib/data";
 import { formatDateTime, formatRelative, isOverdue } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -199,9 +200,23 @@ export default async function DashboardPage() {
                         {task.title}
                       </p>
                       <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
-                        <span className="min-w-0 break-words">
+                        {/* Le nom de l'événement barré : la tâche reste
+                            listée — l'équipe peut avoir à la clore — mais rien
+                            ne doit laisser croire qu'elle prépare encore
+                            quelque chose. */}
+                        <span
+                          className={cn(
+                            "min-w-0 break-words",
+                            task.event.cancelledAt && "text-slate-500 line-through",
+                          )}
+                        >
                           {task.event.title}
                         </span>
+                        {task.event.cancelledAt && (
+                          <span className="shrink-0 rounded-md bg-coral-50 px-1.5 py-0.5 text-[11px] font-bold text-coral-800">
+                            Annulé
+                          </span>
+                        )}
                         <span aria-hidden>·</span>
                         <span
                           className={
@@ -261,13 +276,24 @@ export default async function DashboardPage() {
                           Réunion
                         </p>
                       )}
-                      <p className="break-words font-bold leading-snug text-slate-950 group-hover:text-brand-800">
+                      <p
+                        className={cn(
+                          "break-words font-bold leading-snug",
+                          event.cancelledAt
+                            ? "text-slate-500 line-through"
+                            : "text-slate-950 group-hover:text-brand-800",
+                        )}
+                      >
                         {event.title}
                       </p>
                     </div>
-                    <Badge color={EVENT_STATUS_COLORS[event.status]}>
-                      {EVENT_STATUS_LABELS[event.status]}
-                    </Badge>
+                    {event.cancelledAt ? (
+                      <Badge color="coral">Annulé</Badge>
+                    ) : (
+                      <Badge color={EVENT_STATUS_COLORS[event.status]}>
+                        {EVENT_STATUS_LABELS[event.status]}
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-3 flex items-center gap-2 text-sm font-bold text-brand-700">
                     <CalendarDays className="h-4 w-4" />

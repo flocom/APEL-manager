@@ -197,6 +197,13 @@
       "when": 1790014765898,
       "tag": "0027_mode_de_reglement",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790060958879,
+      "tag": "0028_annulation_evenement",
+      "breakpoints": true
     }
   ]
 }

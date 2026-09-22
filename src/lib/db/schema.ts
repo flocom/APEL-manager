@@ -220,6 +220,20 @@ export const events = pgTable("events", {
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }),
   status: eventStatusEnum("status").notNull().default("draft"),
+  /**
+   * Date d'annulation, ou `null` si l'événement tient toujours.
+   *
+   * Une date plutôt qu'un statut : « annulé » n'est pas l'opposé de « publié »,
+   * c'est une chose qui arrive à un événement publié. Garder les deux permet de
+   * dire « publié, puis annulé », et de savoir quand — ce que le message envoyé
+   * aux inscrits et le journal d'audit ont besoin de rappeler.
+   *
+   * Un événement annulé reste visible et gardé : les inscrits doivent pouvoir
+   * le retrouver, et l'équipe savoir ce qui a été décommandé. Ce sont ses
+   * tâches qui cessent — inutile de relancer qui que ce soit sur la
+   * préparation d'une fête qui n'aura pas lieu.
+   */
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   /** Compteur d'édition (verrou optimiste : rejette les écritures concurrentes périmées). */
   version: integer("version").notNull().default(0),
   /** Jeton public pour le lien d'inscription des bénévoles. */

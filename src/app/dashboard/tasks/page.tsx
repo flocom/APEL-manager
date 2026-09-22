@@ -28,10 +28,20 @@ function TaskItem({ task, muted }: { task: UserTask; muted?: boolean }) {
         <p className="mt-1 text-sm text-slate-500">
           <Link
             href={`/dashboard/events/${task.eventId}`}
-            className="text-brand-600 hover:underline"
+            className={cn(
+              "hover:underline",
+              task.event.cancelledAt
+                ? "text-slate-500 line-through"
+                : "text-brand-600",
+            )}
           >
             {task.event.title}
           </Link>{" "}
+          {task.event.cancelledAt && (
+            <span className="rounded-md bg-coral-50 px-1.5 py-0.5 text-[11px] font-bold text-coral-800">
+              Annulé
+            </span>
+          )}{" "}
           ·{" "}
           <span className={overdue ? "font-medium text-coral-600" : ""}>
             {overdue ? "à traiter depuis le" : "à traiter à partir du"}{" "}
