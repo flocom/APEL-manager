@@ -66,6 +66,7 @@ export async function POST(req: Request) {
         id: events.id,
         kind: events.kind,
         status: events.status,
+        cancelledAt: events.cancelledAt,
         title: events.title,
         startAt: events.startAt,
         location: events.location,
@@ -74,6 +75,12 @@ export async function POST(req: Request) {
       .where(eq(events.shareToken, data.token))
       .limit(1);
 
+    if (reunion?.cancelledAt) {
+      throw new HttpError(
+        410,
+        "Cette réunion a été annulée : les réponses sont closes.",
+      );
+    }
     if (!reunion || reunion.status !== "published") {
       throw new HttpError(404, "Cette réunion n'accepte pas de réponses.");
     }

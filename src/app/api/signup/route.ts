@@ -54,6 +54,12 @@ export async function POST(req: Request) {
       where: eq(events.shareToken, data.token),
       with: { volunteerSlots: true },
     });
+    if (event?.cancelledAt) {
+      throw new HttpError(
+        410,
+        "Ce rendez-vous a été annulé : les inscriptions sont closes.",
+      );
+    }
     if (!event || event.status !== "published") {
       throw new HttpError(404, "Cet événement n'accepte pas d'inscriptions.");
     }

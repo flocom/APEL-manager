@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
@@ -28,6 +28,11 @@ export async function getUpcomingPublishedEvents() {
   return db.query.events.findMany({
     where: and(
       eq(events.status, "published"),
+      // Un rendez-vous annulé quitte l'accueil public : le garder barré sur
+      // une page que des familles découvrent ferait annoncer une fête qui
+      // n'aura pas lieu. Les personnes déjà inscrites, elles, ont reçu le
+      // message et retrouvent l'événement barré dans l'espace de l'équipe.
+      isNull(events.cancelledAt),
       gte(events.startAt, new Date()),
     ),
     orderBy: [asc(events.startAt)],

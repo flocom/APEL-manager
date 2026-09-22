@@ -77,13 +77,26 @@ export async function GET(req: Request) {
       association.taskReminderWindowDays * 24 * 60 * 60 * 1000,
   );
 
-  const dueTasks = await db.query.tasks.findMany({
+  const dueTasksBrutes = await db.query.tasks.findMany({
     where: and(ne(tasks.status, "done"), lte(tasks.dueAt, horizon)),
     with: {
       event: true,
       assignees: { with: { user: true } },
     },
   });
+  /**
+   * Les tâches d'un événement annulé sortent de tout : ni rappel individuel,
+   * ni ligne dans le récapitulatif. Relancer quelqu'un sur la préparation
+   * d'une fête décommandée use la confiance qu'on met dans ces messages —
+   * après deux rappels inutiles, on ne les lit plus.
+   *
+   * Le filtre est posé ici, une fois, plutôt que dans chacun des deux usages :
+   * un troisième arriverait un jour et hériterait de l'oubli.
+   */
+  const dueTasks = dueTasksBrutes.filter(
+    (t) => t.event.cancelledAt === null,
+  );
+  const tachesAnnulees = dueTasksBrutes.length - dueTasks.length;
 
   // 1) Construire la liste des notifications candidates (tâche × membre).
   type Candidate = {
@@ -180,6 +193,9 @@ export async function GET(req: Request) {
     const ev = s.slot.event;
     return (
       ev.status === "published" &&
+      // Un événement annulé ne se rappelle pas : le seul message qui lui reste
+      // à envoyer est celui de l'annulation, déjà parti.
+      ev.cancelledAt === null &&
       ev.startAt > now &&
       ev.startAt <= volunteerHorizon
     );
@@ -245,6 +261,8 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     checkedTasks: dueTasks.length,
+    /** Tâches écartées parce que leur événement est annulé. */
+    tachesEvenementsAnnules: tachesAnnulees,
     sent: succeeded.length,
     skipped,
     failed: results.length - succeeded.length,

@@ -410,6 +410,21 @@ const schoolYear = z
     return end === start + 1;
   }, "Les deux années doivent être consécutives");
 
+/**
+ * L'annulation d'un événement.
+ *
+ * `annule: false` remet l'événement debout : une annulation se fait d'un clic
+ * et peut se faire de travers, il faut pouvoir revenir. Le rétablissement
+ * n'envoie aucun message — on ne réveille pas les inscrits pour une fausse
+ * manœuvre corrigée dans la minute.
+ */
+export const eventCancelSchema = z.object({
+  annule: z.boolean(),
+  /** Le motif communiqué aux inscrits ; facultatif, et seulement à l'annulation. */
+  raison: z.string().trim().max(500).optional(),
+  version: optimisticVersion,
+});
+
 export const associationMemberSchema = z.object({
   userId: nullableUuid,
   firstName: z.string().trim().min(1, "Prénom requis").max(120),
