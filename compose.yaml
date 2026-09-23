@@ -80,6 +80,12 @@ services:
   # L'interface n'écoute que sur 127.0.0.1 de l'hôte ; depuis un autre poste,
   # passer par un tunnel SSH. MAILPIT_UI_AUTH="utilisateur:mot-de-passe" exige
   # en plus une authentification.
+  #
+  # Installation antérieure : `docker compose up -d` ne touche pas à un service
+  # dont le profil est inactif, pas même avec --remove-orphans. L'ancien
+  # conteneur, publié sur 0.0.0.0:8025, continue donc de tourner et de recevoir
+  # le courrier. Le retirer ou le recréer : docs/DOCKER.md, « Installation
+  # antérieure ».
   mailpit:
     image: axllent/mailpit:v1.30.5
     profiles: ["mailpit"]

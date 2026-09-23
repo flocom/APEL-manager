@@ -195,7 +195,8 @@ profil `mailpit` :
 
 ```bash
 docker compose --profile mailpit up -d
-# ou, durablement, dans .env : COMPOSE_PROFILES="mailpit"
+# ou, durablement, dans .env, en gardant les profils déjà listés :
+# COMPOSE_PROFILES="mailpit", ou "autoupdate,mailpit" si autoupdate y figurait
 ```
 
 Choisissez ensuite SMTP avec l'hôte `mailpit`, le port `1025`, TLS désactivé et
@@ -214,9 +215,63 @@ Pour exiger en plus un mot de passe, renseignez
 Mailpit comme relais d'une instance ouverte aux familles : les messages ne
 partiraient pas, et chacun resterait lisible dans la boîte.
 
-> Mise à niveau : une installation qui envoyait ses e-mails à l'hôte `mailpit`
-> doit ajouter `mailpit` à `COMPOSE_PROFILES`, faute de quoi le service ne
-> démarre plus et les envois échouent (« getaddrinfo ENOTFOUND mailpit »).
+#### Installation antérieure : l'ancien conteneur Mailpit
+
+Jusqu'à cette version, Mailpit démarrait avec toute installation et publiait
+son interface sur toutes les adresses du serveur (`0.0.0.0:8025`). Le passage
+sous profil ne l'arrête pas : Compose ignore complètement un service dont le
+profil est inactif, et `docker compose up -d`, même avec `--remove-orphans`,
+laisse l'ancien conteneur tourner, toujours publié. L'application recréée
+reste sur le même réseau, où le nom `mailpit` désigne encore ce conteneur :
+une instance qui y relayait son courrier continue donc d'envoyer sans erreur,
+et chaque lien de réinitialisation reste lisible par quiconque atteint le
+port 8025. L'`updater` n'y change rien : il remplace les images de `app` et
+`scheduler`, jamais `compose.yaml` ni les autres conteneurs. Une instance qui
+n'a pas refait de `git pull` fait encore tourner l'ancien `compose.yaml`,
+donc l'ancien Mailpit.
+
+Sur toute installation antérieure, après le `git pull` :
+
+1. Vérifiez si l'ancienne interface est encore exposée :
+
+   ```bash
+   docker ps --filter name=mailpit --format '{{.Names}} {{.Ports}}'
+   ```
+
+   Aucune ligne : rien à faire. Des ports qui commencent par `0.0.0.0:`
+   (souvent suivis de `[::]:`), par exemple `0.0.0.0:8025->8025/tcp` :
+   l'interface est ouverte à tout le réseau, passez à l'étape 2 ou 3.
+   `127.0.0.1:8025->8025/tcp` : le conteneur a déjà été recréé.
+
+2. **Mailpit ne sert pas** (le cas de toute instance ouverte aux familles).
+   Ouvrez d'abord **Configuration → Serveur d'envoi** : si l'hôte SMTP est
+   `mailpit`, aucun message n'a jamais atteint les familles. Choisissez Resend
+   ou un vrai relais SMTP et envoyez un e-mail de test avant d'aller plus loin,
+   sans quoi chaque envoi échouera une fois le conteneur retiré
+   (« getaddrinfo ENOTFOUND mailpit »). Arrêtez et supprimez ensuite le
+   conteneur ; `--profile mailpit` rend le service visible à Compose le temps
+   de la commande :
+
+   ```bash
+   docker compose --profile mailpit rm -sf mailpit
+   ```
+
+   Le volume `mailpit_data` conserve les messages capturés, adresses des
+   destinataires comprises. Supprimez-le aussi : `docker volume ls --filter
+   name=mailpit_data` donne son nom exact, préfixé par celui du projet, puis
+   `docker volume rm <nom>`.
+
+3. **Mailpit sert aux essais.** Ajoutez `mailpit` à `COMPOSE_PROFILES` dans
+   `.env`, sans retirer les profils déjà présents (par exemple
+   `COMPOSE_PROFILES="autoupdate,mailpit"`), puis recréez le conteneur avec le
+   nouveau fichier :
+
+   ```bash
+   docker compose --profile mailpit up -d mailpit
+   ```
+
+   Relancez la commande de l'étape 1 : elle doit maintenant afficher
+   `127.0.0.1:8025->8025/tcp`, et plus aucun `0.0.0.0:`.
 
 ### Pièces jointes
 
@@ -337,6 +392,11 @@ contrôler :
   version d'API que les moteurs récents refusent
   (« client version 1.25 is too old »).
 
+Cette commande n'arrête pas un service que le nouveau fichier place sous un
+profil inactif : son ancien conteneur continue de tourner tel quel. C'est le
+cas de Mailpit ; si l'installation précède son passage sous profil, suivez
+« Installation antérieure » dans la partie Courrier.
+
 > L'`updater` a besoin d'accéder à `/var/run/docker.sock`, ce qui équivaut à un
 > accès root sur l'hôte. À réserver à une machine dont les accès sont
 > maîtrisés. Pour vous en passer, laissez `COMPOSE_PROFILES` vide et utilisez
@@ -447,6 +507,10 @@ git pull
 docker compose up --build -d
 docker image prune
 ```
+
+Sur une installation antérieure au passage de Mailpit sous profil, ces
+commandes laissent l'ancien conteneur Mailpit publié sur toutes les adresses :
+voir « Installation antérieure » dans la partie Courrier.
 
 ### Vérifier ce qui tourne
 

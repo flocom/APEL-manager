@@ -567,7 +567,10 @@ export function MailSettingsForm({
               <p className="mt-1 text-sm leading-6 text-slate-600">
                 {settings.provider === "smtp"
                   ? settings.smtpHost?.toLowerCase().includes("mailpit")
-                    ? "Mailpit capture les messages sans les distribuer : réservez-le aux essais. Tout ce qui part — liens de réinitialisation de mot de passe compris — se lit dans son interface, qui n'écoute que sur la machine hôte (localhost:8025)."
+                    ? // Aucune promesse « machine hôte seulement » : une mise à
+                      // niveau laisse tourner l'ancien conteneur, publié sur
+                      // toutes les adresses, tant que personne ne le recrée.
+                      "Mailpit capture les messages sans les distribuer : réservez-le aux essais. Tout ce qui part — liens de réinitialisation de mot de passe compris — se lit dans son interface, qui ne doit écouter que sur la machine hôte. Une installation antérieure garde un ancien conteneur ouvert à tout le réseau tant qu'il n'est pas recréé : voir « Installation antérieure » dans docs/DOCKER.md."
                     : "Vérifiez que le relais autorise l'expéditeur et configurez les enregistrements DNS de votre domaine pour assurer la distribution des messages."
                   : "Validez le domaine dans Resend, puis ajoutez les enregistrements DNS SPF et DKIM fournis. L'adresse d'expédition doit utiliser ce domaine."}
               </p>

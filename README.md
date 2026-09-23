@@ -131,6 +131,15 @@ et affiche leur contenu, liens de réinitialisation de mot de passe compris :
 jamais en production. Hors relais local, l’envoi SMTP exige une connexion
 chiffrée.
 
+**Installation antérieure :** Mailpit démarrait autrefois d’office, avec une
+interface ouverte à tout le réseau sur le port 8025. Ni `git pull` ni
+`docker compose up -d` n’arrêtent cet ancien conteneur, et l’application
+continue d’y relayer son courrier si elle était réglée ainsi. Vérifiez-le avec
+`docker ps --filter name=mailpit --format '{{.Names}} {{.Ports}}'` : la
+démarche pour le retirer ou le republier sur la seule machine hôte figure dans
+[`docs/DOCKER.md`](docs/DOCKER.md), partie Courrier, sous « Installation
+antérieure ».
+
 Les images publiées sont signées : `docs/DOCKER.md` explique comment figer une
 version par son empreinte et vérifier sa signature plutôt que d’installer
 automatiquement chaque nouvelle image.
