@@ -2,17 +2,23 @@ import { sql } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 import { NextResponse, after } from "next/server";
 
-import { hashPassword } from "@/lib/auth/password";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import {
+  assertAcceptablePassword,
+  hashPassword,
+} from "@/lib/auth/password";
+import { secretWeakness } from "@/lib/auth/secrets";
 import { createSession } from "@/lib/auth/session";
+import { configuredBaseUrl } from "@/lib/base-url";
+import { clientIpAddress, rateLimitIpKey } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import {
   reserveAccountRequest,
   submitAccountRequest,
 } from "@/lib/services/account-requests";
 import { getRecaptchaRuntimeConfig } from "@/lib/services/association-settings";
-import { clientIpAddress } from "@/lib/services/audit";
 import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { registerSchema } from "@/lib/validation";
@@ -76,7 +82,17 @@ export async function POST(req: Request) {
     // le dit déjà et cache le formulaire ; l'API le dit aussi, pour une page
     // restée ouverte pendant qu'on désactivait l'envoi, ou un envoi direct.
     // Ce refus ne regarde pas l'adresse saisie : il n'apprend rien sur les
-    // comptes.
+    // comptes. Même chose sans adresse publique configurée : le lien de
+    // confirmation porte un jeton, et ne part que vers elle (lib/base-url.ts).
+    if (!configuredBaseUrl()) {
+      return NextResponse.json(
+        {
+          error:
+            "Les demandes de compte se confirment par un lien envoyé par e-mail, et l’adresse publique du site n’est pas encore configurée. Rapprochez-vous d’un membre du bureau.",
+        },
+        { status: 503 },
+      );
+    }
     if (!(await getOutboundMailRuntimeConfig())) {
       return NextResponse.json(
         {
@@ -87,7 +103,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const place = await reserveAccountRequest({ name, email, ip });
+    // Le plafond par connexion compte une box IPv6 entière, pas chacune de
+    // ses adresses : même clé que le limiteur partagé.
+    const place = await reserveAccountRequest({
+      name,
+      email,
+      ip: rateLimitIpKey(ip),
+    });
     if (!place.ok) {
       return NextResponse.json(
         {
@@ -104,7 +126,7 @@ export async function POST(req: Request) {
       try {
         await submitAccountRequest({ id: place.id, email });
       } catch (erreur) {
-        console.error("[inscription] demande non traitée", erreur);
+        console.error("[inscription] demande non traitée", redactError(erreur));
       }
     });
     return NextResponse.json({ ok: true, pending: true });
@@ -138,6 +160,21 @@ async function creerPremierCompte({
   if (!password) {
     throw new HttpError(400, "Choisissez un mot de passe.");
   }
+  // Le premier compte est administrateur, sur une installation neuve : c'est
+  // le moment d'exiger un AUTH_SECRET solide, sans enfermer dehors une
+  // installation existante (elle, n'arrive jamais ici). Ce secret signe les
+  // sessions ; faible, il laisserait fabriquer celle de n'importe qui.
+  const faiblesse = secretWeakness(process.env.AUTH_SECRET);
+  if (faiblesse) {
+    console.error(
+      `[securite] premier compte refusé : AUTH_SECRET est trop faible (${faiblesse}).`,
+    );
+    throw new HttpError(
+      503,
+      "L’installation n’est pas terminée : le secret de session (AUTH_SECRET) est trop faible. Définissez une chaîne aléatoire d’au moins 32 caractères — par exemple avec « openssl rand -base64 32 » —, redémarrez l’application, puis créez ce compte.",
+    );
+  }
+  await assertAcceptablePassword(password, email);
   const passwordHash = await hashPassword(password);
 
   return db.transaction(async (tx) => {

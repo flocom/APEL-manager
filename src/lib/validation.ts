@@ -1,8 +1,13 @@
 import { z } from "zod";
 
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import { parseLocalDateTime } from "@/lib/dates";
 import { agMinutesPayloadSchema } from "@/lib/documents/ag-validation";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
+import { MONTANT_MAX_CENTIMES } from "@/lib/money";
 import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
 import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
 import {
@@ -27,12 +32,20 @@ const localDateTime = z.string().min(1, "Date requise").transform((value, ctx) =
 /** Numéro de version pour le verrou optimiste (envoyé par le client à l'édition). */
 const optimisticVersion = z.coerce.number().int().nonnegative().optional();
 
-/** Règle commune de mot de passe (≥ 8 caractères). */
+/**
+ * Longueur d'un nouveau mot de passe. Le reste de la règle (mots de passe
+ * courants, suites, adresse, nom de l'association) se vérifie dans la route,
+ * avec `assertAcceptablePassword` : elle a besoin du contexte, et son refus
+ * doit s'afficher tel quel plutôt qu'en « Données invalides ».
+ */
 const passwordField = (label = "Le mot de passe") =>
   z
     .string()
-    .min(8, `${label} doit faire au moins 8 caractères`)
-    .max(200);
+    .min(
+      PASSWORD_MIN_LENGTH,
+      `${label} doit faire au moins ${PASSWORD_MIN_LENGTH} caractères`,
+    )
+    .max(PASSWORD_MAX_LENGTH);
 
 /**
  * Nom d'une personne qui demande un compte.
@@ -80,8 +93,10 @@ export const accountConfirmSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide").max(200),
+  // Pas de longueur minimale ici : un mot de passe choisi sous l'ancienne
+  // règle (huit caractères) doit continuer d'ouvrir la session.
+  password: z.string().min(1, "Mot de passe requis").max(PASSWORD_MAX_LENGTH),
 });
 
 export const eventSchema = z.object({
@@ -333,7 +348,9 @@ export const publicMeetingAttendanceSchema = z.object({
 });
 
 export const forgotSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide").max(200),
+  // Pot de miel anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
 });
 
 export const resetPasswordSchema = z.object({
@@ -526,7 +543,13 @@ export const accountingEntrySchema = z.object({
     .number()
     .int()
     .positive("Le montant doit être strictement positif")
-    .max(2_000_000_000),
+    // Voir MONTANT_MAX_CENTIMES : au-delà d'un million d'euros, c'est une
+    // faute de frappe, et l'ancien plafond (la limite d'un entier 32 bits)
+    // laissait deux écritures suffire à faire déborder le grand livre.
+    .max(
+      MONTANT_MAX_CENTIMES,
+      "Montant trop élevé : une écriture ne dépasse pas 1 000 000 €. Vérifiez la saisie.",
+    ),
   occurredAt: localDateTime,
   counterparty: optionalText(300),
   paymentMethod: optionalText(80),

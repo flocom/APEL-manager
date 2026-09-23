@@ -50,9 +50,16 @@ export function MeetingAttendanceForm({
   defaultEmail = "",
   recaptchaSiteKey = null,
   whatsappGroupUrl = null,
+  connecte = false,
 }: {
   /** Jeton de partage de la réunion. */
   token: string;
+  /**
+   * Membre connecté (compte validé) : sa réponse s'applique directement à
+   * son compte, sans e-mail de confirmation. L'écran de fin ne doit donc pas
+   * lui promettre un e-mail ni une confirmation qui n'arriveront pas.
+   */
+  connecte?: boolean;
   defaultName?: string;
   defaultEmail?: string;
   recaptchaSiteKey?: string | null;
@@ -73,10 +80,32 @@ export function MeetingAttendanceForm({
             ? "C’est noté, on vous attend !"
             : "C’est noté : peut-être, et c’est déjà utile."}
         </p>
-        <p className="mt-1 text-sm leading-6 text-slate-600">
-          Vous recevrez un e-mail de confirmation, avec un lien pour vous
-          décommander si besoin. Venir sans avoir répondu reste possible.
-        </p>
+        {connecte ? (
+          // Connecté, la réponse est rattachée au compte et appliquée tout de
+          // suite : rien à confirmer par e-mail, et c'est sa propre réponse
+          // qu'il voit — rien à cacher sur une réponse précédente.
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Votre réponse est enregistrée sur votre compte. Vous pouvez la
+            modifier ici à tout moment, ou depuis le tableau de bord.
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Vous recevrez un e-mail de confirmation, avec un lien pour vous
+              décommander si besoin. Venir sans avoir répondu reste possible.
+            </p>
+            {/* Le même texte que ce soit une première réponse ou non : l'écran
+                ne dit pas si l'adresse avait déjà répondu, sans quoi il
+                suffirait de la saisir pour savoir qui vient. L'e-mail, lui,
+                part à l'adresse et dit ce qu'il en est. */}
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Vous aviez déjà répondu avec cette adresse ? Votre réponse
+              précédente reste en place jusqu’à ce que vous confirmiez le
+              changement depuis l’e-mail : personne d’autre ne peut la
+              modifier à votre place.
+            </p>
+          </>
+        )}
         {whatsappGroupUrl && (
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Les rappels et les changements de dernière minute passent par le{" "}
@@ -97,7 +126,7 @@ export function MeetingAttendanceForm({
           onClick={() => setDone(null)}
           className="mt-3 text-sm font-semibold text-brand-600 underline-offset-2 hover:underline"
         >
-          Annoncer quelqu’un d’autre
+          {connecte ? "Modifier ma réponse" : "Annoncer quelqu’un d’autre"}
         </button>
       </div>
     );

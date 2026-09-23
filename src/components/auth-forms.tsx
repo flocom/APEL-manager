@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button, buttonClasses, Input, Label } from "@/components/ui";
+import {
+  PASSWORD_HINT,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import { DEFAULT_NEXT_PATH, withNextPath } from "@/lib/auth/return-path";
 import { api } from "@/lib/client";
 import { useRecaptcha } from "@/lib/use-recaptcha";
@@ -229,10 +233,10 @@ export function RegisterForm({
             name="password"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN_LENGTH}
             autoComplete="new-password"
           />
-          <p className="mt-1 text-xs text-slate-500">8 caractères minimum.</p>
+          <p className="mt-1 text-xs text-slate-500">{PASSWORD_HINT}</p>
         </div>
       )}
       {/* Piège à robots : invisible, doit rester vide. */}
@@ -343,10 +347,10 @@ export function ConfirmAccountForm({
           name="password"
           type="password"
           required
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           autoComplete="new-password"
         />
-        <p className="mt-1 text-xs text-slate-500">8 caractères minimum.</p>
+        <p className="mt-1 text-xs text-slate-500">{PASSWORD_HINT}</p>
       </div>
       <Button type="submit" loading={loading} className="min-h-12 w-full">
         Confirmer ma demande
@@ -366,7 +370,9 @@ export function ForgotForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
     setLoading(true);
     const form = new FormData(e.currentTarget);
     try {
-      await api("/api/auth/forgot", { body: { email: form.get("email") } });
+      await api("/api/auth/forgot", {
+        body: { email: form.get("email"), website: form.get("website") },
+      });
       setSent(true);
     } catch (err) {
       setError((err as Error).message);
@@ -391,6 +397,13 @@ export function ForgotForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
         <Label htmlFor="email">Adresse e-mail</Label>
         <Input id="email" name="email" type="email" required autoComplete="email" />
       </div>
+      {/* Piège à robots : invisible, doit rester vide. */}
+      <div aria-hidden="true" className="absolute left-[-9999px]">
+        <label>
+          Ne pas remplir
+          <input name="website" tabIndex={-1} autoComplete="off" />
+        </label>
+      </div>
       <Button type="submit" loading={loading} className="w-full">
         Envoyer le lien
       </Button>
@@ -414,10 +427,12 @@ export function ResetForm({ token }: { token: string }) {
     setLoading(true);
     const form = new FormData(e.currentTarget);
     try {
+      // La réinitialisation ouvre la session : repasser par la connexion
+      // buterait sur le blocage qu'un tiers a pu poser sur cette adresse.
       await api("/api/auth/reset", {
         body: { token, password: form.get("password") },
       });
-      router.push("/login?reset=1");
+      router.push(DEFAULT_NEXT_PATH);
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -435,10 +450,10 @@ export function ResetForm({ token }: { token: string }) {
           name="password"
           type="password"
           required
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           autoComplete="new-password"
         />
-        <p className="mt-1 text-xs text-slate-500">8 caractères minimum.</p>
+        <p className="mt-1 text-xs text-slate-500">{PASSWORD_HINT}</p>
       </div>
       <Button type="submit" loading={loading} className="w-full">
         Réinitialiser le mot de passe

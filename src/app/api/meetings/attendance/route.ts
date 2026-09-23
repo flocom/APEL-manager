@@ -1,24 +1,27 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getBaseUrl } from "@/lib/base-url";
-import { formatDateTime } from "@/lib/dates";
+import { clientIpAddress } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
-import { sendEmail } from "@/lib/notifications/email";
+import { redactError } from "@/lib/errors";
+import { getRecaptchaRuntimeConfig } from "@/lib/services/association-settings";
 import {
-  meetingAttendanceConfirmationEmail,
-  meetingAttendanceNoticeEmail,
-} from "@/lib/notifications/emails";
-import { getNotificationIdentity } from "@/lib/notifications/identity";
+  avertirLeBureauPresence as avertirLeBureau,
+  demanderConfirmationDuChangement,
+  envoyerConfirmationPresence as envoyerConfirmation,
+} from "@/lib/services/meeting-attendance";
 import {
-  getAssociationSettings,
-  getRecaptchaRuntimeConfig,
-} from "@/lib/services/association-settings";
+  delaiLisible,
+  hitRateLimits,
+  ipKey,
+  PLAFONDS,
+  rateLimitError,
+} from "@/lib/services/rate-limit";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
@@ -43,6 +46,23 @@ const schemaPublic = publicMeetingAttendanceSchema.extend({
   website: z.string().optional(),
 });
 
+/**
+ * Les e-mails partent après la réponse, tous : la réponse arrive ainsi au même
+ * moment qu'il y ait une confirmation, une demande de confirmation de
+ * changement, un avis au bureau ou rien du tout. Chronométrer la page ne dit
+ * donc pas si une adresse avait déjà répondu. Un échec d'envoi n'a de toute
+ * façon rien à dire au parent : sa réponse est enregistrée.
+ */
+function envoyerApres(tache: () => Promise<unknown>) {
+  after(async () => {
+    try {
+      await tache();
+    } catch (erreur) {
+      console.error("[presences] envoi non effectué", redactError(erreur));
+    }
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const data = schemaPublic.parse(await req.json());
@@ -52,6 +72,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // Mêmes plafonds, et même seau, que les inscriptions de bénévoles : c'est
+    // le même geste depuis la même page publique, et chaque réponse fait
+    // partir une confirmation et un avis au bureau.
+    const ip = clientIpAddress(req);
+    const parConnexion = await hitRateLimits([
+      [PLAFONDS.inscriptionIpHeure, ipKey(ip)],
+      [PLAFONDS.inscriptionIpJour, ipKey(ip)],
+    ]);
+    if (!parConnexion.ok) {
+      throw rateLimitError(
+        parConnexion,
+        `Trop de réponses depuis cette connexion : réessayez ${delaiLisible(parConnexion.retryAfterSeconds)}, ou écrivez à l’association.`,
+      );
+    }
+
     const recaptcha = await getRecaptchaRuntimeConfig();
     if (recaptcha) {
       await verifyRecaptcha({
@@ -59,7 +94,7 @@ export async function POST(req: Request) {
         token: data.recaptchaToken,
         action: "inscription",
         minScore: recaptcha.minScore,
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        ip,
       });
     }
 
@@ -115,24 +150,40 @@ export async function POST(req: Request) {
           target: [meetingAttendance.eventId, meetingAttendance.userId],
           set: { status: data.status, updatedAt: new Date() },
         });
-      await avertirLeBureau({
-        nom: currentUser.name,
-        email: currentUser.email,
-        phone,
-        statut: data.status,
-        reunion,
-      });
+      envoyerApres(() =>
+        avertirLeBureau({
+          nom: currentUser.name,
+          email: currentUser.email,
+          phone,
+          statut: data.status,
+          reunion,
+        }),
+      );
       return NextResponse.json({ ok: true });
     }
 
     const cancelToken = generateToken(18);
 
-    // Revenir sur sa réponse doit marcher aussi bien que la donner : un même
-    // e-mail met sa ligne à jour au lieu de buter sur « déjà répondu », car le
-    // parent qui recoche n'a le plus souvent pas gardé l'e-mail de confirmation.
+    // Une adresse qui a déjà répondu : sa réponse n'est PAS remplacée. Elle
+    // l'était, en silence, et il suffisait donc de connaître l'adresse d'un
+    // parent pour changer sa réponse, son nom et son téléphone dans la liste
+    // du bureau. Le changement part désormais en demande de confirmation à
+    // cette adresse — le parent qui recoche le confirme d'un clic, un tiers ne
+    // peut pas.
+    //
+    // La réponse faite ici est la même que pour une première réponse : dire
+    // « vous aviez déjà répondu » apprendrait à n'importe qui qu'une adresse
+    // donnée vient à la réunion. L'écran le dit en termes neutres.
     if (email) {
       const [existant] = await db
-        .select({ id: meetingAttendance.id, cancelToken: meetingAttendance.cancelToken })
+        .select({
+          id: meetingAttendance.id,
+          status: meetingAttendance.status,
+          name: meetingAttendance.name,
+          phone: meetingAttendance.phone,
+          cancelToken: meetingAttendance.cancelToken,
+          updatedAt: meetingAttendance.updatedAt,
+        })
         .from(meetingAttendance)
         .where(
           and(
@@ -144,32 +195,14 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (existant) {
-        await db
-          .update(meetingAttendance)
-          .set({
-            status: data.status,
-            name: data.name,
-            phone,
-            cancelToken: existant.cancelToken ?? cancelToken,
-            updatedAt: new Date(),
-          })
-          .where(eq(meetingAttendance.id, existant.id));
-        await envoyerConfirmation({
-          email,
-          nom: data.name,
-          statut: data.status,
-          reunion,
-          cancelToken: existant.cancelToken ?? cancelToken,
-        });
-        // Une réponse qui change est une nouvelle, pas un doublon : « ne
-        // pourra finalement pas venir » est justement ce qu'on veut apprendre.
-        await avertirLeBureau({
-          nom: data.name,
-          email,
-          phone,
-          statut: data.status,
-          reunion,
-        });
+        envoyerApres(() =>
+          demanderConfirmationDuChangement({
+            existant,
+            reunion,
+            email,
+            propose: { status: data.status, name: data.name, phone },
+          }),
+        );
         return NextResponse.json({ ok: true });
       }
     }
@@ -191,112 +224,27 @@ export async function POST(req: Request) {
       throw e;
     }
 
-    if (email) {
-      await envoyerConfirmation({
-        email,
+    envoyerApres(async () => {
+      if (email) {
+        await envoyerConfirmation({
+          email,
+          nom: data.name,
+          statut: data.status,
+          reunion,
+          cancelToken,
+        });
+      }
+      await avertirLeBureau({
         nom: data.name,
+        email,
+        phone,
         statut: data.status,
         reunion,
-        cancelToken,
       });
-    }
-    await avertirLeBureau({
-      nom: data.name,
-      email,
-      phone,
-      statut: data.status,
-      reunion,
     });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);
-  }
-}
-
-async function envoyerConfirmation({
-  email,
-  nom,
-  statut,
-  reunion,
-  cancelToken,
-}: {
-  email: string;
-  nom: string;
-  statut: "yes" | "maybe" | "no";
-  reunion: { title: string; startAt: Date; location: string | null };
-  cancelToken: string;
-}) {
-  const [baseUrl, association] = await Promise.all([
-    getBaseUrl(),
-    getAssociationSettings(),
-  ]);
-  const mail = meetingAttendanceConfirmationEmail({
-    name: nom,
-    eventTitle: reunion.title,
-    eventDate: formatDateTime(reunion.startAt),
-    location: reunion.location,
-    status: statut,
-    cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-    identity: await getNotificationIdentity(association),
-  });
-  await sendEmail({ to: email, ...mail });
-}
-
-/**
- * Avertit l'adresse de contact de l'association qu'une réponse vient
- * d'arriver.
- *
- * Silencieux en cas d'échec, et à dessein : la réponse est enregistrée, la
- * confirmation est partie, et rendre une erreur maintenant ferait croire au
- * parent que sa réponse n'a pas été prise. Sans adresse de contact publiée,
- * il n'y a personne à prévenir.
- */
-async function avertirLeBureau({
-  nom,
-  email,
-  phone,
-  statut,
-  reunion,
-}: {
-  nom: string;
-  email: string | null;
-  phone: string | null;
-  statut: "yes" | "maybe" | "no";
-  reunion: { id: string; title: string; startAt: Date; location: string | null };
-}) {
-  try {
-    const [baseUrl, association] = await Promise.all([
-      getBaseUrl(),
-      getAssociationSettings(),
-    ]);
-    // Idem : en mode « quotidien » le récapitulatif reprendra la réponse.
-    if (association.signupNoticeMode !== "immediat") return;
-    const destinataire = association.contactEmail?.trim();
-    if (!destinataire) return;
-
-    // Comme ailleurs : `sendEmail` rend `false` au lieu de lever.
-    const parti = await sendEmail({
-      to: destinataire,
-      replyTo: email ?? undefined,
-      ...meetingAttendanceNoticeEmail({
-        name: nom,
-        email,
-        phone,
-        eventTitle: reunion.title,
-        eventDate: formatDateTime(reunion.startAt),
-        location: reunion.location,
-        status: statut,
-        eventUrl: `${baseUrl}/dashboard/events/${reunion.id}/presences`,
-        identity: await getNotificationIdentity(association),
-      }),
-    });
-    if (!parti) {
-      console.warn(
-        `[presences] avis au bureau non remis à ${destinataire} pour la réponse de ${nom}.`,
-      );
-    }
-  } catch (erreur) {
-    console.error("[presences] avis au bureau non envoyé", erreur);
   }
 }

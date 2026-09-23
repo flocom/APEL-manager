@@ -1,7 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
+import {
+  handleApiError,
+  HttpError,
+  requireApiRole,
+  requireVersion,
+} from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
 import { getEventWithDetails } from "@/lib/data";
@@ -10,6 +15,11 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { eventCancelledEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import {
+  checkBroadcastAllowed,
+  recordBroadcast,
+} from "@/lib/services/rate-limit";
+import { evenementValide } from "@/lib/services/events";
 import { eventCancelSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -39,25 +49,37 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
-    const { annule, raison, version } = eventCancelSchema.parse(
-      await req.json(),
-    );
+    evenementValide(id);
+    const body = await req.json();
+    // Le bouton envoie toujours la version affichée : annuler (et prévenir
+    // tous les inscrits) sur la foi d'un écran périmé ne doit pas passer.
+    const version = requireVersion(body);
+    const { annule, raison } = eventCancelSchema.parse(body);
 
     const event = await getEventWithDetails(id);
     if (!event) throw new HttpError(404, "Événement introuvable.");
+
+    // Chaque annulation fait repartir le message vers tous les inscrits : la
+    // basculer dix fois leur en enverrait dix. Contrôlé avant tout
+    // changement, pour que le refus laisse l'événement tel quel — mais sans
+    // compter : une annulation refusée pour conflit de version, ou qui ne
+    // prévient personne (aucun inscrit, transport en panne), n'a rien envoyé
+    // et ne doit pas faire refuser la suivante au motif de messages que
+    // personne n'a reçus. Le compte se fait plus bas, une fois le message
+    // parti. Deux annulations simultanées ne passent pas toutes les deux :
+    // le contrôle de version n'en laisse aboutir qu'une.
+    if (annule) {
+      await checkBroadcastAllowed(user.id, { type: "annulation", eventId: id });
+    }
 
     const maintenant = new Date();
     const [maj] = await db
       .update(events)
       .set({
         cancelledAt: annule ? maintenant : null,
-        version: event.version + 1,
+        version: version + 1,
       })
-      .where(
-        version === undefined
-          ? eq(events.id, id)
-          : and(eq(events.id, id), eq(events.version, version)),
-      )
+      .where(and(eq(events.id, id), eq(events.version, version)))
       .returning({ id: events.id });
     if (!maj) throw new HttpError(409, CONFLICT);
 
@@ -103,9 +125,12 @@ export async function POST(req: Request, { params }: Params) {
           identity: await getNotificationIdentity(),
         }),
       );
+      if (sent > 0) {
+        await recordBroadcast(user.id, { type: "annulation", eventId: id });
+      }
       if (sent < destinataires.length) {
         console.warn(
-          `[annulation] ${destinataires.length - sent} message(s) d'annulation non remis pour « ${event.title} ».`,
+          `[annulation] ${destinataires.length - sent} message(s) d'annulation non remis (événement ${id}).`,
         );
       }
     }

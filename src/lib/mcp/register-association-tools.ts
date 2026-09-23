@@ -1,4 +1,6 @@
-import { and, asc, desc, eq, gte, like, sql } from "drizzle-orm";
+import { isIP } from "node:net";
+
+import { and, asc, desc, eq, gte, like } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -6,7 +8,6 @@ import { db } from "@/lib/db";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import {
   accountingCategories,
-  accountingEntries,
   associationMembers,
   auditLogs,
 } from "@/lib/db/schema";
@@ -23,10 +24,12 @@ import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   createAccountingEntry,
   createFinancialAccount,
+  deleteAccountingCategory,
   deleteDraftAccountingEntry,
   getAccountingSummary,
   listAccountingEntries,
   listFinancialAccounts,
+  updateAccountingCategory,
   updateAccountingEntry,
   updateFinancialAccount,
 } from "@/lib/services/accounting";
@@ -47,6 +50,7 @@ import {
   saveAssociationSettings,
 } from "@/lib/services/association-settings";
 import { recordAudit } from "@/lib/services/audit";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import {
   archiveAssociationDocument,
   createAssociationDocument,
@@ -67,10 +71,12 @@ import {
 } from "@/lib/validation";
 
 import {
+  AVIS_SAISIE_PUBLIQUE,
   destructiveTool,
   mcpAuditActor,
   readOnlyTool,
   requireMcpAccess,
+  saisiePublique,
   toolResult,
   writeTool,
   type McpAssociationProfile,
@@ -83,6 +89,17 @@ const localDateTime = z
   .string()
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
+
+/**
+ * Détails du journal d'audit que personne du bureau n'a écrits : l'adresse
+ * tapée par un inconnu sur le formulaire de demande de compte, recopiée par
+ * `user.approve`, et le nom d'appareil libre qu'un membre choisit, présent
+ * dans les anciennes lignes de `push.subscription_transfer`. Ils sortent sous
+ * `untrustedPublicInput`, comme les autres saisies publiques. Le nom aussi :
+ * `user.delete` garde le nom et l'adresse du compte supprimé, choisis par la
+ * personne en demandant son compte.
+ */
+const DETAILS_SAISIS = new Set(["email", "name", "deviceLabel"]);
 
 export function registerAssociationTools(
   server: McpServer,
@@ -526,7 +543,7 @@ export function registerAssociationTools(
     {
       title: "Modifier une catégorie comptable",
       description:
-        "Renomme une catégorie, change son sens ou la désactive. Une catégorie désactivée reste attachée aux écritures passées mais n’est plus proposée.",
+        "Renomme une catégorie, change son sens ou la désactive. Le sens (recette ou dépense) ne change plus dès qu’une écriture s’y rattache : désactivez-la alors et créez-en une autre. Un renommage reste possible et est journalisé avec l’ancien nom. Une catégorie désactivée reste attachée aux écritures passées mais n’est plus proposée.",
       inputSchema: z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(160).optional(),
@@ -538,33 +555,12 @@ export function registerAssociationTools(
     },
     async ({ id, ...input }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const [current] = await db
-        .select()
-        .from(accountingCategories)
-        .where(eq(accountingCategories.id, id))
-        .limit(1);
-      if (!current) throw new Error("Catégorie comptable introuvable.");
-
-      const updates: Partial<typeof accountingCategories.$inferInsert> = {
-        updatedAt: new Date(),
-      };
-      if (input.name !== undefined) updates.name = input.name;
-      if (input.type !== undefined) updates.type = input.type;
-      if (input.description !== undefined) {
-        updates.description = emptyToNull(input.description);
-      }
-      if (input.isActive !== undefined) updates.isActive = input.isActive;
-
-      const [category] = await db
-        .update(accountingCategories)
-        .set(updates)
-        .where(eq(accountingCategories.id, id))
-        .returning();
-      await recordAudit(
-        mcpAuditActor(principal),
-        "accounting.category_update",
-        "accounting_category",
+      // Le service refuse de changer le sens d'une catégorie déjà utilisée,
+      // et garde l'ancien nom au journal en cas de renommage.
+      const category = await updateAccountingCategory(
         id,
+        input,
+        mcpAuditActor(principal),
       );
       return toolResult({ category }, "Catégorie comptable mise à jour.");
     },
@@ -584,26 +580,9 @@ export function registerAssociationTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(accountingEntries)
-        .where(eq(accountingEntries.categoryId, id));
-      if (Number(count) > 0) {
-        throw new Error(
-          `Cette catégorie est utilisée par ${count} écriture(s). Désactivez-la au lieu de la supprimer.`,
-        );
-      }
-      const [deleted] = await db
-        .delete(accountingCategories)
-        .where(eq(accountingCategories.id, id))
-        .returning({ id: accountingCategories.id });
-      if (!deleted) throw new Error("Catégorie comptable introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "accounting.category_delete",
-        "accounting_category",
-        id,
-      );
+      // Le service compte les écritures sous le verrou de la catégorie : une
+      // écriture validée au même moment ne peut plus s'en trouver détachée.
+      await deleteAccountingCategory(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );
@@ -901,7 +880,7 @@ export function registerAssociationTools(
     {
       title: "Configurer la messagerie",
       description:
-        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur.",
+        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur. Changer le fournisseur, l’hôte, le port ou l’identifiant SMTP efface le mot de passe SMTP enregistré : il n’est jamais transmis à un autre serveur que celui pour lequel il a été saisi. Si un identifiant reste renseigné, la modification est refusée tant qu’un administrateur n’a pas saisi le nouveau mot de passe dans l’interface. Hors relais local (localhost, conteneur Docker), l’envoi exige TLS.",
       inputSchema: z.object({
         provider: z.enum(["resend", "smtp"]).optional(),
         enabled: z.boolean(),
@@ -945,7 +924,14 @@ export function registerAssociationTools(
         },
         mcpAuditActor(principal),
       );
-      return toolResult({ settings }, "Configuration e-mail enregistrée.");
+      const motDePasseEfface =
+        current.smtpPasswordConfigured && !settings.smtpPasswordConfigured;
+      return toolResult(
+        { settings, smtpPasswordCleared: motDePasseEfface },
+        motDePasseEfface
+          ? "Configuration e-mail enregistrée. Le serveur SMTP ayant changé, le mot de passe enregistré a été effacé : un administrateur doit saisir celui du nouveau serveur dans l’interface."
+          : "Configuration e-mail enregistrée.",
+      );
     },
   );
 
@@ -954,7 +940,7 @@ export function registerAssociationTools(
     {
       title: "Envoyer un e-mail de test",
       description:
-        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée.",
+        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée. Le mot de passe SMTP n’est présenté qu’au serveur pour lequel il a été saisi, et seulement sur une connexion chiffrée hors relais local.",
       inputSchema: z.object({
         to: z.string().email(),
         confirm: z.literal(true),
@@ -1018,13 +1004,25 @@ export function registerAssociationTools(
       if (recipients.length === 0) {
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
+      // Même plafond que l'écrit à toute l'équipe : c'est une diffusion à tous.
+      const rendreQuota = await assertBroadcastAllowed(principal.userId, {
+        type: "equipe",
+      });
       const mail = broadcastEmail({
         subject,
         message,
         senderName: principal.name,
         identity: await getNotificationIdentity(),
       });
-      const sent = await sendBulkEmail(recipients, mail);
+      // Quota réservé avant l'envoi, rendu si le message n'a atteint
+      // personne : un transport en panne ne doit pas faire refuser le
+      // renvoi, une fois réparé, au motif de messages jamais reçus.
+      let sent = 0;
+      try {
+        sent = await sendBulkEmail(recipients, mail);
+      } finally {
+        if (sent === 0) await rendreQuota();
+      }
       await recordAudit(
         mcpAuditActor(principal),
         "mail.broadcast_adherents",
@@ -1045,7 +1043,7 @@ export function registerAssociationTools(
     {
       title: "Consulter le journal d’audit",
       description:
-        "Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident.",
+        `Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({
         action: z
           .string()
@@ -1083,7 +1081,40 @@ export function registerAssociationTools(
           actor: { columns: { id: true, name: true, email: true } },
         },
       });
-      return toolResult({ items, count: items.length });
+      return toolResult({
+        items: items.map(({ actor, details, ipAddress, ...entree }) => {
+          const reste: Record<string, unknown> = {};
+          const saisis: Record<string, string> = {};
+          for (const [cle, valeur] of Object.entries(details ?? {})) {
+            if (DETAILS_SAISIS.has(cle) && typeof valeur === "string") {
+              saisis[cle] = valeur;
+            } else {
+              reste[cle] = valeur;
+            }
+          }
+          // L'adresse IP vient de X-Forwarded-For : sans proxy qui remplace
+          // l'en-tête, le client y écrit ce qu'il veut. Une adresse valide ne
+          // peut rien porter d'autre ; tout le reste est mis à part.
+          const ipLisible = ipAddress !== null && isIP(ipAddress) !== 0;
+          return {
+            ...entree,
+            ipAddress: ipLisible ? ipAddress : null,
+            ...(ipAddress !== null && !ipLisible
+              ? saisiePublique({ ipAddress })
+              : {}),
+            details: {
+              ...reste,
+              ...(Object.keys(saisis).length > 0 ? saisiePublique(saisis) : {}),
+            },
+            // Nom et adresse de l'auteur : ceux qu'il a saisis en demandant son
+            // compte, comme dans list_users.
+            actor: actor
+              ? { id: actor.id, ...saisiePublique({ name: actor.name, email: actor.email }) }
+              : null,
+          };
+        }),
+        count: items.length,
+      });
     },
   );
 

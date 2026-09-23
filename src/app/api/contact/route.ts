@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import { clientIpAddress } from "@/lib/client-ip";
 import { sendEmail } from "@/lib/notifications/email";
 import { familyMessageEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
@@ -8,6 +9,13 @@ import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
 } from "@/lib/services/association-settings";
+import {
+  delaiLisible,
+  hitRateLimits,
+  ipKey,
+  PLAFONDS,
+  rateLimitError,
+} from "@/lib/services/rate-limit";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { familyMessageSchema } from "@/lib/validation";
 
@@ -31,6 +39,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // Chaque envoi part dans la boîte du bureau : une même connexion n'en
+    // envoie que quelques-uns par heure. Ce refus ne dépend pas de l'adresse
+    // saisie, il peut donc se dire.
+    const ip = clientIpAddress(req);
+    const parConnexion = await hitRateLimits([
+      [PLAFONDS.messageIpHeure, ipKey(ip)],
+      [PLAFONDS.messageIpJour, ipKey(ip)],
+    ]);
+    if (!parConnexion.ok) {
+      throw rateLimitError(
+        parConnexion,
+        `Trop de messages envoyés depuis cette connexion : réessayez ${delaiLisible(parConnexion.retryAfterSeconds)}. Vous pouvez aussi écrire directement à l’association.`,
+      );
+    }
+
     const recaptcha = await getRecaptchaRuntimeConfig();
     if (recaptcha) {
       await verifyRecaptcha({
@@ -38,7 +61,7 @@ export async function POST(req: Request) {
         token: data.recaptchaToken,
         action: "contact",
         minScore: recaptcha.minScore,
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        ip,
       });
     }
 

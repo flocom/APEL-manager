@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { redactError } from "@/lib/errors";
 import { emailLogoFile, emailLogoVersion } from "@/lib/notifications/logo";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
@@ -69,7 +70,7 @@ export async function GET(_req: Request, { params }: Params) {
   } catch (error) {
     console.error(
       "[logo-email] logo indisponible :",
-      error instanceof Error ? error.message : error,
+      redactError(error),
     );
     return new NextResponse(null, {
       status: 500,

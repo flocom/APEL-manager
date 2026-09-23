@@ -7,6 +7,7 @@ import { RegisterForm } from "@/components/auth-forms";
 import { buttonClasses } from "@/components/ui";
 import { safeNextPath, withNextPath } from "@/lib/auth/return-path";
 import { getCurrentUser } from "@/lib/auth/session";
+import { configuredBaseUrl } from "@/lib/base-url";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getAssociationSettings } from "@/lib/services/association-settings";
@@ -35,13 +36,20 @@ export default async function RegisterPage({
 
   // Une demande se confirme par e-mail. Sans messagerie configurée, le lien ne
   // partirait jamais : mieux vaut le dire ici que laisser la personne guetter
-  // un message qui n'arrivera pas. Le premier compte, lui, n'en a pas besoin.
-  if (existe && !messagerie) {
+  // un message qui n'arrivera pas. Sans adresse publique configurée non plus :
+  // le lien porte un jeton, et ne part que vers elle (lib/base-url.ts). Le
+  // premier compte, lui, n'a besoin ni de l'une ni de l'autre.
+  const adressePublique = Boolean(configuredBaseUrl());
+  if (existe && (!messagerie || !adressePublique)) {
     return (
       <AuthShell
         eyebrow="Compte de gestion"
         title="Demander un compte"
-        description={`Les demandes de compte se confirment par e-mail, et l’espace ${settings.associationName} n’a pas encore de messagerie configurée.`}
+        description={
+          messagerie
+            ? `Les demandes de compte se confirment par un lien envoyé par e-mail, et l’adresse publique de l’espace ${settings.associationName} n’est pas encore configurée.`
+            : `Les demandes de compte se confirment par e-mail, et l’espace ${settings.associationName} n’a pas encore de messagerie configurée.`
+        }
       >
         <div className="space-y-4">
           <div
@@ -54,7 +62,11 @@ export default async function RegisterPage({
             />
             <p>
               Rapprochez-vous d’un membre du bureau : un administrateur doit
-              d’abord configurer la messagerie de l’espace de gestion.
+              d’abord configurer{" "}
+              {messagerie
+                ? "l’adresse publique du site (APP_URL)"
+                : "la messagerie de l’espace de gestion"}
+              .
             </p>
           </div>
           <Link

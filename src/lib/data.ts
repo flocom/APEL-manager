@@ -15,6 +15,7 @@ import {
   volunteerSlots,
   type Role,
 } from "@/lib/db/schema";
+import { isUuid } from "@/lib/utils";
 
 /**
  * Rendez-vous publiés à venir — pour les pages publiques. Réunions comprises :
@@ -67,8 +68,16 @@ export async function getAllEvents() {
   });
 }
 
-/** Un événement seul (sans relations) — pour l'édition. */
+/**
+ * Un événement seul (sans relations) — pour l'édition.
+ *
+ * Un identifiant qui n'est pas un UUID ne désigne aucun événement : on le dit
+ * sans interroger la base, qui échouerait sur la syntaxe. Les pages
+ * répondent alors « introuvable » (404), et rien de l'identifiant saisi ne
+ * part au journal.
+ */
 export const getEventById = cache(async (id: string) => {
+  if (!isUuid(id)) return null;
   const [event] = await db
     .select()
     .from(events)
@@ -82,6 +91,8 @@ export const getEventById = cache(async (id: string) => {
  * `cache()` déduplique l'appel au sein d'une même requête (page + helpers).
  */
 export const getEventWithDetails = cache(async (id: string) => {
+  // Même garde que `getEventById`.
+  if (!isUuid(id)) return undefined;
   return db.query.events.findFirst({
     where: eq(events.id, id),
     with: {

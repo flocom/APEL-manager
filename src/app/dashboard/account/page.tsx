@@ -1,6 +1,7 @@
 import { Settings } from "lucide-react";
 
 import { AccountForm } from "@/components/account-form";
+import { LogoutEverywhereButton } from "@/components/logout-everywhere-button";
 import { PasswordChangeForm } from "@/components/password-change-form";
 import { PushToggle } from "@/components/push-toggle";
 import { ReplayTourButton } from "@/components/replay-tour-button";
@@ -49,6 +50,16 @@ export default async function AccountPage() {
         <Card className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Sécurité</h2>
           <PasswordChangeForm />
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <h3 className="text-base font-semibold text-slate-900">
+              Sessions ouvertes
+            </h3>
+            <p className="mb-4 mt-1 text-sm leading-6 text-slate-500">
+              Resté connecté sur un ordinateur partagé, ou un téléphone perdu ?
+              Fermez d’un coup toutes vos sessions, celle-ci comprise.
+            </p>
+            <LogoutEverywhereButton />
+          </div>
         </Card>
 
         <Card className="p-6">

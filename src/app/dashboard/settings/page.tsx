@@ -8,9 +8,11 @@ import {
   MailSettingsForm,
   type MailSettingsView,
 } from "@/components/mail-settings-form";
+import { SecurityConfigWarnings } from "@/components/security-config-warnings";
 import { PageHeader } from "@/components/ui";
 import { UpdateStatusCard } from "@/components/update-status-card";
 import { requireRole } from "@/lib/auth/rbac";
+import { securityConfigWarnings } from "@/lib/security-config";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { getOutboundMailStatus } from "@/lib/services/mail-settings";
 import { getUpdateStatus } from "@/lib/services/updates";
@@ -79,6 +81,8 @@ export default async function SettingsPage() {
         description="Identité officielle et services connectés de l'association."
         icon={SlidersHorizontal}
       />
+
+      <SecurityConfigWarnings warnings={securityConfigWarnings()} />
 
       <AssociationSettingsForm settings={associationSettings} />
 

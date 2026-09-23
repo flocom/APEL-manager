@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events, volunteerSlots } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { emptyToNull } from "@/lib/utils";
 import { slotSchema } from "@/lib/validation";
 
@@ -11,8 +13,9 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
 
     const [event] = await db
       .select({ id: events.id })
@@ -34,6 +37,16 @@ export async function POST(req: Request, { params }: Params) {
         endAt: data.endAt ?? null,
       })
       .returning({ id: volunteerSlots.id });
+
+    // Comme l'outil MCP `create_volunteer_slot` : le créneau paraît sur la
+    // page publique dès sa création.
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "volunteer_slot.create",
+      "volunteer_slot",
+      slot.id,
+      { eventId, capacity: data.capacity },
+    );
 
     return NextResponse.json({ ok: true, id: slot.id });
   } catch (error) {

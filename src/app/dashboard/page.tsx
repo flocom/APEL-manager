@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 
 import { MeetingAttendance, type MeetingReply } from "@/components/meeting-attendance";
+import { SecurityConfigWarnings } from "@/components/security-config-warnings";
 import { TaskStatusSelect } from "@/components/task-status-select";
 import { Badge } from "@/components/ui";
 import { canManageEvents, canManageUsers, requireUser } from "@/lib/auth/rbac";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/data";
 import { formatDateTime, formatRelative, isOverdue } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
+import { securityConfigWarnings } from "@/lib/security-config";
 import { countPendingAccounts } from "@/lib/services/user-accounts";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +96,13 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      {/* Un secret faible ou une APP_URL absente ne se voient nulle part
+          ailleurs : l'accueil des administrateurs le dit tant que ce n'est pas
+          corrigé. */}
+      {canManageUsers(user) && (
+        <SecurityConfigWarnings warnings={securityConfigWarnings()} />
+      )}
 
       {/* Un compteur dans le menu se rate ; une personne qui attend de pouvoir
           aider, non. Le bandeau reste tant que la demande n'est pas tranchée. */}

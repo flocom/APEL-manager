@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, requireApiUser } from "@/lib/auth/guards";
 import { getEventById } from "@/lib/data";
 import { buildEventIcs } from "@/lib/ics";
+import { evenementValide } from "@/lib/services/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -10,6 +11,7 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     await requireApiUser();
     const { id } = await params;
+    evenementValide(id);
     const event = await getEventById(id);
     if (!event) {
       return NextResponse.json({ error: "Événement introuvable." }, { status: 404 });

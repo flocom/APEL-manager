@@ -90,6 +90,9 @@ export default async function PreparationPage({
           members={memberOptions}
           canManage={canManage}
           currentUserId={user.id}
+          eventClosed={
+            event.cancelledAt !== null || event.status === "archived"
+          }
         />
       </Card>
     </div>

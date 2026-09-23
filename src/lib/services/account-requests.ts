@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, gt, gte, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
-import { getBaseUrl } from "@/lib/base-url";
+import { getBaseUrl, secureLinkBaseUrl } from "@/lib/base-url";
 import { db } from "@/lib/db";
 import {
   accountRequestDrops,
@@ -11,6 +11,7 @@ import {
   users,
   type AccountRequestDropReason,
 } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import {
   ACCOUNT_REQUEST_DROP_REASONS,
   type DroppedAccountRequests,
@@ -26,7 +27,9 @@ import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { generateToken, hashToken } from "@/lib/tokens";
 
 import { getAssociationSettings } from "./association-settings";
+import type { OutboundMailRuntimeConfig } from "./mail-settings";
 import { countPendingAccounts } from "./user-accounts";
+import { emailKey, hitRateLimit, PLAFONDS } from "./rate-limit";
 
 /**
  * Les demandes de compte, de l'envoi du formulaire à la confirmation de
@@ -229,12 +232,21 @@ export async function submitAccountRequest({
       .limit(1),
   ]);
 
+  // Le compte par adresse exacte ne voyait pas « parent+1@… », « parent+2@… »
+  // ni les points d'une adresse Gmail : autant d'adresses différentes pour la
+  // même boîte, qui recevait donc autant de messages. Le limiteur partagé
+  // compte la boîte elle-même (adresse normalisée par `emailKey`).
+  const parBoite = await hitRateLimit(
+    PLAFONDS.demandeCompteBoiteJour,
+    emailKey(email),
+  );
+
   // L'adresse n'est pas écrite au journal : rien ne dit qu'elle appartient à
   // qui l'a saisie.
-  if (Number(parAdresse.n) >= MAX_PAR_ADRESSE_PAR_JOUR) {
+  if (Number(parAdresse.n) >= MAX_PAR_ADRESSE_PAR_JOUR || !parBoite.ok) {
     await noterRefus("plafond_adresse");
     console.warn(
-      `[inscription] demande sans suite : ${parAdresse.n} demandes pour cette adresse en 24 h.`,
+      `[inscription] demande sans suite : plafond de ${MAX_PAR_ADRESSE_PAR_JOUR} demandes par adresse en 24 h atteint.`,
     );
     return;
   }
@@ -271,6 +283,13 @@ export async function submitAccountRequest({
     return;
   }
 
+  // Le lien porte le jeton qui fait naître le compte : il ne part que vers
+  // l'adresse publique configurée (lib/base-url.ts). La route refuse déjà la
+  // demande quand elle manque ; ce contrôle couvre la configuration changée
+  // entre-temps.
+  const baseDesLiens = secureLinkBaseUrl("Lien de confirmation de compte");
+  if (!baseDesLiens) return;
+
   const token = generateToken(32);
   await db
     .update(accountRequests)
@@ -279,7 +298,7 @@ export async function submitAccountRequest({
   const parti = await sendEmail({
     to: email,
     ...accountRequestEmail({
-      confirmUrl: `${baseUrl}/register/${token}`,
+      confirmUrl: `${baseDesLiens}/register/${token}`,
       validiteJours: ACCOUNT_REQUEST_VALIDITY_DAYS,
       identity: await getNotificationIdentity(association),
     }),
@@ -497,13 +516,21 @@ export async function notifyBureauOfPendingAccount(compte: {
     });
     if (!parti) {
       console.warn(
-        `[inscription] avis au bureau non remis à ${destinataire}.`,
+        "[inscription] avis au bureau non remis à l’adresse de contact.",
       );
     }
   } catch (erreur) {
-    console.error("[inscription] avis au bureau non envoyé", erreur);
+    console.error("[inscription] avis au bureau non envoyé", redactError(erreur));
   }
 }
+
+/** Le rappel prêt à partir : ce qu'il dira, et à qui. */
+export type PendingAccountsReminder = {
+  comptesEnAttente: number;
+  destinataires: string[];
+  /** `null` : personne n'attend, ou personne à prévenir. */
+  mail: ReturnType<typeof pendingAccountsReminderEmail> | null;
+};
 
 /**
  * Le rappel quotidien des comptes en attente de validation, quel que soit le
@@ -521,15 +548,15 @@ export async function notifyBureauOfPendingAccount(compte: {
  * les administrateurs, chacun dans sa boîte : ce sont eux, et eux seuls, qui
  * peuvent valider — et sans ce repli, une association sans adresse de contact
  * n'apprendrait jamais qu'un compte attend.
+ *
+ * En deux temps — préparer, qui lit la base, puis envoyer, qui n'y touche
+ * plus — parce que le cron envoie sous le verrou d'une transaction, où une
+ * lecture par `db` attendrait sans fin la seule connexion du pool sur Vercel.
  */
-export async function remindBureauOfPendingAccounts(): Promise<{
-  comptesEnAttente: number;
-  envoye: boolean;
-  destinataires: number;
-}> {
+export async function preparePendingAccountsReminder(): Promise<PendingAccountsReminder> {
   const enAttente = await countPendingAccounts();
   if (enAttente === 0) {
-    return { comptesEnAttente: 0, envoye: false, destinataires: 0 };
+    return { comptesEnAttente: 0, destinataires: [], mail: null };
   }
 
   const [association, baseUrl] = await Promise.all([
@@ -546,7 +573,7 @@ export async function remindBureauOfPendingAccounts(): Promise<{
           .where(and(eq(users.role, "admin"), isNotNull(users.approvedAt)))
       ).map((u) => u.email);
   if (destinataires.length === 0) {
-    return { comptesEnAttente: enAttente, envoye: false, destinataires: 0 };
+    return { comptesEnAttente: enAttente, destinataires: [], mail: null };
   }
 
   const mail = pendingAccountsReminderEmail({
@@ -555,10 +582,30 @@ export async function remindBureauOfPendingAccounts(): Promise<{
     reviewUrl: `${baseUrl}/dashboard/members`,
     identity: await getNotificationIdentity(association),
   });
+  return { comptesEnAttente: enAttente, destinataires, mail };
+}
+
+/** Envoie le rappel préparé, par le transport lu d'avance : sans base. */
+export async function remindBureauOfPendingAccounts(
+  rappel: PendingAccountsReminder,
+  transport: OutboundMailRuntimeConfig | null,
+): Promise<{
+  comptesEnAttente: number;
+  envoye: boolean;
+  destinataires: number;
+}> {
+  const { mail, destinataires } = rappel;
+  if (!mail || destinataires.length === 0) {
+    return {
+      comptesEnAttente: rappel.comptesEnAttente,
+      envoye: false,
+      destinataires: 0,
+    };
+  }
   // Un message par administrateur, jamais un seul à plusieurs : chacun n'a pas
   // à lire l'adresse personnelle des autres.
   const partis = await Promise.all(
-    destinataires.map((to) => sendEmail({ to, ...mail })),
+    destinataires.map((to) => sendEmail({ to, ...mail, transport })),
   );
   const remis = partis.filter(Boolean).length;
   if (remis < destinataires.length) {
@@ -567,7 +614,7 @@ export async function remindBureauOfPendingAccounts(): Promise<{
     );
   }
   return {
-    comptesEnAttente: enAttente,
+    comptesEnAttente: rappel.comptesEnAttente,
     envoye: remis > 0,
     destinataires: remis,
   };

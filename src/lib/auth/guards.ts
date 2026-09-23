@@ -2,18 +2,24 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import type { Role } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 
 import { hasRole, isApproved } from "./roles";
 import { getCurrentUser, type SafeUser } from "./session";
 
 /** Erreur HTTP transportant un statut, à intercepter dans les routes API. */
 export class HttpError extends Error {
+  /** Pour un 429 : dans combien de secondes réessayer (`Retry-After`). */
+  readonly retryAfterSeconds?: number;
+
   constructor(
     public status: number,
     message: string,
+    options: { retryAfterSeconds?: number } = {},
   ) {
     super(message);
     this.name = "HttpError";
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
 
@@ -42,10 +48,53 @@ export async function requireApiRole(min: Role): Promise<SafeUser> {
   return user;
 }
 
+/**
+ * Exige le numéro de version (verrou optimiste) dans le corps d'une écriture.
+ *
+ * Pour les routes dont l'écran envoie TOUJOURS la version qu'il a chargée. La
+ * laisser facultative, c'était garder une porte où l'écriture passait sans
+ * contrôle : un onglet resté ouvert, un script, un client écrit à la main
+ * écrasaient en silence ce qu'un autre venait d'enregistrer. Les outils MCP,
+ * qui relisent la ligne avant d'écrire, gardent leur version facultative ; ils
+ * n'appellent pas ces routes.
+ *
+ * 428 (« précondition requise ») plutôt que 400 : la requête est bien formée,
+ * il lui manque la preuve qu'elle part de la dernière version.
+ */
+export function requireVersion(body: unknown): number {
+  const version =
+    body && typeof body === "object"
+      ? (body as { version?: unknown }).version
+      : undefined;
+  const nombre =
+    typeof version === "string" && version.trim() !== ""
+      ? Number(version)
+      : version;
+  if (
+    typeof nombre !== "number" ||
+    !Number.isInteger(nombre) ||
+    nombre < 0
+  ) {
+    throw new HttpError(
+      428,
+      "Version manquante : rechargez la page, puis refaites votre modification.",
+    );
+  }
+  return nombre;
+}
+
 /** Convertit une exception en réponse JSON normalisée. */
 export function handleApiError(error: unknown): NextResponse {
   if (error instanceof HttpError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message },
+      {
+        status: error.status,
+        headers: error.retryAfterSeconds
+          ? { "Retry-After": String(error.retryAfterSeconds) }
+          : undefined,
+      },
+    );
   }
   if (error instanceof ZodError) {
     return NextResponse.json(
@@ -53,7 +102,17 @@ export function handleApiError(error: unknown): NextResponse {
       { status: 400 },
     );
   }
-  console.error("[api] erreur inattendue:", error);
+  // `req.json()` sur un corps qui n'est pas du JSON : la faute est chez
+  // l'appelant, pas au serveur. Le message de l'erreur recopie un morceau du
+  // corps reçu : il ne va ni au journal ni dans la réponse.
+  if (error instanceof SyntaxError) {
+    return NextResponse.json(
+      { error: "Données invalides : le corps de la requête n’est pas du JSON." },
+      { status: 400 },
+    );
+  }
+  // Jamais l'erreur brute : celle d'une requête SQL recopie toutes ses valeurs.
+  console.error("[api] erreur inattendue:", redactError(error));
   return NextResponse.json(
     { error: "Une erreur serveur est survenue." },
     { status: 500 },

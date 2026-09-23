@@ -4,6 +4,7 @@ import {
   handleApiError,
   HttpError,
   requireApiRole,
+  requireVersion,
 } from "@/lib/auth/guards";
 import { webAuditActor } from "@/lib/services/audit";
 import {
@@ -51,9 +52,13 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    const body = await req.json();
+    // Le formulaire comme l'éditeur de PV envoient toujours leur version ; le
+    // service, que partagent les outils MCP, la laisse facultative pour eux.
+    requireVersion(body);
     const document = await updateAssociationDocument(
       id,
-      await req.json(),
+      body,
       webAuditActor(user.id, req),
     );
     return NextResponse.json({ ok: true, document });

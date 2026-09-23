@@ -214,6 +214,83 @@ export function meetingAttendanceConfirmationEmail(ctx: {
   };
 }
 
+const REPONSES_PRESENCE = {
+  yes: "Je serai là",
+  maybe: "Peut-être",
+  no: "Je ne pourrai pas venir",
+} as const;
+
+/**
+ * La demande de confirmation d'un changement de réponse à une réunion.
+ *
+ * Elle part quand le formulaire public reçoit une réponse pour une adresse
+ * qui avait déjà répondu. Rien n'a changé à ce stade : c'est le titulaire de
+ * l'adresse qui décide. Sans cette étape, quiconque connaissait l'adresse d'un
+ * parent pouvait remplacer sa réponse, son nom et son téléphone.
+ *
+ * Le message montre l'avant et l'après, pour qu'on sache ce qu'on confirme, et
+ * dit clairement que l'ignorer ne change rien : c'est le bon réflexe si la
+ * demande ne vient pas de soi.
+ */
+export function meetingAttendanceChangeEmail(ctx: {
+  /** Le nom de la réponse actuelle : c'est à son titulaire qu'on écrit. */
+  name: string;
+  eventTitle: string;
+  eventDate: string;
+  location?: string | null;
+  current: "yes" | "maybe" | "no";
+  proposed: {
+    status: "yes" | "maybe" | "no";
+    name: string;
+    phone: string | null;
+  };
+  confirmUrl: string;
+  cancelUrl: string | null;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const avant = REPONSES_PRESENCE[ctx.current];
+  const apres = REPONSES_PRESENCE[ctx.proposed.status];
+  return {
+    subject: `Confirmez le changement de votre réponse — réunion du ${ctx.eventDate}`,
+    html: layout(
+      "Un changement à confirmer",
+      "Rien n’a changé : confirmez si la demande vient de vous.",
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p("Une nouvelle réponse vient d’être envoyée avec votre adresse e-mail pour une réunion à laquelle vous aviez déjà répondu. <strong>Rien n’a été modifié pour l’instant.</strong>")}
+       ${fiche([
+         { label: "Réunion", valeur: esc(ctx.eventTitle) },
+         { label: "Date", valeur: ctx.eventDate },
+         { label: "Lieu", valeur: ctx.location ? esc(ctx.location) : null },
+         { label: "Réponse actuelle", valeur: esc(avant) },
+         { label: "Nouvelle réponse", valeur: esc(apres) },
+         { label: "Nom indiqué", valeur: esc(ctx.proposed.name) },
+         {
+           label: "Téléphone indiqué",
+           valeur: ctx.proposed.phone ? esc(ctx.proposed.phone) : null,
+         },
+       ])}
+       ${p("Si c’est bien vous, confirmez le changement :")}
+       ${bouton(ctx.confirmUrl, "Confirmer le changement")}
+       ${pDiscret("Le lien est valable 48 heures. Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : votre réponse reste telle quelle.")}
+       ${ctx.cancelUrl ? pDiscret(`Vous préférez retirer votre réponse ? ${lien(ctx.cancelUrl, "Retirer ma réponse")}`) : ""}`,
+      ctx.identity,
+    ),
+    text: `Bonjour ${ctx.name},
+
+Une nouvelle réponse vient d'être envoyée avec votre adresse e-mail pour une réunion à laquelle vous aviez déjà répondu. Rien n'a été modifié pour l'instant.
+
+- Réunion : ${ctx.eventTitle}
+- Date : ${ctx.eventDate}
+${ctx.location ? `- Lieu : ${ctx.location}\n` : ""}- Réponse actuelle : ${avant}
+- Nouvelle réponse : ${apres}
+- Nom indiqué : ${ctx.proposed.name}
+${ctx.proposed.phone ? `- Téléphone indiqué : ${ctx.proposed.phone}\n` : ""}
+Si c'est bien vous, confirmez le changement : ${ctx.confirmUrl}
+
+Le lien est valable 48 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre réponse reste telle quelle.${ctx.cancelUrl ? `\n\nRetirer ma réponse : ${ctx.cancelUrl}` : ""}`,
+  };
+}
+
 /**
  * L'avis envoyé au bureau quand quelqu'un s'inscrit depuis le site.
  *

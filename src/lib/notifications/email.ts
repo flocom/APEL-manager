@@ -1,7 +1,12 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
-import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
+import { redactError } from "@/lib/errors";
+import {
+  getOutboundMailRuntimeConfig,
+  type OutboundMailRuntimeConfig,
+} from "@/lib/services/mail-settings";
+import { estRelaisLocal } from "@/lib/smtp-relay";
 
 interface EmailParams {
   to: string;
@@ -15,6 +20,14 @@ interface EmailParams {
   replyTo?: string;
   /** Autorise uniquement les écrans de test à vérifier un transport désactivé. */
   allowDisabled?: boolean;
+  /**
+   * Transport déjà lu (`getOutboundMailRuntimeConfig`) ; `null` : aucun.
+   * Fourni, l'envoi ne lit plus rien en base. C'est ce qui permet d'envoyer
+   * depuis une transaction ouverte : la lecture des réglages passerait sinon
+   * par une autre connexion du pool, et sur Vercel le pool n'en a qu'une, que
+   * la transaction occupe — l'envoi attendrait sans fin.
+   */
+  transport?: OutboundMailRuntimeConfig | null;
 }
 
 /** Envoie un e-mail via le transport SMTP ou Resend configuré. */
@@ -25,11 +38,17 @@ export async function sendEmail({
   text,
   replyTo,
   allowDisabled = false,
+  transport,
 }: EmailParams): Promise<boolean> {
-  const config = await getOutboundMailRuntimeConfig(allowDisabled);
+  const config =
+    transport !== undefined
+      ? transport
+      : await getOutboundMailRuntimeConfig(allowDisabled);
   if (!config) {
+    // Ni l'objet ni le destinataire au journal : l'objet d'une diffusion est
+    // saisi librement et cite souvent un enfant, une famille, un événement.
     console.warn(
-      `[email] fournisseur désactivé ou clé absente — e-mail non envoyé : "${subject}"`,
+      "[email] fournisseur désactivé ou clé absente — e-mail non envoyé.",
     );
     return false;
   }
@@ -40,6 +59,12 @@ export async function sendEmail({
         host: config.host,
         port: config.port,
         secure: config.secure,
+        // Hors relais local, STARTTLS est exigé et non plus seulement tenté :
+        // un serveur qui ne le propose pas — ou quelqu'un sur le chemin qui
+        // retire l'annonce — recevait sinon identifiant, mot de passe et liens
+        // de réinitialisation en clair. Le certificat est vérifié, comme par
+        // défaut. Sans effet quand `secure` chiffre dès la connexion.
+        requireTLS: !estRelaisLocal(config.host),
         ...(config.auth ? { auth: config.auth } : {}),
       });
       await transporter.sendMail({
@@ -68,16 +93,21 @@ export async function sendEmail({
     });
 
     if (error) {
+      // Le message de Resend cite volontiers l'adresse refusée : il passe par
+      // `redactError`, qui masque les adresses, comme les erreurs SMTP.
       console.error(
-        `[email] échec Resend (${error.statusCode ?? "sans statut"}, ${error.name}) : ${error.message}`,
+        `[email] échec Resend (${error.statusCode ?? "sans statut"}, ${error.name}) : ${redactError(error.message)}`,
       );
       return false;
     }
     return true;
   } catch (error) {
-    const reason =
-      error instanceof Error ? error.message : "erreur réseau inconnue";
-    console.error(`[email] échec du transport ${config.provider} : ${reason}`);
+    // Le refus d'un serveur SMTP recopie l'adresse du destinataire
+    // (« 550 <…@…> recipient rejected ») : jamais le message brut au journal.
+    console.error(
+      `[email] échec du transport ${config.provider} :`,
+      redactError(error),
+    );
     return false;
   }
 }

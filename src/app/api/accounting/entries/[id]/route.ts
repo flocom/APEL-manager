@@ -4,6 +4,7 @@ import {
   handleApiError,
   HttpError,
   requireApiRole,
+  requireVersion,
 } from "@/lib/auth/guards";
 import {
   deleteDraftAccountingEntry,
@@ -30,9 +31,13 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("admin");
     const { id } = await params;
+    const body = await req.json();
+    // L'écran envoie toujours la version de l'écriture qu'il a chargée ; le
+    // service, que partagent les outils MCP, la laisse facultative pour eux.
+    requireVersion(body);
     const entry = await updateAccountingEntry(
       id,
-      await req.json(),
+      body,
       webAuditActor(user.id, req),
     );
     return NextResponse.json({ ok: true, entry });

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatDateTime } from "@/lib/dates";
+import { estRelaisLocal } from "@/lib/smtp-relay";
 
 export interface MailSettingsView {
   enabled: boolean;
@@ -56,6 +57,22 @@ export function MailSettingsForm({
   const [provider, setProvider] = useState<"resend" | "smtp">(
     settings.provider,
   );
+  const [smtpCible, setSmtpCible] = useState({
+    host: settings.smtpHost ?? "",
+    port: String(settings.smtpPort ?? 587),
+    username: settings.smtpUsername ?? "",
+  });
+  // Même règle que le serveur (`saveOutboundMailSettings`) : le mot de passe
+  // enregistré ne suit pas un changement de serveur ou de compte. Le dire ici
+  // évite de découvrir l'effacement après coup, par un envoi qui échoue.
+  const cibleModifiee =
+    settings.smtpPasswordConfigured &&
+    (provider !== settings.provider ||
+      smtpCible.host.trim().toLowerCase() !==
+        (settings.smtpHost ?? "").toLowerCase() ||
+      Number(smtpCible.port) !== settings.smtpPort ||
+      smtpCible.username.trim() !== (settings.smtpUsername ?? ""));
+  const relaisLocal = estRelaisLocal(smtpCible.host);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -194,7 +211,16 @@ export function MailSettingsForm({
             <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.14em] text-brand-700">
               Fournisseur
             </p>
-            <Field label="Service d'envoi" htmlFor="mail-provider">
+            <Field
+              label="Service d'envoi"
+              htmlFor="mail-provider"
+              hint={
+                settings.smtpPasswordConfigured &&
+                provider !== settings.provider
+                  ? "Changer de service effacera le mot de passe SMTP enregistré."
+                  : undefined
+              }
+            >
               <Select
                 id="mail-provider"
                 name="provider"
@@ -293,6 +319,12 @@ export function MailSettingsForm({
                     placeholder="smtp.resend.com"
                     autoComplete="off"
                     required
+                    onChange={(event) =>
+                      setSmtpCible((avant) => ({
+                        ...avant,
+                        host: event.target.value,
+                      }))
+                    }
                   />
                 </Field>
                 <Field label="Port" htmlFor="smtp-port">
@@ -304,6 +336,12 @@ export function MailSettingsForm({
                     max={65535}
                     defaultValue={settings.smtpPort ?? 587}
                     required
+                    onChange={(event) =>
+                      setSmtpCible((avant) => ({
+                        ...avant,
+                        port: event.target.value,
+                      }))
+                    }
                   />
                 </Field>
               </div>
@@ -319,15 +357,23 @@ export function MailSettingsForm({
                     defaultValue={settings.smtpUsername ?? ""}
                     placeholder="Identifiant"
                     autoComplete="username"
+                    onChange={(event) =>
+                      setSmtpCible((avant) => ({
+                        ...avant,
+                        username: event.target.value,
+                      }))
+                    }
                   />
                 </Field>
                 <Field
                   label="Mot de passe SMTP"
                   htmlFor="smtp-password"
                   hint={
-                    settings.smtpPasswordConfigured
-                      ? "Un mot de passe est enregistré. Laissez vide pour le conserver."
-                      : "Le mot de passe sera stocké chiffré."
+                    cibleModifiee
+                      ? undefined
+                      : settings.smtpPasswordConfigured
+                        ? "Un mot de passe est enregistré. Laissez vide pour le conserver."
+                        : "Le mot de passe sera stocké chiffré."
                   }
                 >
                   <div className="relative">
@@ -341,14 +387,27 @@ export function MailSettingsForm({
                       type="password"
                       className="pl-10"
                       placeholder={
-                        settings.smtpPasswordConfigured
+                        settings.smtpPasswordConfigured && !cibleModifiee
                           ? "Conserver le mot de passe"
                           : "Mot de passe"
                       }
                       autoComplete="new-password"
+                      required={
+                        cibleModifiee && smtpCible.username.trim() !== ""
+                      }
                     />
                   </div>
-                  {settings.smtpPasswordConfigured && (
+                  {cibleModifiee ? (
+                    <p className="mt-2 flex items-start gap-2 text-sm font-semibold leading-5 text-coral-700">
+                      <CircleAlert
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      Le serveur ou l&apos;identifiant a changé : le mot de
+                      passe enregistré ne lui sera pas transmis et sera effacé.
+                      Saisissez celui de ce compte.
+                    </p>
+                  ) : settings.smtpPasswordConfigured && (
                     <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm font-semibold text-coral-700">
                       <input
                         type="checkbox"
@@ -373,7 +432,10 @@ export function MailSettingsForm({
                   </span>
                   <span className="mt-1 block text-sm leading-5 text-slate-600">
                     À activer habituellement sur le port 465. Sur le port 587,
-                    STARTTLS sera négocié automatiquement.
+                    STARTTLS sera négocié automatiquement.{" "}
+                    {relaisLocal
+                      ? "Relais local : le chiffrement reste facultatif, le courrier ne quitte pas la machine."
+                      : "Le chiffrement est exigé : un serveur qui ne propose pas STARTTLS sera refusé."}
                   </span>
                 </span>
               </label>
@@ -505,7 +567,10 @@ export function MailSettingsForm({
               <p className="mt-1 text-sm leading-6 text-slate-600">
                 {settings.provider === "smtp"
                   ? settings.smtpHost?.toLowerCase().includes("mailpit")
-                    ? "Mailpit capture les messages dans Docker sans les distribuer sur Internet. Utilisez son interface web pour consulter les e-mails de test."
+                    ? // Aucune promesse « machine hôte seulement » : une mise à
+                      // niveau laisse tourner l'ancien conteneur, publié sur
+                      // toutes les adresses, tant que personne ne le recrée.
+                      "Mailpit capture les messages sans les distribuer : réservez-le aux essais. Tout ce qui part — liens de réinitialisation de mot de passe compris — se lit dans son interface, qui ne doit écouter que sur la machine hôte. Une installation antérieure garde un ancien conteneur ouvert à tout le réseau tant qu'il n'est pas recréé : voir « Installation antérieure » dans docs/DOCKER.md."
                     : "Vérifiez que le relais autorise l'expéditeur et configurez les enregistrements DNS de votre domaine pour assurer la distribution des messages."
                   : "Validez le domaine dans Resend, puis ajoutez les enregistrements DNS SPF et DKIM fournis. L'adresse d'expédition doit utiliser ce domaine."}
               </p>

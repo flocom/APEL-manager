@@ -20,12 +20,30 @@ import {
   VolunteerSignupForm,
   type SignupSlotOption,
 } from "@/components/volunteer-signup-form";
+import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getEventByShareToken } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { ticketingHostLabel } from "@/lib/ticketing";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Ce que la page peut dire d'un rendez-vous, selon son état. Une seule règle
+ * pour le corps de la page et pour ses métadonnées (titre de l'onglet, aperçu
+ * OpenGraph) : écrites deux fois, elles avaient divergé, et l'aperçu d'un lien
+ * de brouillon affichait ce que la page taisait.
+ *
+ * Un brouillon ne dit jamais rien, même annulé : il n'a jamais été public, et
+ * personne n'a de raison d'en connaître le titre.
+ */
+function visibilite(
+  event: { status: string; cancelledAt: Date | null } | null | undefined,
+): "annule" | "indisponible" | "ouvert" {
+  if (!event || event.status === "draft") return "indisponible";
+  if (event.cancelledAt) return "annule";
+  return event.status === "published" ? "ouvert" : "indisponible";
+}
 
 export async function generateMetadata({
   params,
@@ -34,7 +52,29 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { token } = await params;
   const event = await getEventByShareToken(token);
-  if (!event) return { title: "Inscription bénévole" };
+  // La même règle de visibilité que le corps de la page. Les balises <title>
+  // et OpenGraph sont lues par les aperçus de WhatsApp ou de Messenger avant
+  // même que quelqu'un ouvre le lien : un brouillon collé par erreur dans un
+  // groupe de classe y affichait son titre, sa date et son lieu, alors que la
+  // page elle-même les taisait.
+  const etat = visibilite(event);
+  if (!event || etat === "indisponible") {
+    return {
+      title: "Lien d'inscription indisponible",
+      robots: { index: false },
+    };
+  }
+  if (etat === "annule") {
+    // Le corps n'en montre que le titre, barré : l'aperçu n'en dit pas plus.
+    const title = `Annulé — ${event.title}`;
+    const description = "Ce rendez-vous n'aura pas lieu.";
+    return {
+      title,
+      description,
+      robots: { index: false },
+      openGraph: { title, description, type: "website" },
+    };
+  }
   // Ce texte est l'aperçu affiché quand le lien circule dans un groupe de
   // classe : n'annoncer que le bénévolat ferait manquer la page aux familles
   // qui voulaient réserver.
@@ -61,11 +101,12 @@ export default async function InscriptionPage({
 }) {
   const { token } = await params;
   const event = await getEventByShareToken(token);
+  const etat = visibilite(event);
 
   // Annulé : on le DIT, au lieu de renvoyer « lien indisponible ». Quelqu'un
   // qui ouvre son lien d'inscription la veille doit comprendre que la fête
   // n'aura pas lieu, et non croire à un lien cassé.
-  if (event && event.cancelledAt) {
+  if (event && etat === "annule") {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
         <SiteHeader />
@@ -97,7 +138,7 @@ export default async function InscriptionPage({
     );
   }
 
-  if (!event || event.status !== "published") {
+  if (!event || etat !== "ouvert") {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
         <SiteHeader />
@@ -338,6 +379,9 @@ export default async function InscriptionPage({
                 defaultName={currentUser?.name ?? ""}
                 defaultEmail={currentUser?.email ?? ""}
                 whatsappGroupUrl={association.whatsappGroupUrl}
+                // Même critère que la route : un compte en attente répond
+                // comme un invité, et reçoit donc l'e-mail de confirmation.
+                connecte={isApproved(currentUser)}
               />
 
               <div className="mt-6 border-t-2 border-slate-100 pt-5">

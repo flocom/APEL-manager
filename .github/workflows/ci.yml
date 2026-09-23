@@ -3,6 +3,12 @@ name: Contrôles
 # Types et lint sur chaque proposition de changement. La construction de
 # l'image ne les rejoue pas : une remarque de style ne doit pas empêcher un
 # déploiement, mais elle doit être vue avant la fusion.
+#
+# Chaque action est épinglée par l'empreinte complète de son commit, l'étiquette
+# restant en commentaire : une étiquette se déplace, et celui qui la déplace
+# exécuterait son code ici, avec le jeton du dépôt. Pour monter de version,
+# relever la nouvelle empreinte avec
+#     git ls-remote https://github.com/<propriétaire>/<action> refs/tags/<étiquette>
 
 on:
   push:
@@ -14,6 +20,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Aucun droit par défaut : chaque tâche déclare ce dont elle a besoin, et ces
+# contrôles n'ont besoin que de lire les sources.
+permissions: {}
+
 env:
   # Sans cela, npm annonce sa prochaine version majeure dans chaque journal.
   NPM_CONFIG_UPDATE_NOTIFIER: false
@@ -21,13 +31,19 @@ env:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Récupérer les sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Le jeton ne reste pas dans .git/config pendant que `npm ci` exécute
+          # les scripts d'installation des dépendances.
+          persist-credentials: false
 
       - name: Préparer Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -48,6 +64,8 @@ jobs:
   # Les éprouver ici coûte une minute et referme ce chemin.
   migrations:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:16-alpine
@@ -66,10 +84,12 @@ jobs:
       DATABASE_URL: postgresql://apel:apel-ci@localhost:5432/apel_manager
     steps:
       - name: Récupérer les sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Préparer Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm

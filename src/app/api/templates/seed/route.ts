@@ -4,11 +4,12 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { checklistTemplates } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { DEFAULT_TEMPLATES } from "@/lib/templates";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
 
     const existing = await db
       .select({ id: checklistTemplates.id })
@@ -26,6 +27,13 @@ export async function POST() {
       })),
     );
 
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "template.seed",
+      "checklist_template",
+      null,
+      { created: DEFAULT_TEMPLATES.length },
+    );
     revalidateTag("templates");
     return NextResponse.json({ ok: true, created: DEFAULT_TEMPLATES.length });
   } catch (error) {

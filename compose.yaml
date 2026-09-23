@@ -41,6 +41,10 @@ x-app-environment: &app-environment
   # publication échoue. Même valeur par défaut que la clé `image` des services,
   # pour qu'on ne puisse pas surveiller une autre image que celle qui tourne.
   APEL_IMAGE: ${APEL_IMAGE:-ghcr.io/flocom/apel-manager:latest}
+  # Image à surveiller quand APEL_IMAGE est figée par empreinte
+  # (`…@sha256:…`) : l'indicateur de version continue alors de signaler les
+  # nouvelles publications, que l'exploitant vérifie avant de les installer.
+  UPDATE_IMAGE: ${UPDATE_IMAGE:-}
 
 services:
   db:
@@ -65,18 +69,39 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Boîte de capture pour les essais : Mailpit reçoit les messages et ne les
+  # distribue jamais. Tout ce qui y arrive se lit dans son interface, liens de
+  # réinitialisation de mot de passe et de confirmation de compte compris :
+  # publiée sur toutes les interfaces et sans mot de passe, elle livrait à
+  # n'importe qui sur le réseau de quoi prendre la main sur chaque compte.
+  #
+  # Service inactif par défaut. Pour l'activer, ajouter `mailpit` à
+  # COMPOSE_PROFILES dans `.env` (ou `docker compose --profile mailpit up -d`).
+  # L'interface n'écoute que sur 127.0.0.1 de l'hôte ; depuis un autre poste,
+  # passer par un tunnel SSH. MAILPIT_UI_AUTH="utilisateur:mot-de-passe" exige
+  # en plus une authentification.
+  #
+  # Installation antérieure : `docker compose up -d` ne touche pas à un service
+  # dont le profil est inactif, pas même avec --remove-orphans. L'ancien
+  # conteneur, publié sur 0.0.0.0:8025, continue donc de tourner et de recevoir
+  # le courrier. Le retirer ou le recréer : docs/DOCKER.md, « Installation
+  # antérieure ».
   mailpit:
     image: axllent/mailpit:v1.30.5
+    profiles: ["mailpit"]
     restart: unless-stopped
     environment:
       MP_DATABASE: /data/mailpit.db
       MP_MAX_MESSAGES: "5000"
+      # Adresses internes au conteneur : seul le mapping `ports` ci-dessous
+      # décide de ce qui est joignable depuis l'extérieur.
       MP_SMTP_BIND_ADDR: "0.0.0.0:1025"
       MP_UI_BIND_ADDR: "0.0.0.0:8025"
+      MP_UI_AUTH: ${MAILPIT_UI_AUTH:-}
     volumes:
       - mailpit_data:/data
     ports:
-      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
     security_opt:
       - no-new-privileges:true
 
@@ -93,6 +118,12 @@ services:
       - uploads_data:/app/data/uploads
     expose:
       - "3000"
+    # Sous Linux, `host.docker.internal` n'existe pas d'office (seul Docker
+    # Desktop le définit) : cette ligne le fait pointer vers la machine hôte,
+    # pour joindre un relais SMTP (Postfix…) qui y tourne. Voir docs/DOCKER.md,
+    # section Courrier.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

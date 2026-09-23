@@ -11,6 +11,7 @@ import {
 } from "@/lib/app-config";
 import { db } from "@/lib/db";
 import { associationSettings } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { checkTelegramBotToken } from "@/lib/notifications/telegram";
 import { checkRecaptchaSecret } from "@/lib/services/recaptcha";
 import { emptyToNull } from "@/lib/utils";
@@ -26,7 +27,7 @@ function safeDecrypt(encrypted: string): string | null {
   try {
     return decryptSecret(encrypted);
   } catch (error) {
-    console.error("[telegram] impossible de déchiffrer le token", error);
+    console.error("[telegram] impossible de déchiffrer le token", redactError(error));
     return null;
   }
 }
@@ -63,7 +64,7 @@ export async function getAssociationSettings() {
     // nouvelle migration n'est pas encore appliquée.
     console.warn(
       "[settings] réglages dynamiques indisponibles, utilisation des valeurs par défaut",
-      error,
+      redactError(error),
     );
   }
   if (settings) {
@@ -341,7 +342,7 @@ export async function getTelegramBotToken() {
   } catch (error) {
     console.warn(
       "[telegram] réglages dynamiques indisponibles, repli sur l’environnement",
-      error,
+      redactError(error),
     );
   }
 
