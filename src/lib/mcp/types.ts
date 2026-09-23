@@ -51,16 +51,35 @@ export function mcpAuditActor(principal: McpPrincipal): AuditActor {
 /**
  * Caractères invisibles ou de contrôle. Un texte lu par un modèle peut y
  * cacher des consignes que l'administrateur ne voit pas à l'écran : caractères
- * « tags » (U+E0000–E007F), inversions de sens d'écriture, espaces de largeur
- * nulle, séquences d'échappement de terminal. Les retours à la ligne et
- * tabulations restent, les documents en ont besoin ; la liaison de largeur
- * nulle (U+200D) aussi, sans laquelle les émojis composés se défont.
+ * « tags » (U+E0000–E007F), sélecteurs de variante (256 valeurs, de quoi coder
+ * un octet par caractère), inversions de sens d'écriture, espaces de largeur
+ * nulle, remplissages coréens, séquences d'échappement de terminal. Une liste
+ * de plages écrite à la main en oubliait toujours ; on retire donc par
+ * catégorie Unicode — contrôles (Cc), formats (Cf), moitiés de paires
+ * orphelines (Cs) — et tout ce que Unicode déclare ignorable à l'affichage.
+ *
+ * Restent les retours à la ligne et tabulations, dont les documents ont
+ * besoin, ainsi que la liaison de largeur nulle (U+200D) et le sélecteur de
+ * présentation émoji (U+FE0F), sans lesquels les émojis composés se défont ;
+ * ces deux-là ne survivent qu'à leur place dans un émoji (voir plus bas).
  */
 const INVISIBLES =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F​‎‏‪-‮⁠-⁤⁦-⁩﻿￹-￻]|\uDB40[\uDC00-\uDC7F]/g;
+  /(?![\t\n\r\u200D\uFE0F])[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu;
+
+/**
+ * Hors d'un émoji, U+200D et U+FE0F n'ont rien à faire : alignés à la suite,
+ * ils formeraient un alphabet invisible à deux lettres. Le sélecteur ne reste
+ * qu'après un caractère émoji, la liaison qu'entre deux pictogrammes.
+ */
+const PRESENTATION_ISOLEE = /(?<!\p{Emoji})\uFE0F/gu;
+const LIAISON_ISOLEE =
+  /(?<!\p{Extended_Pictographic}[\uFE0F\p{Emoji_Modifier}]?)\u200D|\u200D(?!\p{Extended_Pictographic})/gu;
 
 export function retirerInvisibles(texte: string): string {
-  return texte.replace(INVISIBLES, "");
+  return texte
+    .replace(INVISIBLES, "")
+    .replace(PRESENTATION_ISOLEE, "")
+    .replace(LIAISON_ISOLEE, "");
 }
 
 /**
@@ -84,6 +103,8 @@ const LIMITES_SAISIE: Record<string, number> = {
   name: 120,
   email: 254,
   phone: 40,
+  deviceLabel: 120,
+  ipAddress: 64,
 };
 
 /**
@@ -104,8 +125,14 @@ export function saisiePublique<K extends string>(
     }
     const aplati = retirerInvisibles(valeur).replace(/\s+/g, " ").trim();
     const limite = LIMITES_SAISIE[cle] ?? 200;
+    // Coupe par caractère et non par unité UTF-16 : couper au milieu d'une
+    // paire laisserait une moitié orpheline, précisément ce qu'on vient de
+    // retirer.
+    const caracteres = Array.from(aplati);
     propres[cle] =
-      aplati.length > limite ? `${aplati.slice(0, limite)}…` : aplati;
+      caracteres.length > limite
+        ? `${caracteres.slice(0, limite).join("")}…`
+        : aplati;
   }
   return { [CLE_SAISIE_PUBLIQUE]: propres };
 }

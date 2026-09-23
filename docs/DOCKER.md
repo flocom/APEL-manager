@@ -379,9 +379,22 @@ exécute exactement ce qui a été vérifié.
    docker buildx imagetools inspect ghcr.io/flocom/apel-manager:latest
    ```
 
-2. Vérifier sa signature avec [cosign](https://docs.sigstore.dev/cosign/system_config/installation/).
-   La commande échoue si l'image n'a pas été signée par le workflow de
-   publication de ce dépôt, depuis `main` ou une étiquette `v*` :
+2. Vérifier sa signature avec [cosign](https://docs.sigstore.dev/cosign/system_config/installation/),
+   **en version 3.0 ou plus récente**. Le workflow signe avec cosign 3, qui
+   range la signature à côté de l'image sous le format « bundle » de Sigstore ;
+   une version 2 la cherche ailleurs (étiquette `sha256-….sig`), ne la trouve
+   pas et échoue sur une image pourtant correctement signée. Contrôler d'abord
+   la version installée — celle des dépôts de certaines distributions est une
+   2.x :
+
+   ```bash
+   cosign version
+   ```
+
+   Avec cosign 2.6, ajouter `--new-bundle-format=true` à la commande
+   ci-dessous ; avant 2.6, mettre cosign à jour. La vérification échoue si
+   l'image n'a pas été signée par le workflow de publication de ce dépôt,
+   depuis `main` ou une étiquette `v*` :
 
    ```bash
    cosign verify ghcr.io/flocom/apel-manager@sha256:<empreinte> \
@@ -389,8 +402,12 @@ exécute exactement ce qui a été vérifié.
      --certificate-identity-regexp '^https://github\.com/flocom/APEL-manager/\.github/workflows/docker-publish\.yml@refs/(heads/main|tags/v.+)$'
    ```
 
+   Un échec avec un cosign à jour signifie que l'image ne vient pas de ce
+   workflow : ne pas l'installer.
+
    Une instance qui suit un fork remplace `flocom/APEL-manager` par le dépôt de
-   ce fork, dans les deux commandes comme dans `.env`.
+   ce fork, dans `docker buildx imagetools` et `cosign verify` comme dans
+   `.env`.
 
 3. Figer l'image dans `.env`, garder l'indicateur de version attentif aux
    nouvelles publications, et désactiver l'`updater` — Watchtower ne remplace

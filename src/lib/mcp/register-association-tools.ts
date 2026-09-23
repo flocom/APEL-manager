@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import { and, asc, desc, eq, gte, like, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -85,6 +87,15 @@ const localDateTime = z
   .string()
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
+
+/**
+ * Détails du journal d'audit que personne du bureau n'a écrits : l'adresse
+ * tapée par un inconnu sur le formulaire de demande de compte, recopiée par
+ * `user.approve`, et le nom d'appareil libre qu'un membre choisit, présent
+ * dans les anciennes lignes de `push.subscription_transfer`. Ils sortent sous
+ * `untrustedPublicInput`, comme les autres saisies publiques.
+ */
+const DETAILS_SAISIS = new Set(["email", "deviceLabel"]);
 
 export function registerAssociationTools(
   server: McpServer,
@@ -1093,14 +1104,37 @@ export function registerAssociationTools(
         },
       });
       return toolResult({
-        items: items.map(({ actor, ...entree }) => ({
-          ...entree,
-          // Nom et adresse de l'auteur : ceux qu'il a saisis en demandant son
-          // compte, comme dans list_users.
-          actor: actor
-            ? { id: actor.id, ...saisiePublique({ name: actor.name, email: actor.email }) }
-            : null,
-        })),
+        items: items.map(({ actor, details, ipAddress, ...entree }) => {
+          const reste: Record<string, unknown> = {};
+          const saisis: Record<string, string> = {};
+          for (const [cle, valeur] of Object.entries(details ?? {})) {
+            if (DETAILS_SAISIS.has(cle) && typeof valeur === "string") {
+              saisis[cle] = valeur;
+            } else {
+              reste[cle] = valeur;
+            }
+          }
+          // L'adresse IP vient de X-Forwarded-For : sans proxy qui remplace
+          // l'en-tête, le client y écrit ce qu'il veut. Une adresse valide ne
+          // peut rien porter d'autre ; tout le reste est mis à part.
+          const ipLisible = ipAddress !== null && isIP(ipAddress) !== 0;
+          return {
+            ...entree,
+            ipAddress: ipLisible ? ipAddress : null,
+            ...(ipAddress !== null && !ipLisible
+              ? saisiePublique({ ipAddress })
+              : {}),
+            details: {
+              ...reste,
+              ...(Object.keys(saisis).length > 0 ? saisiePublique(saisis) : {}),
+            },
+            // Nom et adresse de l'auteur : ceux qu'il a saisis en demandant son
+            // compte, comme dans list_users.
+            actor: actor
+              ? { id: actor.id, ...saisiePublique({ name: actor.name, email: actor.email }) }
+              : null,
+          };
+        }),
         count: items.length,
       });
     },

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import webpush from "web-push";
 
 import { HttpError } from "@/lib/auth/guards";
@@ -42,6 +42,14 @@ const SETTINGS_ID = "default";
 const DELAI_ENVOI_MS = 10_000;
 /** Assez pour qu'une diffusion à toute l'équipe parte en quelques secondes. */
 const ENVOIS_SIMULTANES = 10;
+/**
+ * Appareils conservés par membre. Chaque abonnement est une adresse que le
+ * serveur appelle à chaque diffusion, avec jusqu'à DELAI_ENVOI_MS d'attente :
+ * sans plafond, un membre qui en déclarait des centaines, toutes muettes,
+ * faisait durer d'autant chaque envoi de l'administrateur. Dix suffisent aux
+ * téléphones, tablettes et ordinateurs d'une famille.
+ */
+const APPAREILS_PAR_MEMBRE = 10;
 
 /**
  * L'option `timeout` de web-push est un délai d'inactivité de la socket : elle
@@ -167,6 +175,64 @@ function memesCles(
   return gauche.length === droite.length && timingSafeEqual(gauche, droite);
 }
 
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Enregistre un appareil sans que son titulaire dépasse le plafond. Au-delà,
+ * c'est le plus ancien qui part — dernier envoi réussi, à défaut inscription,
+ * le plus lointain — plutôt que le nouveau qui est refusé : le membre n'a
+ * aucun écran pour retirer un vieil appareil, et un abonnement abandonné
+ * (téléphone changé, navigateur réinstallé) ne disparaît qu'au premier envoi
+ * qui échoue. Refuser laisserait sans notification celui qui vient de changer
+ * de téléphone.
+ *
+ * Renvoie `null` si l'endpoint a été enregistré entre-temps par une autre
+ * demande.
+ */
+async function insererAvecPlafond(
+  tx: Transaction,
+  valeurs: typeof pushSubscriptions.$inferInsert,
+): Promise<string | null> {
+  // Verrou sur le compte : deux abonnements simultanés du même membre
+  // compteraient chacun sans voir l'autre et dépasseraient le plafond à deux.
+  await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, valeurs.userId))
+    .for("no key update");
+  const [ligne] = await tx
+    .insert(pushSubscriptions)
+    .values(valeurs)
+    .onConflictDoNothing({ target: pushSubscriptions.endpoint })
+    .returning({ id: pushSubscriptions.id });
+  if (!ligne) return null;
+  const excedent = await tx
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(
+      and(
+        eq(pushSubscriptions.userId, valeurs.userId),
+        ne(pushSubscriptions.id, ligne.id),
+      ),
+    )
+    .orderBy(
+      desc(
+        sql`coalesce(${pushSubscriptions.lastSuccessAt}, ${pushSubscriptions.createdAt})`,
+      ),
+      desc(pushSubscriptions.createdAt),
+    )
+    .offset(APPAREILS_PAR_MEMBRE - 1);
+  if (excedent.length > 0) {
+    await tx.delete(pushSubscriptions).where(
+      inArray(
+        pushSubscriptions.id,
+        excedent.map((e) => e.id),
+      ),
+    );
+  }
+  return ligne.id;
+}
+
 export async function saveSubscription(
   {
     userId,
@@ -195,12 +261,8 @@ export async function saveSubscription(
 
   let existant = await lire();
   if (!existant) {
-    const inseres = await db
-      .insert(pushSubscriptions)
-      .values(valeurs)
-      .onConflictDoNothing({ target: pushSubscriptions.endpoint })
-      .returning({ id: pushSubscriptions.id });
-    if (inseres.length > 0) return;
+    const insere = await db.transaction((tx) => insererAvecPlafond(tx, valeurs));
+    if (insere) return;
     // Deux demandes simultanées pour le même appareil : l'autre a gagné, on
     // reprend avec la ligne qu'elle vient d'écrire.
     existant = await lire();
@@ -232,20 +294,19 @@ export async function saveSubscription(
 
   // Supprimer puis recréer plutôt que modifier : l'historique des envois de
   // l'ancien titulaire ne doit pas se rattacher à l'appareil du nouveau.
-  const nouveau = await db.transaction(async (tx) => {
+  const nouveauId = await db.transaction(async (tx) => {
     await tx
       .delete(pushSubscriptions)
       .where(eq(pushSubscriptions.id, ancien.id));
-    const [ligne] = await tx
-      .insert(pushSubscriptions)
-      .values(valeurs)
-      .returning({ id: pushSubscriptions.id });
-    return ligne;
+    return insererAvecPlafond(tx, valeurs);
   });
-  await recordAudit(actor, "push.subscription_transfer", "push_subscription", nouveau.id, {
+  if (!nouveauId) return;
+  // Sans le nom d'appareil : c'est un texte libre du membre, et le journal
+  // est relu par l'assistant des administrateurs (list_audit_logs). Les
+  // identifiants suffisent à retrouver de quoi il s'agit.
+  await recordAudit(actor, "push.subscription_transfer", "push_subscription", nouveauId, {
     fromUserId: ancien.userId,
     toUserId: userId,
-    deviceLabel: deviceLabel ?? null,
   });
 }
 
@@ -413,19 +474,29 @@ export async function sendPushNotification(
     }
   };
 
-  // Par vagues, et chaque vague attend tous ses envois, réussis ou non : un
-  // service de notification muet ne retient plus que sa vague, le temps du
-  // délai, et une erreur imprévue sur un appareil n'emporte pas les autres.
-  for (let index = 0; index < envois.length; index += ENVOIS_SIMULTANES) {
-    const resultats = await Promise.allSettled(
-      envois.slice(index, index + ENVOIS_SIMULTANES).map(envoyer),
-    );
-    for (const resultat of resultats) {
-      if (resultat.status === "rejected") {
-        console.error("[push] envoi non journalisé :", resultat.reason);
+  // Dix envois à la fois, chacun borné par son échéance. Chaque file reprend
+  // l'appareil suivant dès qu'elle est libre : un service de notification
+  // muet n'immobilise que la sienne, le temps du délai, au lieu de retenir
+  // toute une vague. Une erreur imprévue sur un appareil est consignée et
+  // n'arrête pas la file.
+  let prochain = 0;
+  const file = async () => {
+    while (prochain < envois.length) {
+      const envoi = envois[prochain];
+      prochain += 1;
+      try {
+        await envoyer(envoi);
+      } catch (error) {
+        console.error("[push] envoi non journalisé :", error);
       }
     }
-  }
+  };
+  await Promise.allSettled(
+    Array.from(
+      { length: Math.min(ENVOIS_SIMULTANES, envois.length) },
+      file,
+    ),
+  );
 
   if (perimes.length > 0) {
     await db

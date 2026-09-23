@@ -1,4 +1,6 @@
 import { isIP } from "node:net";
+// Le nom `url` désigne plus bas l'adresse analysée ; le module garde le sien.
+import * as analyseurHistorique from "node:url";
 
 /**
  * Adresses d'abonnement Web Push acceptées.
@@ -44,6 +46,17 @@ export type RefusEndpoint =
   | "service-inconnu";
 
 /**
+ * Nom d'hôte fait seulement de lettres, chiffres et tirets, en au moins deux
+ * étiquettes : la forme de tous les hôtes de la liste. L'exiger avant de la
+ * consulter écarte les caractères que `new URL` laisse dans l'hôte alors que
+ * l'analyseur de web-push y arrête l'hôte — point-virgule, apostrophe,
+ * guillemet, accent grave, accolades. `https://127.0.0.1;.push.apple.com/x`
+ * finit bien par `.push.apple.com` pour le premier ; pour le second, il
+ * désigne 127.0.0.1, et c'est là que l'envoi serait parti.
+ */
+const HOTE_SIMPLE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+/**
  * Renvoie `null` quand l'endpoint est acceptable, le motif du refus sinon.
  *
  * L'URL doit être déjà écrite sous sa forme canonique : c'est toujours le cas
@@ -67,6 +80,21 @@ export function refusEndpointPush(endpoint: string): RefusEndpoint | null {
   const hote = url.hostname;
   if (isIP(hote.replace(/^\[|\]$/g, "")) !== 0) return "adresse-ip-interdite";
   if (url.href !== endpoint) return "forme-non-canonique";
+  if (!HOTE_SIMPLE.test(hote)) return "service-inconnu";
+  // Seconde garde, indépendante de la précédente : l'hôte et le port que
+  // l'envoi utilisera réellement sont ceux de `url.parse`, l'analyseur de
+  // web-push (web-push-lib.js, `sendNotification`). Contrôler un hôte et en
+  // appeler un autre est exactement la faille à fermer ; s'ils divergent un
+  // jour pour une raison qu'on n'a pas prévue, l'adresse est refusée.
+  let historique: analyseurHistorique.Url;
+  try {
+    historique = analyseurHistorique.parse(endpoint);
+  } catch {
+    return "url-invalide";
+  }
+  if (historique.hostname !== hote || (historique.port ?? "") !== "") {
+    return "forme-non-canonique";
+  }
   if (HOTES_EXACTS.has(hote)) return null;
   if (SUFFIXES.some((suffixe) => hote.endsWith(suffixe))) return null;
   return "service-inconnu";
