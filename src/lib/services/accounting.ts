@@ -8,8 +8,10 @@ import {
   events,
   financialAccounts,
 } from "@/lib/db/schema";
+import { centimesDepuisSql } from "@/lib/money";
 import { emptyToNull } from "@/lib/utils";
 import {
+  accountingCategorySchema,
   accountingEntrySchema,
   accountingEntryUpdateSchema,
   financialAccountSchema,
@@ -168,18 +170,24 @@ export async function getAccountingEntry(id: string) {
 export async function getAccountingSummary({
   eventId,
 }: { eventId?: string } = {}) {
+  // Les sommes en `bigint` de bout en bout. Converties en `int`, elles
+  // débordaient dès que le total dépassait 21 millions d'euros — deux
+  // écritures au plafond de l'époque suffisaient —, et l'erreur empêchait
+  // pour de bon l'affichage de la page Comptabilité, du bilan d'événement et
+  // de la ressource MCP. `centimesDepuisSql` refuse ensuite tout total qu'un
+  // nombre JavaScript ne représenterait pas exactement.
   const [summary] = await db
     .select({
-      incomeCents: sql<number>`coalesce(sum(case when ${accountingEntries.type} = 'income' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents} else 0 end), 0)::int`,
-      expenseCents: sql<number>`coalesce(sum(case when ${accountingEntries.type} = 'expense' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents} else 0 end), 0)::int`,
+      incomeCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'income' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
+      expenseCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'expense' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
       draftCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'draft')::int`,
       missingAttachmentCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'posted' and ${accountingEntries.attachmentUrl} is null)::int`,
     })
     .from(accountingEntries)
     .where(eventId ? eq(accountingEntries.eventId, eventId) : undefined);
 
-  const incomeCents = Number(summary?.incomeCents ?? 0);
-  const expenseCents = Number(summary?.expenseCents ?? 0);
+  const incomeCents = centimesDepuisSql(summary?.incomeCents);
+  const expenseCents = centimesDepuisSql(summary?.expenseCents);
   return {
     incomeCents,
     expenseCents,
@@ -189,22 +197,40 @@ export async function getAccountingSummary({
   };
 }
 
-async function validateReferences(data: {
-  type?: "income" | "expense";
-  accountId?: string | null;
-  categoryId?: string | null;
-  eventId?: string | null;
-}) {
+type Lecteur = Pick<typeof db, "select">;
+
+/**
+ * Contrôle les rattachements d'une écriture, et les verrouille.
+ *
+ * Appelée dans la transaction de l'écriture : le verrou partagé (`key share`)
+ * posé sur l'événement et sur la catégorie tient jusqu'à la fin de celle-ci.
+ * Une suppression d'événement ou un changement de sens de catégorie, qui
+ * verrouillent la même ligne en exclusif, attendent donc que l'écriture soit
+ * enregistrée — et la voient. Sans ce verrou, une écriture validée pendant
+ * qu'on supprimait son événement se retrouvait détachée de lui, ou rangée
+ * sous une catégorie de dépenses devenue « recettes » entre le contrôle et
+ * l'écriture.
+ */
+async function validateReferences(
+  data: {
+    type?: "income" | "expense";
+    accountId?: string | null;
+    categoryId?: string | null;
+    eventId?: string | null;
+  },
+  lecteur: Lecteur,
+) {
   if (data.eventId) {
-    const [event] = await db
+    const [event] = await lecteur
       .select({ id: events.id })
       .from(events)
       .where(eq(events.id, data.eventId))
-      .limit(1);
+      .limit(1)
+      .for("key share");
     if (!event) throw new HttpError(400, "Événement introuvable.");
   }
   if (data.accountId) {
-    const [account] = await db
+    const [account] = await lecteur
       .select({ id: financialAccounts.id, isActive: financialAccounts.isActive })
       .from(financialAccounts)
       .where(eq(financialAccounts.id, data.accountId))
@@ -214,7 +240,7 @@ async function validateReferences(data: {
     }
   }
   if (data.categoryId) {
-    const [category] = await db
+    const [category] = await lecteur
       .select({
         id: accountingCategories.id,
         type: accountingCategories.type,
@@ -222,7 +248,8 @@ async function validateReferences(data: {
       })
       .from(accountingCategories)
       .where(eq(accountingCategories.id, data.categoryId))
-      .limit(1);
+      .limit(1)
+      .for("key share");
     if (!category || !category.isActive) {
       throw new HttpError(400, "Catégorie comptable invalide ou inactive.");
     }
@@ -240,26 +267,29 @@ export async function createAccountingEntry(
   actor: AuditActor,
 ) {
   const data = accountingEntrySchema.parse(input);
-  await validateReferences(data);
-  const [entry] = await db
-    .insert(accountingEntries)
-    .values({
-      type: data.type,
-      status: data.status,
-      accountId: data.accountId ?? null,
-      categoryId: data.categoryId ?? null,
-      eventId: data.eventId ?? null,
-      label: data.label,
-      amountCents: data.amountCents,
-      occurredAt: data.occurredAt,
-      counterparty: emptyToNull(data.counterparty),
-      paymentMethod: emptyToNull(data.paymentMethod),
-      reference: emptyToNull(data.reference),
-      notes: emptyToNull(data.notes),
-      attachmentUrl: emptyToNull(data.attachmentUrl),
-      createdBy: actor.userId,
-    })
-    .returning();
+  const entry = await db.transaction(async (tx) => {
+    await validateReferences(data, tx);
+    const [created] = await tx
+      .insert(accountingEntries)
+      .values({
+        type: data.type,
+        status: data.status,
+        accountId: data.accountId ?? null,
+        categoryId: data.categoryId ?? null,
+        eventId: data.eventId ?? null,
+        label: data.label,
+        amountCents: data.amountCents,
+        occurredAt: data.occurredAt,
+        counterparty: emptyToNull(data.counterparty),
+        paymentMethod: emptyToNull(data.paymentMethod),
+        reference: emptyToNull(data.reference),
+        notes: emptyToNull(data.notes),
+        attachmentUrl: emptyToNull(data.attachmentUrl),
+        createdBy: actor.userId,
+      })
+      .returning();
+    return created;
+  });
 
   await recordAudit(actor, "accounting.create", "accounting_entry", entry.id, {
     type: entry.type,
@@ -284,27 +314,9 @@ export async function updateAccountingEntry(
   }
 
   const data = accountingEntryUpdateSchema.parse(input);
-  await validateReferences({
-    type: data.type ?? current.type,
-    // Un brouillon peut rester rattaché à un compte archivé. Le compte n'est
-    // revalidé que lorsque l'affectation change.
-    accountId:
-      data.accountId !== undefined && data.accountId !== current.accountId
-        ? data.accountId
-        : undefined,
-    // Si seul le type change, revalider aussi la catégorie déjà enregistrée :
-    // elle doit rester du même type que l'écriture.
-    categoryId:
-      data.categoryId !== undefined
-        ? data.categoryId
-        : data.type !== undefined
-          ? current.categoryId
-          : undefined,
-    eventId:
-      data.eventId !== undefined && data.eventId !== current.eventId
-        ? data.eventId
-        : undefined,
-  });
+  const statutFinal = data.status ?? current.status;
+  const evenementFinal =
+    data.eventId !== undefined ? data.eventId : current.eventId;
   const updates: Partial<typeof accountingEntries.$inferInsert> = {
     updatedAt: new Date(),
   };
@@ -328,17 +340,50 @@ export async function updateAccountingEntry(
     updates.attachmentUrl = emptyToNull(data.attachmentUrl);
 
   const expectedVersion = data.version ?? current.version;
-  const [entry] = await db
-    .update(accountingEntries)
-    .set({ ...updates, version: expectedVersion + 1 })
-    .where(
-      and(
-        eq(accountingEntries.id, id),
-        eq(accountingEntries.version, expectedVersion),
-        eq(accountingEntries.status, "draft"),
-      ),
-    )
-    .returning();
+  const entry = await db.transaction(async (tx) => {
+    await validateReferences(
+      {
+        type: data.type ?? current.type,
+        // Un brouillon peut rester rattaché à un compte archivé. Le compte
+        // n'est revalidé que lorsque l'affectation change.
+        accountId:
+          data.accountId !== undefined && data.accountId !== current.accountId
+            ? data.accountId
+            : undefined,
+        // Si seul le type change, revalider aussi la catégorie déjà
+        // enregistrée : elle doit rester du même type que l'écriture.
+        categoryId:
+          data.categoryId !== undefined
+            ? data.categoryId
+            : data.type !== undefined
+              ? current.categoryId
+              : undefined,
+        // Une écriture qu'on valide verrouille son événement, même inchangé :
+        // c'est ce qui la met en file derrière une suppression en cours de
+        // cet événement, ou la suppression derrière elle (voir
+        // `deleteEvent`).
+        eventId:
+          statutFinal === "posted"
+            ? evenementFinal
+            : data.eventId !== undefined && data.eventId !== current.eventId
+              ? data.eventId
+              : undefined,
+      },
+      tx,
+    );
+    const [updated] = await tx
+      .update(accountingEntries)
+      .set({ ...updates, version: expectedVersion + 1 })
+      .where(
+        and(
+          eq(accountingEntries.id, id),
+          eq(accountingEntries.version, expectedVersion),
+          eq(accountingEntries.status, "draft"),
+        ),
+      )
+      .returning();
+    return updated;
+  });
   if (!entry) {
     throw new HttpError(
       409,
@@ -348,8 +393,98 @@ export async function updateAccountingEntry(
 
   await recordAudit(actor, "accounting.update", "accounting_entry", id, {
     changedFields: Object.keys(data).filter((key) => key !== "version"),
+    ...(statutFinal !== current.status
+      ? { status: { from: current.status, to: statutFinal } }
+      : {}),
   });
   return entry;
+}
+
+/**
+ * Modifie une catégorie comptable.
+ *
+ * Le SENS d'une catégorie (recette ou dépense) ne change plus dès qu'une
+ * écriture s'y rattache : les écritures validées sont immuables, et faire
+ * passer « Dons reçus » en dépenses les aurait rangées du mauvais côté du
+ * résultat sans en toucher une seule. Même règle que pour le type d'un compte
+ * de trésorerie : on désactive la catégorie, on en crée une autre.
+ *
+ * Le NOM, lui, reste modifiable, et c'est un choix. Une catégorie est une
+ * étiquette de classement ; la renommer corrige une faute ou précise un
+ * intitulé (« Kermesse » → « Kermesse de juin ») sans changer ni montant, ni
+ * date, ni compte, ni sens — rien de ce que l'immuabilité protège. L'interdire
+ * obligerait à dédoubler la catégorie, et couperait en deux l'historique
+ * qu'elle sert précisément à regrouper. Le journal garde l'ancien et le
+ * nouveau nom : un rapport imprimé avant le changement s'explique.
+ *
+ * Le verrou exclusif sur la catégorie met en file les écritures qui s'y
+ * rattachent au même moment (elles la verrouillent en partage, voir
+ * `validateReferences`) : le comptage voit tout ce qui a été enregistré avant.
+ */
+export async function updateAccountingCategory(
+  id: string,
+  input: unknown,
+  actor: AuditActor,
+) {
+  const data = accountingCategorySchema.partial().parse(input);
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(accountingCategories)
+      .where(eq(accountingCategories.id, id))
+      .for("update");
+    if (!current) throw new HttpError(404, "Catégorie comptable introuvable.");
+
+    if (data.type !== undefined && data.type !== current.type) {
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(accountingEntries)
+        .where(eq(accountingEntries.categoryId, id));
+      if (Number(n) > 0) {
+        throw new HttpError(
+          409,
+          `Cette catégorie est utilisée par ${n} écriture${Number(n) > 1 ? "s" : ""} : son sens (recette ou dépense) ne peut plus changer. Désactivez-la, puis créez-en une nouvelle.`,
+        );
+      }
+    }
+
+    const updates: Partial<typeof accountingCategories.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.type !== undefined) updates.type = data.type;
+    if (data.description !== undefined) {
+      updates.description = emptyToNull(data.description);
+    }
+    if (data.isActive !== undefined) updates.isActive = data.isActive;
+
+    const [category] = await tx
+      .update(accountingCategories)
+      .set(updates)
+      .where(eq(accountingCategories.id, id))
+      .returning();
+
+    await recordAudit(
+      actor,
+      "accounting.category_update",
+      "accounting_category",
+      id,
+      {
+        changedFields: Object.keys(data),
+        ...(data.name !== undefined && data.name !== current.name
+          ? { name: { from: current.name, to: data.name } }
+          : {}),
+        ...(data.type !== undefined && data.type !== current.type
+          ? { type: { from: current.type, to: data.type } }
+          : {}),
+        ...(data.isActive !== undefined && data.isActive !== current.isActive
+          ? { isActive: { from: current.isActive, to: data.isActive } }
+          : {}),
+      },
+      tx,
+    );
+    return category;
+  });
 }
 
 export async function deleteDraftAccountingEntry(

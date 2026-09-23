@@ -62,6 +62,17 @@ export function formatDuree(from: Date | string, to: Date | string): string {
   return formatDistanceStrict(new Date(from), new Date(to), { locale: fr });
 }
 
+/**
+ * Minuit, heure de Paris, du jour où tombe l'instant donné. Sert à ce qui ne
+ * doit arriver qu'une fois par jour « calendaire » de l'association : le cron
+ * tourne en UTC, et un découpage en jours UTC couperait la journée à 1 h ou
+ * 2 h du matin.
+ */
+export function startOfLocalDay(d: Date | string): Date {
+  const jour = formatInTimeZone(new Date(d), APP_TIMEZONE, "yyyy-MM-dd");
+  return fromZonedTime(`${jour}T00:00:00`, APP_TIMEZONE);
+}
+
 export function isOverdue(d: Date | string): boolean {
   return isPast(new Date(d));
 }

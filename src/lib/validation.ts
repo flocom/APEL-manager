@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseLocalDateTime } from "@/lib/dates";
 import { agMinutesPayloadSchema } from "@/lib/documents/ag-validation";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
+import { MONTANT_MAX_CENTIMES } from "@/lib/money";
 import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
 import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
 import {
@@ -526,7 +527,13 @@ export const accountingEntrySchema = z.object({
     .number()
     .int()
     .positive("Le montant doit être strictement positif")
-    .max(2_000_000_000),
+    // Voir MONTANT_MAX_CENTIMES : au-delà d'un million d'euros, c'est une
+    // faute de frappe, et l'ancien plafond (la limite d'un entier 32 bits)
+    // laissait deux écritures suffire à faire déborder le grand livre.
+    .max(
+      MONTANT_MAX_CENTIMES,
+      "Montant trop élevé : une écriture ne dépasse pas 1 000 000 €. Vérifiez la saisie.",
+    ),
   occurredAt: localDateTime,
   counterparty: optionalText(300),
   paymentMethod: optionalText(80),

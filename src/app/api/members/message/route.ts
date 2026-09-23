@@ -7,6 +7,7 @@ import { users } from "@/lib/db/schema";
 import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { messageSchema } from "@/lib/validation";
 
 export async function POST(req: Request) {
@@ -34,6 +35,21 @@ export async function POST(req: Request) {
       identity: await getNotificationIdentity(),
     });
     const sent = await sendBulkEmail(recipients, mail);
+
+    // Même trace que l'outil MCP `broadcast_to_members` : l'objet et le
+    // nombre de destinataires, jamais le corps du message.
+    await recordAudit(
+      webAuditActor(sender.id, req),
+      "mail.broadcast_members",
+      "user",
+      null,
+      {
+        subject,
+        messageLength: message.length,
+        requested: recipients.length,
+        sent,
+      },
+    );
 
     return NextResponse.json({ ok: true, sent });
   } catch (error) {

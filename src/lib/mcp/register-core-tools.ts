@@ -35,7 +35,11 @@ import {
   deleteEventAttachment,
   listEventAttachments,
 } from "@/lib/services/event-attachments";
-import { duplicateEvent, saveEventAsTemplate } from "@/lib/services/events";
+import {
+  deleteEvent,
+  duplicateEvent,
+  saveEventAsTemplate,
+} from "@/lib/services/events";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { generateShareToken, generateToken } from "@/lib/tokens";
@@ -48,6 +52,8 @@ import {
   templateSchema,
 } from "@/lib/validation";
 import { recordAudit } from "@/lib/services/audit";
+import { deleteTask, updateTask } from "@/lib/services/tasks";
+import { insertSignupWithinCapacity } from "@/lib/services/volunteer-signups";
 import {
   changeUserRole,
   deleteUserAccount,
@@ -297,7 +303,7 @@ export function registerCoreTools(
     {
       title: "Supprimer un événement",
       description:
-        "Supprime définitivement l’événement, ses tâches, créneaux et inscriptions.",
+        "Supprime définitivement l’événement, ses tâches, créneaux et inscriptions. Refusé si des écritures comptables validées s’y rattachent : annulez-le ou archivez-le alors.",
       inputSchema: z.object({
         id: z.string().uuid(),
         confirm: z.literal(true),
@@ -306,17 +312,9 @@ export function registerCoreTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const [deleted] = await db
-        .delete(events)
-        .where(eq(events.id, id))
-        .returning({ id: events.id });
-      if (!deleted) throw new Error("Événement introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "event.delete",
-        "event",
-        id,
-      );
+      // Même service que l'écran : refus si des écritures validées s'y
+      // rattachent, inventaire de ce qui part au journal.
+      await deleteEvent(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );
@@ -402,63 +400,15 @@ export function registerCoreTools(
     },
     async ({ id, ...input }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const data = taskUpdateSchema.parse(input);
-      const [current] = await db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.id, id))
-        .limit(1);
-      if (!current) throw new Error("Tâche introuvable.");
-      const updates: Partial<typeof tasks.$inferInsert> = {};
-      if (data.title !== undefined) updates.title = data.title;
-      if (data.description !== undefined)
-        updates.description = emptyToNull(data.description);
-      if (data.status !== undefined) {
-        updates.status = data.status;
-        updates.completedAt = data.status === "done" ? new Date() : null;
-      }
-      if (
-        data.leadTimeDays !== undefined ||
-        data.leadTimeValue !== undefined ||
-        data.leadTimeUnit !== undefined
-      ) {
-        const event = await requireEvent(current.eventId);
-        const duration = resolveLeadTime(data, {
-          leadTimeDays: current.leadTimeDays,
-          leadTimeValue: current.leadTimeValue,
-          leadTimeUnit: current.leadTimeUnit,
-        });
-        if (duration.leadTimeDays > 365) {
-          throw new Error("La durée ne peut pas dépasser un an.");
-        }
-        updates.leadTimeDays = duration.leadTimeDays;
-        updates.leadTimeValue = duration.leadTimeValue;
-        updates.leadTimeUnit = duration.leadTimeUnit;
-        updates.dueAt = computeDueAt(event.startAt, duration.leadTimeDays);
-      }
-      const expectedVersion = data.version ?? current.version;
-      const [task] = await db
-        .update(tasks)
-        .set({ ...updates, version: expectedVersion + 1 })
-        .where(and(eq(tasks.id, id), eq(tasks.version, expectedVersion)))
-        .returning();
-      if (!task) throw new Error("Conflit de modification de la tâche.");
-      if (data.assigneeIds !== undefined) {
-        await db.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
-        if (data.assigneeIds.length) {
-          await db
-            .insert(taskAssignees)
-            .values(
-              data.assigneeIds.map((userId) => ({ taskId: id, userId })),
-            )
-            .onConflictDoNothing();
-        }
-      }
-      await recordAudit(
-        mcpAuditActor(principal),
-        "task.update",
-        "task",
+      // Le même service que l'écran : règles d'un membre et d'un organisateur,
+      // verrou de la ligne, journal avec l'avant et l'après. La version reste
+      // facultative ici — l'outil ne l'a jamais exigée — et, fournie, doit
+      // être celle de la tâche.
+      const task = await updateTask(
         id,
+        taskUpdateSchema.parse(input),
+        { id: principal.userId, role: principal.role },
+        mcpAuditActor(principal),
       );
       return toolResult({ task }, "Tâche mise à jour.");
     },
@@ -477,17 +427,7 @@ export function registerCoreTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const [deleted] = await db
-        .delete(tasks)
-        .where(eq(tasks.id, id))
-        .returning({ id: tasks.id });
-      if (!deleted) throw new Error("Tâche introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "task.delete",
-        "task",
-        id,
-      );
+      await deleteTask(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );
@@ -1241,33 +1181,25 @@ export function registerCoreTools(
       // désinscription envoyé au bénévole.
       const cancelToken = generateToken(18);
 
-      // Insertion conditionnée à la capacité restante, comme l'inscription
-      // publique : deux appels simultanés ne peuvent pas dépasser la capacité.
-      let inserted;
-      try {
-        inserted = await db.execute(sql`
-          INSERT INTO volunteer_signups (slot_id, name, email, phone, cancel_token)
-          SELECT
-            ${slot.id}::uuid,
-            ${name},
-            ${normalizedEmail},
-            ${emptyToNull(phone)},
-            ${cancelToken}
-          WHERE (
-            SELECT count(*) FROM volunteer_signups WHERE slot_id = ${slot.id}::uuid
-          ) < ${slot.capacity}
-          RETURNING id
-        `);
-      } catch (error) {
-        if ((error as { code?: string })?.code === "23505") {
-          throw new Error("Ce bénévole est déjà inscrit à ce créneau.");
-        }
-        throw error;
+      // Même insertion que l'inscription publique, sous le verrou du créneau :
+      // des appels simultanés ne peuvent pas en dépasser la capacité.
+      const inserted = await insertSignupWithinCapacity({
+        slotId: slot.id,
+        name,
+        email: normalizedEmail,
+        phone: emptyToNull(phone),
+        cancelToken,
+      });
+      if (!inserted.ok) {
+        throw new Error(
+          inserted.reason === "doublon"
+            ? "Ce bénévole est déjà inscrit à ce créneau."
+            : inserted.reason === "complet"
+              ? "Ce créneau est complet."
+              : "Créneau introuvable.",
+        );
       }
-      if (inserted.length === 0) {
-        throw new Error("Ce créneau est complet.");
-      }
-      const signupId = (inserted[0] as { id: string }).id;
+      const signupId = inserted.id;
 
       let notified = false;
       if (notify && normalizedEmail) {

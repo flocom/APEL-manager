@@ -20,6 +20,7 @@ import {
   getRecaptchaRuntimeConfig,
 } from "@/lib/services/association-settings";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
+import { insertSignupWithinCapacity } from "@/lib/services/volunteer-signups";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import { signupSchema } from "@/lib/validation";
@@ -96,34 +97,22 @@ export async function POST(req: Request) {
     const currentUser = isApproved(sessionUser) ? sessionUser : null;
     const cancelToken = generateToken(18);
 
-    // Insertion atomique : on n'insère que si le créneau n'est pas déjà complet.
-    // L'index unique partiel (slot_id, lower(email)) sécurise l'anti-doublon en
-    // cas de course (deux soumissions simultanées) → erreur Postgres 23505.
-    let inserted;
-    try {
-      inserted = await db.execute(sql`
-        INSERT INTO volunteer_signups (slot_id, user_id, name, email, phone, cancel_token)
-        SELECT
-          ${slot.id}::uuid,
-          ${currentUser?.id ?? null}::uuid,
-          ${data.name},
-          ${email},
-          ${phone},
-          ${cancelToken}
-        WHERE (
-          SELECT count(*) FROM volunteer_signups WHERE slot_id = ${slot.id}::uuid
-        ) < ${slot.capacity}
-        RETURNING id
-      `);
-    } catch (e) {
-      if ((e as { code?: string })?.code === "23505") {
-        throw new HttpError(409, "Vous êtes déjà inscrit·e à ce créneau.");
-      }
-      throw e;
-    }
-
-    if (inserted.length === 0) {
-      throw new HttpError(409, "Ce créneau est complet.");
+    // Capacité et doublon contrôlés sous le verrou du créneau : vingt
+    // soumissions simultanées sur trois places en font passer trois, pas vingt.
+    const inserted = await insertSignupWithinCapacity({
+      slotId: slot.id,
+      userId: currentUser?.id ?? null,
+      name: data.name,
+      email,
+      phone,
+      cancelToken,
+    });
+    if (!inserted.ok) {
+      throw inserted.reason === "doublon"
+        ? new HttpError(409, "Vous êtes déjà inscrit·e à ce créneau.")
+        : inserted.reason === "complet"
+          ? new HttpError(409, "Ce créneau est complet.")
+          : new HttpError(400, "Créneau introuvable pour cet événement.");
     }
 
     const [baseUrl, association] = await Promise.all([

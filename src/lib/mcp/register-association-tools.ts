@@ -27,6 +27,7 @@ import {
   getAccountingSummary,
   listAccountingEntries,
   listFinancialAccounts,
+  updateAccountingCategory,
   updateAccountingEntry,
   updateFinancialAccount,
 } from "@/lib/services/accounting";
@@ -526,7 +527,7 @@ export function registerAssociationTools(
     {
       title: "Modifier une catégorie comptable",
       description:
-        "Renomme une catégorie, change son sens ou la désactive. Une catégorie désactivée reste attachée aux écritures passées mais n’est plus proposée.",
+        "Renomme une catégorie, change son sens ou la désactive. Le sens (recette ou dépense) ne change plus dès qu’une écriture s’y rattache : désactivez-la alors et créez-en une autre. Un renommage reste possible et est journalisé avec l’ancien nom. Une catégorie désactivée reste attachée aux écritures passées mais n’est plus proposée.",
       inputSchema: z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(160).optional(),
@@ -538,33 +539,12 @@ export function registerAssociationTools(
     },
     async ({ id, ...input }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const [current] = await db
-        .select()
-        .from(accountingCategories)
-        .where(eq(accountingCategories.id, id))
-        .limit(1);
-      if (!current) throw new Error("Catégorie comptable introuvable.");
-
-      const updates: Partial<typeof accountingCategories.$inferInsert> = {
-        updatedAt: new Date(),
-      };
-      if (input.name !== undefined) updates.name = input.name;
-      if (input.type !== undefined) updates.type = input.type;
-      if (input.description !== undefined) {
-        updates.description = emptyToNull(input.description);
-      }
-      if (input.isActive !== undefined) updates.isActive = input.isActive;
-
-      const [category] = await db
-        .update(accountingCategories)
-        .set(updates)
-        .where(eq(accountingCategories.id, id))
-        .returning();
-      await recordAudit(
-        mcpAuditActor(principal),
-        "accounting.category_update",
-        "accounting_category",
+      // Le service refuse de changer le sens d'une catégorie déjà utilisée,
+      // et garde l'ancien nom au journal en cas de renommage.
+      const category = await updateAccountingCategory(
         id,
+        input,
+        mcpAuditActor(principal),
       );
       return toolResult({ category }, "Catégorie comptable mise à jour.");
     },

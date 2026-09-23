@@ -6,6 +6,7 @@ import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { checklistTemplates, events, tasks } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 
 type Params = { params: Promise<{ id: string }> };
@@ -14,7 +15,7 @@ const schema = z.object({ templateId: z.string().uuid("Modèle invalide") });
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id: eventId } = await params;
     const { templateId } = schema.parse(await req.json());
 
@@ -63,6 +64,14 @@ export async function POST(req: Request, { params }: Params) {
     });
 
     await db.insert(tasks).values(rows);
+
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "template.apply",
+      "event",
+      eventId,
+      { templateId, created: rows.length },
+    );
 
     return NextResponse.json({ ok: true, created: rows.length });
   } catch (error) {

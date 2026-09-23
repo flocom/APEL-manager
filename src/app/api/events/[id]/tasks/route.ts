@@ -5,6 +5,7 @@ import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, taskAssignees, tasks } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { emptyToNull } from "@/lib/utils";
 import { taskSchema } from "@/lib/validation";
@@ -13,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id: eventId } = await params;
 
     const [event] = await db
@@ -56,6 +57,17 @@ export async function POST(req: Request, { params }: Params) {
         )
         .onConflictDoNothing();
     }
+
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "task.create",
+      "task",
+      task.id,
+      {
+        eventId,
+        assignees: [...new Set(data.assigneeIds ?? [])].sort(),
+      },
+    );
 
     return NextResponse.json({ ok: true, id: task.id });
   } catch (error) {

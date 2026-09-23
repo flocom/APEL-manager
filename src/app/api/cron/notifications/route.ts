@@ -1,12 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq, gt, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { formatDateTime, formatDuree } from "@/lib/dates";
+import { formatDateTime, formatDuree, startOfLocalDay } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
   associationSettings,
+  auditLogs,
   events,
   meetingAttendance,
   notificationsLog,
@@ -40,6 +41,9 @@ import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** L'action du journal qui atteste qu'un rappel des comptes en attente est parti. */
+const RAPPEL_COMPTES_EN_ATTENTE = "account.pending_reminder";
 
 /**
  * Une tâche, dans l'onglet « préparation » de son événement — celui qui porte
@@ -271,10 +275,14 @@ export async function GET(req: Request) {
   // rien de plus. Sinon — mode « immédiat » ou « aucun », pas d'adresse de
   // contact, envoi manqué — un rappel à part s'en charge. Une personne bloquée
   // à l'entrée ne doit pas dépendre du réglage des avis d'inscription.
+  // Un récapitulatif déjà parti aujourd'hui a porté, lui aussi, les comptes
+  // en attente : un appel rejoué n'a pas à les rappeler par un second message.
   const rappelComptesEnAttente =
     digest.envoye && digest.comptesEnAttente > 0
       ? { dansLeRecapitulatif: true, comptesEnAttente: digest.comptesEnAttente }
-      : { dansLeRecapitulatif: false, ...(await rappelerComptesEnAttente()) };
+      : digest.dejaEnvoyeAujourdhui
+        ? { dansLeRecapitulatif: true, dejaEnvoyeAujourdhui: true }
+        : { dansLeRecapitulatif: false, ...(await rappelerComptesEnAttente(now)) };
 
   let orphanedUploadsRemoved = 0;
   try {
@@ -325,9 +333,45 @@ export async function GET(req: Request) {
  * nettoyage des fichiers et la purge des demandes expirées viennent après, et
  * n'ont pas à attendre que la base ou la messagerie aille mieux.
  */
-async function rappelerComptesEnAttente() {
+async function rappelerComptesEnAttente(now: Date) {
   try {
-    return await remindBureauOfPendingAccounts();
+    // Une fois par jour, comme le récapitulatif : sans cela, chaque appel
+    // rejoué renvoyait le rappel. Il n'a pas de colonne à lui ; le journal
+    // d'audit, qui garde de toute façon la trace de ce que l'application
+    // envoie d'elle-même au bureau, sert de témoin. Le verrou consultatif
+    // tient la vérification et l'envoi ensemble : deux appels simultanés
+    // n'envoient qu'un rappel.
+    return await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('apel-manager:rappel-comptes-en-attente'))`,
+      );
+      const [deja] = await tx
+        .select({ id: auditLogs.id })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.action, RAPPEL_COMPTES_EN_ATTENTE),
+            gte(auditLogs.createdAt, startOfLocalDay(now)),
+          ),
+        )
+        .limit(1);
+      if (deja) return { envoye: false, dejaEnvoyeAujourdhui: true };
+
+      const rappel = await remindBureauOfPendingAccounts();
+      if (rappel.envoye) {
+        await tx.insert(auditLogs).values({
+          actorUserId: null,
+          action: RAPPEL_COMPTES_EN_ATTENTE,
+          entityType: "user",
+          source: "system",
+          details: {
+            comptesEnAttente: rappel.comptesEnAttente,
+            destinataires: rappel.destinataires,
+          },
+        });
+      }
+      return rappel;
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[cron] rappel des comptes en attente impossible :", message);
@@ -359,48 +403,134 @@ async function rappelerComptesEnAttente() {
  * inscriptions, et suffisent elles aussi : un formulaire que quelqu'un sature
  * refuse aussi les parents, et le bureau ne l'apprendrait pas autrement.
  */
+type TacheDue = {
+  id: string;
+  title: string;
+  dueAt: Date;
+  event: { id: string; title: string };
+  assignees: { user: { name: string | null; email: string } | null }[];
+};
+
+const RECAP_VIDE = {
+  envoye: false,
+  dejaEnvoyeAujourdhui: false,
+  nouvelles: 0,
+  tachesEnRetard: 0,
+  tachesAVenir: 0,
+  comptesEnAttente: 0,
+  demandesDeCompteIgnorees: 0,
+};
+
+/** La journée réservée : l'ancienne fin de fenêtre, pour pouvoir la rendre. */
+type Reservation = { precedent: Date | null };
+
+/**
+ * Réserve le récapitulatif du jour, ou dit qu'il est déjà parti.
+ *
+ * `signup_digest_sent_at` est à la fois la fin de la dernière fenêtre
+ * récapitulée et la preuve qu'un récapitulatif est parti ce jour-là. La ligne
+ * est verrouillée (`FOR UPDATE`) le temps de la lire et de l'avancer : un
+ * second appel simultané attend, relit la valeur que le premier vient
+ * d'écrire, et s'arrête. Le jour est celui de Paris, pas celui d'UTC.
+ */
+async function reserverLaJournee(now: Date): Promise<Reservation | null> {
+  return db.transaction(async (tx) => {
+    const [ligne] = await tx
+      .select({ precedent: associationSettings.signupDigestSentAt })
+      .from(associationSettings)
+      .where(eq(associationSettings.id, "default"))
+      .for("update");
+    if (!ligne) return null;
+    if (ligne.precedent && ligne.precedent >= startOfLocalDay(now)) {
+      return null;
+    }
+    await tx
+      .update(associationSettings)
+      .set({ signupDigestSentAt: now })
+      .where(eq(associationSettings.id, "default"));
+    return { precedent: ligne.precedent };
+  });
+}
+
+/**
+ * Rend la journée quand le récapitulatif n'est pas parti : la fenêtre revient
+ * à son ancienne fin, et un nouvel appel — le jour même — pourra réessayer.
+ * Seulement si personne n'y a touché depuis la réservation.
+ */
+async function libererLaJournee(reservation: Reservation, now: Date) {
+  try {
+    await db
+      .update(associationSettings)
+      .set({ signupDigestSentAt: reservation.precedent })
+      .where(
+        and(
+          eq(associationSettings.id, "default"),
+          eq(associationSettings.signupDigestSentAt, now),
+        ),
+      );
+  } catch (erreur) {
+    console.error("[cron] réservation du récapitulatif non rendue", erreur);
+  }
+}
+
 async function envoyerRecapitulatif(
   association: Awaited<ReturnType<typeof getAssociationSettings>>,
   identity: NotificationIdentity,
   baseUrl: string,
   now: Date,
-  dueTasks: {
-    id: string;
-    title: string;
-    dueAt: Date;
-    event: { id: string; title: string };
-    assignees: { user: { name: string | null; email: string } | null }[];
-  }[],
+  dueTasks: TacheDue[],
 ) {
+  const rien = RECAP_VIDE;
   if (association.signupNoticeMode !== "quotidien") {
-    return {
-      mode: association.signupNoticeMode,
-      envoye: false,
-      nouvelles: 0,
-      tachesEnRetard: 0,
-      tachesAVenir: 0,
-      comptesEnAttente: 0,
-      demandesDeCompteIgnorees: 0,
-    };
+    return { ...rien, mode: association.signupNoticeMode };
   }
   const destinataire = association.contactEmail?.trim();
   if (!destinataire) {
-    return {
-      mode: "quotidien",
-      envoye: false,
-      nouvelles: 0,
-      tachesEnRetard: 0,
-      tachesAVenir: 0,
-      comptesEnAttente: 0,
-      demandesDeCompteIgnorees: 0,
-    };
+    return { ...rien, mode: "quotidien" };
   }
 
+  // Un récapitulatif par jour, pas un par appel. La partie « tâches » est un
+  // instantané qui ne s'épuise pas : rejouer le cron — une relance après une
+  // panne, un double déclenchement, un appel à la main pour vérifier —
+  // renvoyait le même message au bureau autant de fois. La journée est
+  // réservée avant tout envoi, sous verrou : deux appels simultanés ne
+  // partent pas tous les deux.
+  const reservation = await reserverLaJournee(now);
+  if (!reservation) {
+    return { ...rien, mode: "quotidien", dejaEnvoyeAujourdhui: true };
+  }
+
+  try {
+    return await composerEtEnvoyer(
+      destinataire,
+      reservation,
+      identity,
+      baseUrl,
+      now,
+      dueTasks,
+    );
+  } catch (erreur) {
+    // Une panne entre la réservation et l'envoi ne doit ni coûter le
+    // récapitulatif du jour, ni faire sauter à la fenêtre les inscriptions
+    // qu'il aurait annoncées.
+    await libererLaJournee(reservation, now);
+    throw erreur;
+  }
+}
+
+async function composerEtEnvoyer(
+  destinataire: string,
+  reservation: Reservation,
+  identity: NotificationIdentity,
+  baseUrl: string,
+  now: Date,
+  dueTasks: TacheDue[],
+) {
+  const rien = RECAP_VIDE;
   // Première fois : on ne remonte que d'une journée, sinon un basculement de
   // mode déverserait l'historique entier dans le premier message.
   const depuis =
-    association.signupDigestSentAt ??
-    new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    reservation.precedent ?? new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const [inscriptions, presences, comptesEnAttente] = await Promise.all([
     db
@@ -416,7 +546,14 @@ async function envoyerRecapitulatif(
       .from(volunteerSignups)
       .innerJoin(volunteerSlots, eq(volunteerSignups.slotId, volunteerSlots.id))
       .innerJoin(events, eq(volunteerSlots.eventId, events.id))
-      .where(gt(volunteerSignups.createdAt, depuis)),
+      // Bornée des deux côtés : ce qui arrive pendant l'envoi appartient à la
+      // fenêtre suivante, qui commence à `now`, et n'est pas annoncé deux fois.
+      .where(
+        and(
+          gt(volunteerSignups.createdAt, depuis),
+          lte(volunteerSignups.createdAt, now),
+        ),
+      ),
     db
       .select({
         nom: meetingAttendance.name,
@@ -429,7 +566,12 @@ async function envoyerRecapitulatif(
       })
       .from(meetingAttendance)
       .innerJoin(events, eq(meetingAttendance.eventId, events.id))
-      .where(gt(meetingAttendance.createdAt, depuis)),
+      .where(
+        and(
+          gt(meetingAttendance.createdAt, depuis),
+          lte(meetingAttendance.createdAt, now),
+        ),
+      ),
     // Un état, comme les tâches : on compte ce qui attend aujourd'hui, pas ce
     // qui est arrivé depuis hier. Une demande restée sans réponse revient.
     countPendingAccounts(),
@@ -460,21 +602,10 @@ async function envoyerRecapitulatif(
     comptesEnAttente === 0 &&
     demandesIgnorees === 0
   ) {
-    // Rien à dire : on avance quand même la fenêtre, sinon elle s'allonge sans
-    // fin et finirait par reprendre des lignes déjà annoncées.
-    await db
-      .update(associationSettings)
-      .set({ signupDigestSentAt: now })
-      .where(eq(associationSettings.id, "default"));
-    return {
-      mode: "quotidien",
-      envoye: false,
-      nouvelles: 0,
-      tachesEnRetard: 0,
-      tachesAVenir: 0,
-      comptesEnAttente: 0,
-      demandesDeCompteIgnorees: 0,
-    };
+    // Rien à dire : la fenêtre avance quand même — la réservation l'a déjà
+    // portée à `now` —, sinon elle s'allongerait sans fin et finirait par
+    // reprendre des lignes déjà annoncées.
+    return { ...rien, mode: "quotidien" };
   }
 
   const versTache = (t: (typeof dueTasks)[number], retard: boolean) => ({
@@ -554,14 +685,11 @@ async function envoyerRecapitulatif(
     }),
   });
 
-  if (parti) {
-    await db
-      .update(associationSettings)
-      .set({ signupDigestSentAt: now })
-      .where(eq(associationSettings.id, "default"));
-  } else {
-    // Fenêtre laissée ouverte à dessein : le passage suivant reprendra ces
-    // inscriptions plutôt que de les perdre.
+  if (!parti) {
+    // Réservation rendue, fenêtre laissée ouverte à dessein : le passage
+    // suivant — même le jour même — reprendra ces inscriptions plutôt que de
+    // les perdre.
+    await libererLaJournee(reservation, now);
     console.warn(
       `[cron] récapitulatif non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s), ${enRetard.length} tâche(s) en retard, ${comptesEnAttente} compte(s) en attente et ${demandesIgnorees} demande(s) de compte ignorée(s) non signalé(s).`,
     );
@@ -570,6 +698,7 @@ async function envoyerRecapitulatif(
   return {
     mode: "quotidien",
     envoye: parti,
+    dejaEnvoyeAujourdhui: false,
     nouvelles,
     tachesEnRetard: enRetard.length,
     tachesAVenir: aVenir.length,

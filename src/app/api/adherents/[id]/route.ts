@@ -4,6 +4,7 @@ import {
   handleApiError,
   HttpError,
   requireApiRole,
+  requireVersion,
 } from "@/lib/auth/guards";
 import {
   archiveAssociationMember,
@@ -30,9 +31,13 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("admin");
     const { id } = await params;
+    const body = await req.json();
+    // La fiche envoie toujours la version qu'elle a chargée ; le service, que
+    // partagent les outils MCP, la laisse facultative pour eux seuls.
+    requireVersion(body);
     const member = await updateAssociationMember(
       id,
-      await req.json(),
+      body,
       webAuditActor(user.id, req),
     );
     return NextResponse.json({ ok: true, member });
