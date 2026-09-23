@@ -35,17 +35,20 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const { logoUrl } = await getAssociationSettings();
     if (!logoUrl) return introuvable();
-    // L'adresse d'un ancien logo ne sert plus rien. Y servir le logo actuel le
-    // ferait entrer dans la case d'un autre : les messages déjà envoyés gardent
-    // la largeur et la hauteur de l'ancien, et Outlook, qui s'y tient, le
-    // déformerait. Ils montrent à la place le nom de l'association.
-    if (fichier !== `${emailLogoVersion(logoUrl)}.png`) return introuvable();
-
     // Le verdict même qui a mis le logo dans les messages : un fichier abîmé,
     // ou un WebP sans sharp, n'y figure pas, et n'est pas servi ici non plus —
     // encore moins gardé un an en cache.
     const logo = await emailLogoFile(logoUrl);
     if (!logo) return introuvable();
+
+    // L'adresse d'un ancien logo, ou d'une autre case, ne sert plus rien. Y
+    // servir le fichier actuel le ferait entrer dans la case d'un autre : les
+    // messages déjà envoyés gardent leur largeur et leur hauteur, et Outlook,
+    // qui s'y tient, le déformerait. Ils montrent à la place le nom de
+    // l'association.
+    if (fichier !== `${emailLogoVersion(logoUrl, logo.size)}.png`) {
+      return introuvable();
+    }
 
     return new NextResponse(new Uint8Array(logo.body), {
       headers: {

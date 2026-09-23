@@ -108,10 +108,16 @@ export function emailLogoSize(source: Dimensions): Dimensions {
 /**
  * Empreinte du logo configuré, qui sert de nom au PNG. Un nouveau logo change
  * d'adresse : aucun cache ne peut le masquer derrière l'ancien.
+ *
+ * La case y entre aussi. Sans sharp, le fichier d'origine part dans une case à
+ * ses proportions ; avec, le PNG rendu remplit une case élargie. Si les deux
+ * partageaient une adresse, un message envoyé pendant une absence de sharp
+ * recevrait ensuite le PNG élargi dans sa case étroite, qu'Outlook respecte
+ * à la lettre : le logo y serait écrasé.
  */
-export function emailLogoVersion(logoUrl: string): string {
+export function emailLogoVersion(logoUrl: string, size: Dimensions): string {
   return createHash("sha256")
-    .update(`${RENDER_REVISION}:${logoUrl}`)
+    .update(`${RENDER_REVISION}:${logoUrl}:${size.width}x${size.height}`)
     .digest("hex")
     .slice(0, 16);
 }
@@ -573,7 +579,7 @@ export async function emailLogo(
     const file = await emailLogoFile(logoUrl);
     if (!file) return null;
     return {
-      url: `${baseUrl.replace(/\/+$/, "")}/api/logo-email/${emailLogoVersion(logoUrl)}.png`,
+      url: `${baseUrl.replace(/\/+$/, "")}/api/logo-email/${emailLogoVersion(logoUrl, file.size)}.png`,
       ...file.size,
     };
   } catch (error) {
