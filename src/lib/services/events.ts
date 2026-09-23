@@ -231,10 +231,12 @@ export async function duplicateEvent(
         title: emptyToNull(title ?? null) ?? source.title,
         description: source.description,
         publicDescription: source.publicDescription,
-        // La billetterie n'est PAS recopiée : elle est propre à une édition, et
-        // une copie qui pointe vers la vente de l'an dernier encaisserait pour
-        // le mauvais événement.
+        // Le lien de paiement n'est PAS recopié : il est propre à une édition,
+        // et une copie qui pointe vers la vente de l'an dernier encaisserait
+        // pour le mauvais événement. Son usage non plus : choisi pour ce
+        // lien-là, il s'appliquerait en silence au prochain.
         ticketingUrl: null,
+        ticketingKind: null,
         location: source.location,
         startAt,
         endAt: shift(source.endAt),

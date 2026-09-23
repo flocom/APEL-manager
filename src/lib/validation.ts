@@ -8,7 +8,11 @@ import { parseLocalDateTime } from "@/lib/dates";
 import { agMinutesPayloadSchema } from "@/lib/documents/ag-validation";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import { MONTANT_MAX_CENTIMES } from "@/lib/money";
-import { checkTicketingUrl, TICKETING_URL_MAX } from "@/lib/ticketing";
+import {
+  checkTicketingUrl,
+  TICKETING_KINDS,
+  TICKETING_URL_MAX,
+} from "@/lib/ticketing";
 import { checkWhatsappUrl, WHATSAPP_URL_MAX } from "@/lib/whatsapp";
 import {
   LEAD_TIME_MAX,
@@ -106,7 +110,7 @@ export const eventSchema = z.object({
   /** Réservé à l'équipe. Ce qui doit être lu par les visiteurs va dans `publicDescription`. */
   description: z.string().max(5000).optional(),
   publicDescription: z.string().max(5000).optional(),
-  /** Billetterie en ligne : validée par la règle partagée avec le formulaire. */
+  /** Lien de paiement en ligne : validé par la règle partagée avec le formulaire. */
   ticketingUrl: z
     .string()
     .max(TICKETING_URL_MAX)
@@ -120,6 +124,14 @@ export const eventSchema = z.object({
       }
       return verdict.url;
     }),
+  /**
+   * Usage du lien choisi à la main ; `null` (ou "") : automatique. "" est
+   * accepté parce que c'est la valeur de l'option « Détecter automatiquement ».
+   */
+  ticketingKind: z.preprocess(
+    (valeur) => (valeur === "" ? null : valeur),
+    z.enum(TICKETING_KINDS).nullable().optional(),
+  ),
   location: z.string().max(300).optional(),
   startAt: localDateTime,
   endAt: localDateTime.nullable().optional(),

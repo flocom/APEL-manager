@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { deleteEvent, evenementValide } from "@/lib/services/events";
+import { onlineLinkAfter } from "@/lib/ticketing";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
 
@@ -32,6 +33,26 @@ export async function PATCH(req: Request, { params }: Params) {
     const version = requireVersion(body);
     const data = eventSchema.partial().parse(body);
 
+    // L'état d'avant sert deux fois. Le lien et son usage se décident sur ce
+    // qu'aura l'événement APRÈS la modification (cf. onlineLinkAfter) : un
+    // usage envoyé seul sur un événement sans lien, ou un passage en réunion,
+    // ne doivent rien laisser traîner. Et le journal doit dire ce qui a
+    // VRAIMENT changé : le formulaire renvoie tous ses champs, et « tout a
+    // changé » n'apprend rien. Le statut, la date et le titre y figurent en
+    // clair : c'est ce qu'on cherche quand on se demande qui a déplacé une fête.
+    const [avant] = await db
+      .select()
+      .from(events)
+      .where(eq(events.id, id))
+      .limit(1);
+    if (!avant) throw new HttpError(404, "Événement introuvable.");
+    const lien =
+      data.kind !== undefined ||
+      data.ticketingUrl !== undefined ||
+      data.ticketingKind !== undefined
+        ? onlineLinkAfter(data, avant)
+        : null;
+
     // SET dynamique (seuls les champs réellement fournis).
     const setFragments: SQL[] = [];
     if (data.kind !== undefined) setFragments.push(sql`kind = ${data.kind}`);
@@ -42,9 +63,13 @@ export async function PATCH(req: Request, { params }: Params) {
       setFragments.push(
         sql`public_description = ${emptyToNull(data.publicDescription)}`,
       );
-    // Déjà normalisée par le schéma : "" est devenu null, l'URL est absolue.
-    if (data.ticketingUrl !== undefined)
-      setFragments.push(sql`ticketing_url = ${data.ticketingUrl}`);
+    // Écrits ensemble ou pas du tout (cf. plus haut). L'URL est déjà
+    // normalisée par le schéma : "" est devenu null, l'adresse est absolue.
+    if (lien)
+      setFragments.push(
+        sql`ticketing_url = ${lien.ticketingUrl}`,
+        sql`ticketing_kind = ${lien.ticketingKind}::ticketing_kind`,
+      );
     if (data.location !== undefined)
       setFragments.push(sql`location = ${emptyToNull(data.location)}`);
     if (data.startAt !== undefined)
@@ -62,17 +87,6 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: true });
     }
 
-    // L'état d'avant, pour que le journal dise ce qui a VRAIMENT changé : le
-    // formulaire renvoie tous ses champs, et « tout a changé » n'apprend rien.
-    // Le statut (une publication, un retour au brouillon), la date et le titre
-    // y figurent en clair : c'est ce qu'on cherche quand on se demande qui a
-    // déplacé une fête.
-    const [avant] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, id))
-      .limit(1);
-    if (!avant) throw new HttpError(404, "Événement introuvable.");
     const apres: Partial<Record<keyof typeof avant, unknown>> = {
       kind: data.kind,
       title: data.title,
@@ -84,7 +98,8 @@ export async function PATCH(req: Request, { params }: Params) {
         data.publicDescription === undefined
           ? undefined
           : emptyToNull(data.publicDescription),
-      ticketingUrl: data.ticketingUrl,
+      ticketingUrl: lien?.ticketingUrl,
+      ticketingKind: lien?.ticketingKind,
       location:
         data.location === undefined ? undefined : emptyToNull(data.location),
       startAt: data.startAt,

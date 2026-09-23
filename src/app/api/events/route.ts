@@ -4,6 +4,7 @@ import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { onlineLinkAfter } from "@/lib/ticketing";
 import { generateShareToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
@@ -12,6 +13,9 @@ export async function POST(req: Request) {
   try {
     const user = await requireApiRole("manager");
     const data = eventSchema.parse(await req.json());
+    // Sans lien, un usage n'a pas d'objet ; une réunion n'a ni l'un ni
+    // l'autre. On ne garde que ce qui a un sens.
+    const lien = onlineLinkAfter(data);
 
     const [created] = await db
       .insert(events)
@@ -20,7 +24,8 @@ export async function POST(req: Request) {
         title: data.title,
         description: emptyToNull(data.description),
         publicDescription: emptyToNull(data.publicDescription),
-        ticketingUrl: data.ticketingUrl ?? null,
+        ticketingUrl: lien.ticketingUrl,
+        ticketingKind: lien.ticketingKind,
         location: emptyToNull(data.location),
         startAt: data.startAt,
         endAt: data.endAt ?? null,

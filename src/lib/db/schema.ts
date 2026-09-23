@@ -20,6 +20,11 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+// Chemin relatif et non « @/ » : drizzle-kit lit ce fichier sans les alias du
+// tsconfig, et cet import-ci, contrairement aux précédents, survit à la
+// compilation.
+import { TICKETING_KINDS } from "../ticketing";
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
@@ -65,6 +70,12 @@ export const membershipFeeBasisEnum = pgEnum("membership_fee_basis", [
   "enfant",
   "non_precise",
 ]);
+
+/**
+ * Ce que les familles font sur le lien en ligne d'un événement. La liste vit
+ * dans src/lib/ticketing.ts, avec la détection et les phrases de chaque usage.
+ */
+export const ticketingKindEnum = pgEnum("ticketing_kind", TICKETING_KINDS);
 
 export const eventStatusEnum = pgEnum("event_status", [
   "draft",
@@ -229,12 +240,21 @@ export const events = pgTable("events", {
   /** Texte affiché sur l'accueil public et sur la page d'inscription. */
   publicDescription: text("public_description"),
   /**
-   * Billetterie ou réservation en ligne de l'événement (HelloAsso le plus
-   * souvent). Présentée aux familles comme une action distincte du bénévolat :
-   * « je réserve ma place » n'est pas « je donne un coup de main ».
-   * `null` quand l'événement n'a pas de billetterie — rien n'est alors affiché.
+   * Lien de paiement en ligne de l'événement (HelloAsso le plus souvent) :
+   * billetterie, boutique, collecte, adhésion… Présenté aux familles comme une
+   * action distincte du bénévolat : « je réserve ma place » ou « je passe
+   * commande » n'est pas « je donne un coup de main ».
+   * `null` quand l'événement n'a rien à régler en ligne — rien n'est alors
+   * affiché.
    */
   ticketingUrl: text("ticketing_url"),
+  /**
+   * Usage du lien choisi par l'organisateur. `null` : automatique — deviné
+   * d'après l'adresse HelloAsso, et à défaut « billetterie », le seul sens
+   * qu'avait le champ jusqu'ici. Stocker le choix plutôt que le résultat de la
+   * détection laisse une adresse corrigée plus tard être relue d'elle-même.
+   */
+  ticketingKind: ticketingKindEnum("ticketing_kind"),
   location: text("location"),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }),

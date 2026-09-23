@@ -9,7 +9,7 @@ messagerie, journal d'audit et suivi des mises à jour.
 
 | Domaine | Capacités |
 |---|---|
-| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list ; copier à une autre date. Deux textes distincts : `description` reste interne à l'équipe, `publicDescription` est affichée aux visiteurs. `ticketingUrl` porte le lien de billetterie en ligne (HelloAsso…), présenté aux familles comme « je réserve ma place », distinct des créneaux de bénévoles |
+| **Événements** | Lister, lire, créer, modifier, supprimer ; appliquer un modèle de check-list ; copier à une autre date. Deux textes distincts : `description` reste interne à l'équipe, `publicDescription` est affichée aux visiteurs. `ticketingUrl` porte le lien de paiement en ligne (HelloAsso…), distinct des créneaux de bénévoles ; `ticketingKind` dit à quoi il sert — `billetterie` (« Je réserve ma place »), `boutique` (« Je passe commande »), `don`, `adhesion`, `paiement` — et vaut `null` pour le laisser déduire de l'adresse HelloAsso. Une réunion ne porte ni l'un ni l'autre, et un usage sans lien n'est pas gardé. `ticketingKindEffective`, en lecture, donne l'usage présenté aux familles |
 | **Check-lists** | Lister les tâches de tous les événements, créer, modifier, supprimer, réorganiser ; gérer les modèles réutilisables, en créer un depuis un événement ou en remplacer un |
 | **Bénévoles** | Créneaux (créer, modifier, supprimer), inscriptions (lister, inscrire manuellement, annuler) |
 | **Pièces jointes** | Lister, rattacher et retirer les documents d'un événement |
