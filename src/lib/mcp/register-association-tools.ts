@@ -16,6 +16,11 @@ import {
   uniqueRecipients,
 } from "@/lib/notifications/email";
 import {
+  broadcastEmail,
+  mailSettingsTestEmail,
+} from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
+import {
   createAccountingEntry,
   createFinancialAccount,
   deleteDraftAccountingEntry,
@@ -78,38 +83,6 @@ const localDateTime = z
   .string()
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function associationBroadcastEmail(
-  input: { subject: string; message: string; senderName?: string },
-  associationName: string,
-) {
-  const paragraphs = input.message
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
-    .join("");
-  const signature = input.senderName
-    ? `<p style="color:#64748b;">— ${escapeHtml(input.senderName)}</p>`
-    : "";
-  return {
-    subject: input.subject,
-    html: `
-      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:auto;color:#0f172a;">
-        <h2 style="color:#075d8d;">${escapeHtml(input.subject)}</h2>
-        ${paragraphs}${signature}
-        <p style="color:#94a3b8;font-size:13px;margin-top:28px;">${escapeHtml(associationName)} — message automatique</p>
-      </div>`,
-    text: `${input.message}${input.senderName ? `\n\n— ${input.senderName}` : ""}`,
-  };
-}
 
 export function registerAssociationTools(
   server: McpServer,
@@ -995,12 +968,11 @@ export function registerAssociationTools(
     async ({ to }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
       const actor = mcpAuditActor(principal);
-      const associationName = association.associationName;
+      // Le même message que le bouton de test des réglages : un test n'a de
+      // sens que s'il ressemble aux vrais envois, logo et mise en page compris.
       const sent = await sendEmail({
         to,
-        subject: `Test de messagerie — ${associationName}`,
-        html: `<h2>La messagerie fonctionne.</h2><p>Test envoyé depuis le serveur MCP sécurisé de ${escapeHtml(associationName)}.</p>`,
-        text: `La messagerie de ${associationName} fonctionne.`,
+        ...mailSettingsTestEmail(await getNotificationIdentity()),
         allowDisabled: true,
       });
       await markOutboundMailTest(actor, sent);
@@ -1046,10 +1018,12 @@ export function registerAssociationTools(
       if (recipients.length === 0) {
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
-      const mail = associationBroadcastEmail(
-        { subject, message, senderName: principal.name },
-        association.associationName,
-      );
+      const mail = broadcastEmail({
+        subject,
+        message,
+        senderName: principal.name,
+        identity: await getNotificationIdentity(),
+      });
       const sent = await sendBulkEmail(recipients, mail);
       await recordAudit(
         mcpAuditActor(principal),

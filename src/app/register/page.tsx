@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth-shell";
 import { RegisterForm } from "@/components/auth-forms";
 import { buttonClasses } from "@/components/ui";
+import { safeNextPath, withNextPath } from "@/lib/auth/return-path";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -14,14 +15,22 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function RegisterPage() {
-  const [user, settings, unCompte, messagerie] = await Promise.all([
+export default async function RegisterPage({
+  searchParams,
+}: {
+  // Arrivé depuis la connexion avec une page à retrouver : le lien vers la
+  // connexion la garde, et le tout premier compte, qui entre aussitôt, y va.
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const [user, settings, unCompte, messagerie, { next }] = await Promise.all([
     getCurrentUser(),
     getAssociationSettings(),
     db.select({ id: users.id }).from(users).limit(1),
     getOutboundMailRuntimeConfig(),
+    searchParams,
   ]);
-  if (user) redirect("/dashboard");
+  const destination = safeNextPath(next);
+  if (user) redirect(destination);
   const existe = unCompte.length > 0;
 
   // Une demande se confirme par e-mail. Sans messagerie configurée, le lien ne
@@ -49,7 +58,7 @@ export default async function RegisterPage() {
             </p>
           </div>
           <Link
-            href="/login"
+            href={withNextPath("/login", destination)}
             className={cn(buttonClasses("outline"), "min-h-12 w-full")}
           >
             Se connecter
@@ -74,6 +83,7 @@ export default async function RegisterPage() {
     >
       <RegisterForm
         demande={existe}
+        next={destination}
         recaptchaSiteKey={
           settings.recaptchaReady ? settings.recaptchaSiteKey : null
         }

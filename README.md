@@ -90,6 +90,12 @@ image PNG, JPEG ou WebP, elle remplace aussitôt le logo neutre sur le site
 public, dans l’espace de travail et dans l’onglet du navigateur. Le fichier est
 conservé dans le volume des pièces jointes, jamais dans le dépôt.
 
+Il figure aussi en tête des e-mails, converti en PNG pour que tous les clients
+de messagerie l’affichent (Outlook ignore le WebP). Il faut pour cela que
+`APP_URL` soit renseignée : l’image est chargée depuis le site, et une adresse
+relative ne mène nulle part depuis une boîte de réception. Sans logo, les
+e-mails gardent leur en-tête habituel.
+
 ## Stack Docker complète
 
 | Conteneur | Rôle |

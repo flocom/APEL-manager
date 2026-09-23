@@ -14,6 +14,7 @@ import {
   meetingAttendanceConfirmationEmail,
   meetingAttendanceNoticeEmail,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -237,11 +238,7 @@ async function envoyerConfirmation({
     location: reunion.location,
     status: statut,
     cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-    identity: {
-      associationName: association.associationName,
-      schoolName: association.schoolName,
-      rna: association.rna,
-    },
+    identity: await getNotificationIdentity(association, baseUrl),
   });
   await sendEmail({ to: email, ...mail });
 }
@@ -291,11 +288,7 @@ async function avertirLeBureau({
         location: reunion.location,
         status: statut,
         eventUrl: `${baseUrl}/dashboard/events/${reunion.id}/presences`,
-        identity: {
-          associationName: association.associationName,
-          schoolName: association.schoolName,
-          rna: association.rna,
-        },
+        identity: await getNotificationIdentity(association, baseUrl),
       }),
     });
     if (!parti) {

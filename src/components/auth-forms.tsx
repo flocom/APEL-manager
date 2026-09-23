@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button, buttonClasses, Input, Label } from "@/components/ui";
+import { DEFAULT_NEXT_PATH, withNextPath } from "@/lib/auth/return-path";
 import { api } from "@/lib/client";
 import { useRecaptcha } from "@/lib/use-recaptcha";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,21 @@ function ErrorMessage({ message }: { message: string | null }) {
   );
 }
 
-export function LoginForm({ next = "/dashboard" }: { next?: string }) {
+/**
+ * La destination, ancre comprise.
+ *
+ * Le navigateur conserve l'ancre (`#…`) du lien d'origine à travers la
+ * redirection vers /login, mais le serveur ne la voit jamais : elle ne peut
+ * donc pas voyager dans `next`. On la reprend ici, dans l'adresse de la page
+ * de connexion, pour que le lien d'un e-mail retombe sur l'élément visé et pas
+ * seulement en haut de sa page.
+ */
+function withHash(next: string) {
+  if (next.includes("#")) return next;
+  return `${next}${window.location.hash}`;
+}
+
+export function LoginForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,7 +50,7 @@ export function LoginForm({ next = "/dashboard" }: { next?: string }) {
           password: form.get("password"),
         },
       });
-      router.push(next);
+      router.push(withHash(next));
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -55,7 +70,7 @@ export function LoginForm({ next = "/dashboard" }: { next?: string }) {
           <Label htmlFor="password" className="mb-0">
             Mot de passe
           </Label>
-          <Link href="/forgot" className="text-xs font-medium text-brand-600 hover:underline">
+          <Link href={withNextPath("/forgot", next)} className="text-xs font-medium text-brand-600 hover:underline">
             Mot de passe oublié ?
           </Link>
         </div>
@@ -72,7 +87,7 @@ export function LoginForm({ next = "/dashboard" }: { next?: string }) {
       </Button>
       <p className="text-center text-sm text-slate-500">
         Pas encore de compte ?{" "}
-        <Link href="/register" className="font-medium text-brand-600 hover:underline">
+        <Link href={withNextPath("/register", next)} className="font-medium text-brand-600 hover:underline">
           Créer un compte
         </Link>
       </p>
@@ -95,9 +110,12 @@ export function LoginForm({ next = "/dashboard" }: { next?: string }) {
 export function RegisterForm({
   demande = true,
   recaptchaSiteKey = null,
+  next = DEFAULT_NEXT_PATH,
 }: {
   demande?: boolean;
   recaptchaSiteKey?: string | null;
+  /** La page à rejoindre une fois le tout premier compte créé. */
+  next?: string;
 }) {
   const router = useRouter();
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
@@ -125,7 +143,7 @@ export function RegisterForm({
       );
       // Seul le tout premier compte entre directement : il est administrateur.
       if (!pending) {
-        router.push("/dashboard");
+        router.push(next);
         router.refresh();
         return;
       }
@@ -162,7 +180,10 @@ export function RegisterForm({
           indésirables. Si cette adresse a déjà un compte, le message vous le
           rappelle : connectez-vous directement.
         </p>
-        <Link href="/login" className={cn(buttonClasses("primary"), "min-h-12 w-full")}>
+        <Link
+          href={withNextPath("/login", next)}
+          className={cn(buttonClasses("primary"), "min-h-12 w-full")}
+        >
           Aller à la connexion
         </Link>
         <p className="text-center text-sm">
@@ -224,7 +245,7 @@ export function RegisterForm({
       </Button>
       <p className="text-center text-sm text-slate-500">
         Déjà inscrit ?{" "}
-        <Link href="/login" className="font-medium text-brand-600 hover:underline">
+        <Link href={withNextPath("/login", next)} className="font-medium text-brand-600 hover:underline">
           Se connecter
         </Link>
       </p>
@@ -328,7 +349,7 @@ export function ConfirmAccountForm({
   );
 }
 
-export function ForgotForm() {
+export function ForgotForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -368,7 +389,7 @@ export function ForgotForm() {
         Envoyer le lien
       </Button>
       <p className="text-center text-sm text-slate-500">
-        <Link href="/login" className="font-medium text-brand-600 hover:underline">
+        <Link href={withNextPath("/login", next)} className="font-medium text-brand-600 hover:underline">
           Retour à la connexion
         </Link>
       </p>

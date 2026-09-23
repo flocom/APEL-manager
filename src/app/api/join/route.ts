@@ -6,6 +6,7 @@ import {
   joinRequestAckEmail,
   joinRequestEmail,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const identity = await getNotificationIdentity(settings);
     const sent = await sendEmail({
       to: destination,
       replyTo: data.email,
@@ -60,11 +62,7 @@ export async function POST(req: Request) {
         message: data.message,
         intention: data.intention,
         feePublished: settings.membershipFeePublished,
-        identity: {
-          associationName: settings.associationName,
-          schoolName: settings.schoolName,
-          rna: settings.rna,
-        },
+        identity,
       }),
     });
 
@@ -89,11 +87,7 @@ export async function POST(req: Request) {
           intention: data.intention,
           feePublished: settings.membershipFeePublished,
           contactEmail: destination,
-          identity: {
-            associationName: settings.associationName,
-            schoolName: settings.schoolName,
-            rna: settings.rna,
-          },
+          identity,
         }),
       });
     } catch {

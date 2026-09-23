@@ -60,7 +60,7 @@ export function LogoUploadField({
       label="Logo"
       htmlFor={id}
       className="sm:col-span-2"
-      hint="PNG, JPEG ou WebP. Affiché sur le site public, l’espace de travail et l’onglet du navigateur. Sans logo, celui livré avec l’application est utilisé."
+      hint="PNG, JPEG ou WebP. Affiché sur le site public, l’espace de travail, l’onglet du navigateur et en tête des e-mails. Sans logo, le site utilise celui livré avec l’application et les e-mails n’en montrent aucun."
     >
       <input type="hidden" name={name} value={value} />
       <div className="flex flex-wrap items-center gap-4 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-3">

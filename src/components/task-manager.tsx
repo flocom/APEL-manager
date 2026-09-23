@@ -129,6 +129,17 @@ export function TaskManager({
     setOrderVersion(eventVersion);
   }, [eventVersion, tasks]);
 
+  // Les rappels envoyés par e-mail visent une tâche (#tache-…). Le navigateur
+  // n'y descend pas seul : la check-list arrive en streaming, après qu'il a
+  // cherché l'ancre, et le retour de la page de connexion est une navigation
+  // côté client, où il ne la cherche pas du tout. Mesuré : la tâche restait
+  // 2 000 px plus bas sur un téléphone.
+  useEffect(() => {
+    const ancre = window.location.hash.slice(1);
+    if (!ancre.startsWith("tache-")) return;
+    document.getElementById(ancre)?.scrollIntoView({ block: "start" });
+  }, []);
+
   // --- Formulaire d'ajout ---------------------------------------------------
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState("");
@@ -535,6 +546,10 @@ export function TaskManager({
             return (
               <li
                 key={task.id}
+                // Cible des liens envoyés par e-mail (rappel, récapitulatif) :
+                // ils tombent sur la tâche, pas en haut de la check-list. La
+                // marge garde la tâche visible sous la barre fixe du mobile.
+                id={`tache-${task.id}`}
                 onDragOver={
                   canManage
                     ? (event) => targetDuringDrag(event, task.id)
@@ -546,7 +561,7 @@ export function TaskManager({
                     : undefined
                 }
                 className={cn(
-                  "relative p-4 transition-[background-color,opacity]",
+                  "relative scroll-mt-24 p-4 transition-[background-color,opacity] lg:scroll-mt-6",
                   isDragging && "bg-brand-50/70 opacity-45",
                   isDropTarget && "bg-brand-50/40",
                 )}

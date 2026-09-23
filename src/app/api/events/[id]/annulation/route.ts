@@ -8,7 +8,7 @@ import { getEventWithDetails } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { eventCancelledEmail } from "@/lib/notifications/emails";
-import { getAssociationSettings } from "@/lib/services/association-settings";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { eventCancelSchema } from "@/lib/validation";
 
@@ -92,7 +92,6 @@ export async function POST(req: Request, { params }: Params) {
 
     let sent = 0;
     if (destinataires.length > 0) {
-      const association = await getAssociationSettings();
       sent = await sendBulkEmail(
         destinataires,
         eventCancelledEmail({
@@ -101,11 +100,7 @@ export async function POST(req: Request, { params }: Params) {
           location: event.location,
           raison: raison ?? null,
           isMeeting: event.kind === "meeting",
-          identity: {
-            associationName: association.associationName,
-            schoolName: association.schoolName,
-            rna: association.rna,
-          },
+          identity: await getNotificationIdentity(),
         }),
       );
       if (sent < destinataires.length) {
