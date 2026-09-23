@@ -21,6 +21,7 @@ import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import {
   MEMBERSHIP_FEE_BASIS_SUFFIX,
+  SIGNUP_NOTICE_MODE_HINTS,
   SIGNUP_NOTICE_MODE_LABELS,
   type MembershipFeeBasis,
   type SignupNoticeMode,
@@ -391,7 +392,7 @@ export function AssociationSettingsForm({
                 </h3>
                 <p className="text-sm text-slate-500">
                   Ce que reçoit l’adresse de contact quand quelqu’un s’inscrit
-                  depuis le site.
+                  depuis le site ou demande un compte.
                 </p>
               </div>
             </div>
@@ -399,7 +400,7 @@ export function AssociationSettingsForm({
               <Field
                 label="Quand prévenir"
                 htmlFor="signup-notice-mode"
-                hint="Le récapitulatif, retenu par défaut, part une fois par jour avec les autres tâches planifiées."
+                hint={SIGNUP_NOTICE_MODE_HINTS[avisInscription]}
               >
                 <Select
                   id="signup-notice-mode"
@@ -418,6 +419,16 @@ export function AssociationSettingsForm({
                 </Select>
               </Field>
             </div>
+
+            {/* Ce que le menu ne règle pas : sans ce rappel, « Aucun avis »
+                laisserait croire qu'une personne bloquée à l'entrée pourrait
+                attendre sans que personne le sache. */}
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Quel que soit ce choix, tant que des comptes attendent d’être
+              validés, un rappel part chaque jour : dans le récapitulatif quand
+              il y en a un, à part sinon. Sans adresse de contact, il va aux
+              administrateurs.
+            </p>
 
             {/* La vraie raison de ce réglage : le quota. Le dire ici, où le choix
                 se fait, plutôt que de laisser découvrir la panne le jour d'une
@@ -641,8 +652,9 @@ export function AssociationSettingsForm({
                   Protection anti-robot
                 </h3>
                 <p className="text-sm text-slate-500">
-                  reCAPTCHA v3 sur l’inscription des bénévoles et le formulaire
-                  de contact. Les deux clés se créent sur{" "}
+                  reCAPTCHA v3 sur les formulaires publics : inscriptions,
+                  contact, adhésion et demandes de compte. Les deux clés se
+                  créent sur{" "}
                   <a
                     href="https://www.google.com/recaptcha/admin"
                     target="_blank"

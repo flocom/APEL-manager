@@ -843,7 +843,7 @@ export function registerAssociationTools(
           .enum(["quotidien", "immediat", "aucun"])
           .optional()
           .describe(
-            "Quand prévenir l'adresse de contact d'une inscription venue du site. « quotidien » (par défaut) regroupe tout dans un seul message, ce qui économise le quota de 100 e-mails par jour du palier gratuit de Resend ; « immediat » envoie un avis par inscription.",
+            "Quand prévenir l'adresse de contact d'une inscription venue du site. « quotidien » (par défaut) regroupe tout dans un seul message — inscriptions, tâches, comptes à valider, demandes de compte refusées —, ce qui économise le quota de 100 e-mails par jour du palier gratuit de Resend ; « immediat » envoie un avis par inscription et par compte à valider, sans récapitulatif ; « aucun » n'envoie rien pour les inscriptions. Dans tous les modes, les comptes en attente de validation sont rappelés chaque jour.",
           ),
         taskReminderWindowDays: z.number().int().min(0).max(30).optional(),
         volunteerReminderWindowDays: z

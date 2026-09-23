@@ -1,8 +1,9 @@
 import { DashboardNav } from "@/components/dashboard-nav";
 import { PushBanner } from "@/components/push-banner";
 import { WelcomeTour } from "@/components/welcome-tour";
-import { requireUser } from "@/lib/auth/rbac";
+import { canManageUsers, requireUser } from "@/lib/auth/rbac";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import { countPendingAccounts } from "@/lib/services/user-accounts";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,11 @@ export default async function DashboardLayout({
     requireUser(),
     getAssociationSettings(),
   ]);
+  // Compté à chaque page pour les seuls administrateurs : ce sont eux qui
+  // valident, et le nombre de demandes n'a pas à circuler plus loin.
+  const pendingAccounts = canManageUsers(user)
+    ? await countPendingAccounts()
+    : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
@@ -22,6 +28,7 @@ export default async function DashboardLayout({
         appName={settings.associationName}
         logoUrl={settings.logoUrl}
         user={{ name: user.name, role: user.role }}
+        pendingAccounts={pendingAccounts}
       />
       <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:px-10 lg:py-10 xl:px-12">
         <div className="mx-auto max-w-7xl space-y-6">

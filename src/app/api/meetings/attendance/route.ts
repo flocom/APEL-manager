@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getBaseUrl } from "@/lib/base-url";
 import { formatDateTime } from "@/lib/dates";
@@ -93,7 +94,11 @@ export async function POST(req: Request) {
 
     const email = emptyToNull(data.email ?? null);
     const phone = emptyToNull(data.phone ?? null);
-    const currentUser = await getCurrentUser();
+    const sessionUser = await getCurrentUser();
+    // Un compte en attente répond comme un invité : sa réponse ne doit pas
+    // s'afficher parmi celles de l'équipe, ni disparaître avec lui s'il est
+    // refusé (la réponse d'un compte est supprimée avec le compte).
+    const currentUser = isApproved(sessionUser) ? sessionUser : null;
 
     // Un membre connecté répond sous son compte : c'est la même réponse que
     // celle du tableau de bord, pas une seconde ligne au même nom.

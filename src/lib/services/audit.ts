@@ -8,6 +8,22 @@ export interface AuditActor {
   ipAddress?: string | null;
 }
 
+/**
+ * Adresse IP du client, telle que le reverse proxy la transmet.
+ *
+ * La première adresse de `X-Forwarded-For` : Caddy, dans le déploiement
+ * Docker, comme Vercel remplacent l'en-tête reçu du client au lieu d'y
+ * ajouter la leur, si bien que cette première adresse n'est pas celle que le
+ * visiteur aurait choisi d'écrire.
+ */
+export function clientIpAddress(request?: Request): string | null {
+  return (
+    request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request?.headers.get("x-real-ip")?.trim() ||
+    null
+  );
+}
+
 export function webAuditActor(
   userId: string,
   request?: Request,
@@ -15,10 +31,7 @@ export function webAuditActor(
   return {
     userId,
     source: "web",
-    ipAddress:
-      request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      request?.headers.get("x-real-ip") ??
-      null,
+    ipAddress: clientIpAddress(request),
   };
 }
 

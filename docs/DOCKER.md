@@ -30,7 +30,9 @@ Au premier démarrage, le conteneur :
 3. applique dans l'ordre les migrations versionnées du dossier `drizzle/` ;
 4. démarre Next.js sous un utilisateur non privilégié.
 
-Le premier compte créé depuis `/register` devient administrateur.
+Le premier compte créé depuis `/register` devient administrateur. Les suivants
+confirment leur adresse par e-mail — il faut donc configurer la messagerie —,
+puis restent en attente jusqu'à leur validation par un administrateur.
 
 ## Services
 

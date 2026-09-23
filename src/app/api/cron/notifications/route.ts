@@ -25,7 +25,15 @@ import {
   getTelegramBotToken,
 } from "@/lib/services/association-settings";
 import { getBaseUrl } from "@/lib/base-url";
+import { totalDroppedAccountRequests } from "@/lib/labels";
+import {
+  accountRequestFormClosed,
+  countDroppedAccountRequests,
+  purgeExpiredAccountRequests,
+  remindBureauOfPendingAccounts,
+} from "@/lib/services/account-requests";
 import { collectReferencedUploadIds } from "@/lib/services/uploads-references";
+import { countPendingAccounts } from "@/lib/services/user-accounts";
 import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
@@ -244,6 +252,16 @@ export async function GET(req: Request) {
   // servir aux rappels individuels. Une seconde requête dirait la même chose.
   const digest = await envoyerRecapitulatif(association, now, dueTasks);
 
+  // --- Comptes en attente de validation, quel que soit le mode d'avis --------
+  // Le récapitulatif les porte déjà quand il part : un second message ne dirait
+  // rien de plus. Sinon — mode « immédiat » ou « aucun », pas d'adresse de
+  // contact, envoi manqué — un rappel à part s'en charge. Une personne bloquée
+  // à l'entrée ne doit pas dépendre du réglage des avis d'inscription.
+  const rappelComptesEnAttente =
+    digest.envoye && digest.comptesEnAttente > 0
+      ? { dansLeRecapitulatif: true, comptesEnAttente: digest.comptesEnAttente }
+      : { dansLeRecapitulatif: false, ...(await rappelerComptesEnAttente()) };
+
   let orphanedUploadsRemoved = 0;
   try {
     // Une erreur ici abandonne le nettoyage : mieux vaut garder des fichiers
@@ -254,6 +272,18 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error(
       "[uploads] nettoyage des fichiers orphelins impossible :",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  // Les demandes de compte jamais confirmées gardent le nom et l'adresse de
+  // quelqu'un qui n'a peut-être rien demandé : elles partent à expiration.
+  let demandesDeCompteEffacees = 0;
+  try {
+    demandesDeCompteEffacees = await purgeExpiredAccountRequests();
+  } catch (error) {
+    console.error(
+      "[cron] purge des demandes de compte expirées impossible :",
       error instanceof Error ? error.message : error,
     );
   }
@@ -270,8 +300,25 @@ export async function GET(req: Request) {
     /** Inscrits que le rappel ne peut pas atteindre, faute d'adresse. */
     volunteersSansEmail,
     recapQuotidien: digest,
+    rappelComptesEnAttente,
     orphanedUploadsRemoved,
+    demandesDeCompteEffacees,
   });
+}
+
+/**
+ * Le rappel des comptes en attente, sans faire tomber le reste du passage : le
+ * nettoyage des fichiers et la purge des demandes expirées viennent après, et
+ * n'ont pas à attendre que la base ou la messagerie aille mieux.
+ */
+async function rappelerComptesEnAttente() {
+  try {
+    return await remindBureauOfPendingAccounts();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[cron] rappel des comptes en attente impossible :", message);
+    return { envoye: false, erreur: message };
+  }
 }
 
 /**
@@ -287,6 +334,16 @@ export async function GET(req: Request) {
  * - Les **tâches** sont un instantané, recalculé à chaque passage. Une tâche
  *   en retard doit revenir chaque jour tant qu'elle traîne ; elle ne « passe »
  *   pas dans la fenêtre et n'a donc rien à voir avec son avancement.
+ *
+ * Les **comptes en attente de validation** sont eux aussi un instantané. Ils
+ * suffisent à faire partir le message : un administrateur n'a pas à guetter
+ * l'écran Utilisateurs pour apprendre que quelqu'un attend d'entrer. Quand ce
+ * message ne part pas (autre mode, pas d'adresse de contact, envoi manqué),
+ * `remindBureauOfPendingAccounts` les rappelle à part.
+ *
+ * Les **demandes de compte écartées par un plafond** suivent la fenêtre des
+ * inscriptions, et suffisent elles aussi : un formulaire que quelqu'un sature
+ * refuse aussi les parents, et le bureau ne l'apprendrait pas autrement.
  */
 async function envoyerRecapitulatif(
   association: Awaited<ReturnType<typeof getAssociationSettings>>,
@@ -306,6 +363,8 @@ async function envoyerRecapitulatif(
       nouvelles: 0,
       tachesEnRetard: 0,
       tachesAVenir: 0,
+      comptesEnAttente: 0,
+      demandesDeCompteIgnorees: 0,
     };
   }
   const destinataire = association.contactEmail?.trim();
@@ -316,6 +375,8 @@ async function envoyerRecapitulatif(
       nouvelles: 0,
       tachesEnRetard: 0,
       tachesAVenir: 0,
+      comptesEnAttente: 0,
+      demandesDeCompteIgnorees: 0,
     };
   }
 
@@ -325,7 +386,7 @@ async function envoyerRecapitulatif(
     association.signupDigestSentAt ??
     new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [inscriptions, presences] = await Promise.all([
+  const [inscriptions, presences, comptesEnAttente] = await Promise.all([
     db
       .select({
         nom: volunteerSignups.name,
@@ -353,7 +414,17 @@ async function envoyerRecapitulatif(
       .from(meetingAttendance)
       .innerJoin(events, eq(meetingAttendance.eventId, events.id))
       .where(gt(meetingAttendance.createdAt, depuis)),
+    // Un état, comme les tâches : on compte ce qui attend aujourd'hui, pas ce
+    // qui est arrivé depuis hier. Une demande restée sans réponse revient.
+    countPendingAccounts(),
   ]);
+  // Une fenêtre, comme les inscriptions : ce qui a été écarté depuis le
+  // dernier récapitulatif, pas un état qui reviendrait chaque jour.
+  const refusParMotif = await countDroppedAccountRequests({
+    depuis,
+    jusqua: now,
+  });
+  const demandesIgnorees = totalDroppedAccountRequests(refusParMotif);
 
   const nouvelles = inscriptions.length + presences.length;
 
@@ -366,7 +437,13 @@ async function envoyerRecapitulatif(
     .filter((t) => t.dueAt >= now)
     .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
 
-  if (nouvelles === 0 && enRetard.length === 0 && aVenir.length === 0) {
+  if (
+    nouvelles === 0 &&
+    enRetard.length === 0 &&
+    aVenir.length === 0 &&
+    comptesEnAttente === 0 &&
+    demandesIgnorees === 0
+  ) {
     // Rien à dire : on avance quand même la fenêtre, sinon elle s'allonge sans
     // fin et finirait par reprendre des lignes déjà annoncées.
     await db
@@ -379,6 +456,8 @@ async function envoyerRecapitulatif(
       nouvelles: 0,
       tachesEnRetard: 0,
       tachesAVenir: 0,
+      comptesEnAttente: 0,
+      demandesDeCompteIgnorees: 0,
     };
   }
 
@@ -448,6 +527,15 @@ async function envoyerRecapitulatif(
     to: destinataire,
     ...dailyDigestEmail({
       taches,
+      comptesEnAttente: {
+        nombre: comptesEnAttente,
+        url: `${baseUrl}/dashboard/members`,
+        formulaireFerme: accountRequestFormClosed(comptesEnAttente),
+      },
+      demandesDeCompteIgnorees: {
+        parMotif: refusParMotif,
+        url: `${baseUrl}/dashboard/members`,
+      },
       rendezVous: [...parRendezVous.values()],
       depuis: formatDateTime(depuis),
       identity: {
@@ -467,7 +555,7 @@ async function envoyerRecapitulatif(
     // Fenêtre laissée ouverte à dessein : le passage suivant reprendra ces
     // inscriptions plutôt que de les perdre.
     console.warn(
-      `[cron] récapitulatif non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s), ${enRetard.length} tâche(s) en retard non signalée(s).`,
+      `[cron] récapitulatif non remis à ${destinataire} : ${nouvelles} nouvelle(s) reportée(s), ${enRetard.length} tâche(s) en retard, ${comptesEnAttente} compte(s) en attente et ${demandesIgnorees} demande(s) de compte ignorée(s) non signalé(s).`,
     );
   }
 
@@ -477,5 +565,7 @@ async function envoyerRecapitulatif(
     nouvelles,
     tachesEnRetard: enRetard.length,
     tachesAVenir: aVenir.length,
+    comptesEnAttente,
+    demandesDeCompteIgnorees: demandesIgnorees,
   };
 }

@@ -3,7 +3,7 @@ import { ZodError } from "zod";
 
 import type { Role } from "@/lib/db/schema";
 
-import { hasRole } from "./roles";
+import { hasRole, isApproved } from "./roles";
 import { getCurrentUser, type SafeUser } from "./session";
 
 /** Erreur HTTP transportant un statut, à intercepter dans les routes API. */
@@ -17,9 +17,20 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Un utilisateur connecté ET validé. Le contrôle de validation vit ici, dans la
+ * garde que toutes les routes appellent, plutôt que route par route : une
+ * route ajoutée demain en hérite sans que personne ait à y penser.
+ */
 export async function requireApiUser(): Promise<SafeUser> {
   const user = await getCurrentUser();
   if (!user) throw new HttpError(401, "Vous devez être connecté.");
+  if (!isApproved(user)) {
+    throw new HttpError(
+      403,
+      "Votre compte est en attente de validation par un administrateur de l'association.",
+    );
+  }
   return user;
 }
 

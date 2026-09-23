@@ -23,6 +23,18 @@ export function hasRole(
   return roleRank[user.role] >= roleRank[min];
 }
 
+/**
+ * Compte validé par un administrateur. Un compte en attente peut se connecter,
+ * mais ne voit que la page qui le lui dit : sans cette étape, quiconque
+ * s'inscrivait obtenait d'office le rôle « membre », et avec lui les notes
+ * internes et l'annuaire de l'équipe.
+ */
+export function isApproved(
+  user: { approvedAt: Date | string | null } | null | undefined,
+): boolean {
+  return Boolean(user?.approvedAt);
+}
+
 /** Peut créer / modifier les événements, tâches et créneaux bénévoles. */
 export function canManageEvents(user: { role: Role } | null | undefined) {
   return hasRole(user, "manager");

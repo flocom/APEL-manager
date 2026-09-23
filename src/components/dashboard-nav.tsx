@@ -142,10 +142,13 @@ export function DashboardNav({
   appName,
   logoUrl,
   user,
+  pendingAccounts = 0,
 }: {
   appName: string;
   logoUrl: string | null;
   user: { name: string; role: Role };
+  /** Comptes à valider ; transmis aux seuls administrateurs, 0 sinon. */
+  pendingAccounts?: number;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -232,6 +235,10 @@ export function DashboardNav({
               {items.map((item) => {
                 const active = isActive(item);
                 const Icon = item.icon;
+                // Seule l'entrée « Utilisateurs » porte un compteur : c'est
+                // la seule où quelqu'un attend une réponse du bureau.
+                const badge =
+                  item.href === "/dashboard/members" ? pendingAccounts : 0;
                 return (
                   <Link
                     key={item.href}
@@ -261,6 +268,15 @@ export function DashboardNav({
                       )}
                     />
                     {item.label}
+                    {badge > 0 && (
+                      <span className="ml-auto inline-flex min-w-6 items-center justify-center rounded-full bg-sand-200 px-1.5 py-0.5 text-xs font-extrabold text-sand-900">
+                        {badge}
+                        <span className="sr-only">
+                          {" "}
+                          compte{badge > 1 ? "s" : ""} en attente de validation
+                        </span>
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -300,11 +316,23 @@ export function DashboardNav({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-xl border border-brand-700 p-2.5 text-white transition-colors hover:bg-brand-900 focus-visible:ring-2 focus-visible:ring-white"
-          aria-label="Ouvrir le menu"
+          className="relative rounded-xl border border-brand-700 p-2.5 text-white transition-colors hover:bg-brand-900 focus-visible:ring-2 focus-visible:ring-white"
+          aria-label={
+            pendingAccounts > 0
+              ? `Ouvrir le menu — ${pendingAccounts} compte${pendingAccounts > 1 ? "s" : ""} en attente de validation`
+              : "Ouvrir le menu"
+          }
           aria-expanded={open}
         >
           <Menu className="h-5 w-5" />
+          {/* Sur téléphone, le compteur de l'entrée est caché dans le tiroir
+              fermé : la pastille dit qu'il y a quelque chose à y voir. */}
+          {pendingAccounts > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-brand-950 bg-sand-300"
+            />
+          )}
         </button>
       </div>
 
