@@ -171,16 +171,76 @@ documents.
 ## 7. Premier compte administrateur
 
 Le **premier compte créé** via `/register` reçoit automatiquement le rôle
-**administrateur**. Il peut ensuite, depuis **Utilisateurs**, promouvoir d'autres
-comptes en *Organisateur* ou *Administrateur*.
+**administrateur**, et entre tout de suite.
+
+Ensuite, `/register` ne crée plus qu'une **demande** :
+
+1. La personne saisit son nom et son adresse. Un lien, valable 3 jours, part à
+   cette adresse ; c'est en l'ouvrant qu'elle choisit son mot de passe. Une
+   demande jamais confirmée ne crée aucun compte, n'apparaît nulle part et
+   s'efface à son expiration (cron quotidien). Les demandes passent donc par la
+   messagerie : tant qu'aucun fournisseur d'e-mail n'est configuré (ou qu'il
+   est désactivé), la page d'inscription l'indique et cache le formulaire, et
+   l'API `POST /api/auth/register` refuse la demande par une erreur 503 au
+   lieu d'accepter une demande qu'aucun lien ne pourrait confirmer. Le tout
+   premier compte, lui, n'a pas besoin de messagerie.
+2. Une fois l'adresse confirmée, le compte existe **en attente de validation** :
+   il peut se connecter, mais ne voit qu'une page qui le lui dit, et l'API comme
+   le serveur MCP lui répondent 403.
+3. Un administrateur le valide ou le refuse (le compte est alors supprimé) en
+   tête de l'écran **Utilisateurs**, où chaque demande affiche une adresse
+   confirmée par son titulaire — le nom, lui, est celui qu'il a saisi. Il en
+   est prévenu par un compteur dans le menu, un bandeau sur le tableau de bord
+   et, **quel que soit le réglage « Avis d'inscription »**, par un e-mail
+   quotidien tant qu'un compte attend : la rubrique en tête du récapitulatif
+   en mode « Un récapitulatif par jour », un court rappel à part dans les
+   autres modes (jamais les deux le même jour). Ce message va à l'adresse de
+   contact ; sans adresse de contact, à chaque administrateur. En mode « Un
+   e-mail à chaque inscription », un avis part en plus dès qu'une adresse est
+   confirmée. Un compte validé entre avec le rôle *Membre* ; l'administrateur
+   peut ensuite le promouvoir en *Organisateur* ou *Administrateur*.
+
+`/register` répond la même chose, que l'adresse soit nouvelle ou déjà inscrite :
+c'est l'e-mail, reçu par le seul titulaire de l'adresse, qui dit la différence
+(un lien de confirmation, ou un rappel qu'un compte existe).
+
+Pour que le formulaire ne serve pas à inonder une boîte au nom de
+l'association, les demandes sont plafonnées (valeurs fixées dans
+`src/lib/services/account-requests.ts`) :
+
+| Plafond | Valeur | Quand il est atteint |
+|---|---|---|
+| Toutes connexions confondues | 50 demandes par heure glissante | Réponse **429** « réessayez dans une heure » (en-tête `Retry-After: 3600`) ; rien n'est enregistré ni envoyé. |
+| Par connexion (adresse IP) | 10 demandes par heure glissante | Réponse **429**, même forme. Ne s'applique que si l'application connaît l'IP du visiteur (`X-Forwarded-For` ou `X-Real-IP` posé par le reverse proxy) ; sans elle, seul le plafond général joue. |
+| Par adresse e-mail | 3 demandes par 24 h glissantes | **Silencieux** : la réponse reste « demande transmise », mais la 4ᵉ demande et les suivantes ne font partir aucun e-mail. Répondre autrement dirait que l'adresse a déjà servi. |
+| Comptes en attente de validation | 50 comptes | **Silencieux**, comme ci-dessus : aucun lien de confirmation ne part tant que le bureau n'a pas fait redescendre la file sous ce seuil. |
+
+Les deux plafonds de l'heure ne regardent pas l'adresse saisie : les dire
+n'apprend rien sur les comptes. Toute demande acceptée compte dans ces
+plafonds, même si elle reste ensuite sans suite. Chaque refus est compté par
+motif, sans adresse ni IP, et l'écran **Utilisateurs** comme le récapitulatif
+quotidien les présentent motif par motif ; ceux dus aux comptes en attente
+disent que le formulaire reste fermé tant qu'ils ne sont pas traités. L'avis
+immédiat au bureau, enfin, se tait au-delà de 5 nouveaux comptes en une
+heure ; le rappel quotidien prend le relais.
+
+Définissez `APP_URL` : sans elle, les liens envoyés par e-mail (confirmation,
+réinitialisation du mot de passe) sont construits à partir de l'en-tête `Host`
+de la requête.
+
+Lors de la mise à jour qui introduit cette validation, tous les comptes déjà
+existants sont tenus pour validés : personne n'est enfermé dehors.
 
 ## Rôles & permissions
 
 | Rôle | Droits |
 |---|---|
 | **Administrateur** | Tout, y compris adhérents, comptabilité, configuration, comptes et rôles |
-| **Organisateur** | Créer / modifier les événements, tâches, créneaux et documents ; assigner des utilisateurs |
-| **Membre** | Consulter, gérer l'avancement de ses tâches assignées, s'inscrire comme bénévole |
+| **Organisateur** | Créer / modifier les événements, tâches, créneaux et documents ; assigner des utilisateurs ; voir les coordonnées des bénévoles et des invités aux réunions |
+| **Membre** | Consulter, gérer l'avancement de ses tâches assignées, s'inscrire comme bénévole ; voit le nom des bénévoles, jamais leurs coordonnées |
+
+Le registre des adhérents (noms, coordonnées, téléphones des fiches) reste
+réservé aux administrateurs, y compris lorsqu'il alimente d'autres écrans.
 
 La procédure complète de connexion du serveur MCP à Claude.ai est décrite dans
 [`MCP_CLAUDE.md`](MCP_CLAUDE.md).

@@ -2,6 +2,7 @@ import {
   ArrowRight,
   CalendarDays,
   HandHeart,
+  Hourglass,
   ListChecks,
   MapPin,
   Plus,
@@ -14,7 +15,7 @@ import Link from "next/link";
 import { MeetingAttendance, type MeetingReply } from "@/components/meeting-attendance";
 import { TaskStatusSelect } from "@/components/task-status-select";
 import { Badge } from "@/components/ui";
-import { canManageEvents, requireUser } from "@/lib/auth/rbac";
+import { canManageEvents, canManageUsers, requireUser } from "@/lib/auth/rbac";
 import {
   getAllEvents,
   getSignupsForUser,
@@ -23,18 +24,21 @@ import {
 } from "@/lib/data";
 import { formatDateTime, formatRelative, isOverdue } from "@/lib/dates";
 import { EVENT_STATUS_COLORS, EVENT_STATUS_LABELS } from "@/lib/labels";
+import { countPendingAccounts } from "@/lib/services/user-accounts";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [events, myTasks, signups, meetings] = await Promise.all([
-    getAllEvents(),
-    getTasksForUser(user.id),
-    getSignupsForUser(user.id),
-    getUpcomingMeetings(),
-  ]);
+  const [events, myTasks, signups, meetings, comptesEnAttente] =
+    await Promise.all([
+      getAllEvents(),
+      getTasksForUser(user.id),
+      getSignupsForUser(user.id),
+      getUpcomingMeetings(),
+      canManageUsers(user) ? countPendingAccounts() : Promise.resolve(0),
+    ]);
 
   const now = new Date();
   // Réunions et manifestations dans un seul agenda, par ordre de date : ce
@@ -90,6 +94,37 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      {/* Un compteur dans le menu se rate ; une personne qui attend de pouvoir
+          aider, non. Le bandeau reste tant que la demande n'est pas tranchée. */}
+      {comptesEnAttente > 0 && (
+        <section
+          aria-label="Comptes en attente de validation"
+          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-sand-300 bg-sand-50 px-5 py-4"
+        >
+          <p className="flex min-w-0 items-start gap-3 text-sm leading-6 text-slate-700">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sand-200 text-sand-900">
+              <Hourglass className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span>
+              <strong className="block text-base text-slate-950">
+                {comptesEnAttente} compte{comptesEnAttente > 1 ? "s" : ""} en
+                attente de validation
+              </strong>
+              {comptesEnAttente > 1
+                ? "Ces personnes ne voient rien tant qu’un administrateur ne les a pas validées."
+                : "Cette personne ne voit rien tant qu’un administrateur ne l’a pas validée."}
+            </span>
+          </p>
+          <Link
+            href="/dashboard/members"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-950 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+          >
+            Examiner les demandes
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </section>
+      )}
 
       {prochaineReunion && (
         <section aria-label="Prochaine réunion">

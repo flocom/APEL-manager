@@ -34,9 +34,48 @@ const passwordField = (label = "Le mot de passe") =>
     .min(8, `${label} doit faire au moins 8 caractères`)
     .max(200);
 
+/**
+ * Nom d'une personne qui demande un compte.
+ *
+ * Les caractères de contrôle (retours à la ligne, tabulations…) et ceux qui
+ * inversent le sens d'écriture sont refusés : ce nom part tel quel dans l'objet
+ * et le corps de l'avis envoyé au bureau, depuis l'adresse de l'association.
+ * Un retour à la ligne y faisait passer n'importe quel texte, et un inverseur
+ * de sens permet d'afficher un nom autre que celui enregistré.
+ */
+const personName = z
+  .string()
+  .trim()
+  .min(2, "Nom trop court")
+  .max(120)
+  .regex(
+    /^[^\p{Cc}‪-‮⁦-⁩]+$/u,
+    "Nom invalide : retirez les retours à la ligne et caractères invisibles.",
+  );
+
+/**
+ * Inscription. Le mot de passe n'est lu que pour le tout premier compte, qui
+ * entre tout de suite ; les suivants le choisissent en confirmant leur adresse
+ * (voir `accountConfirmSchema`).
+ */
 export const registerSchema = z.object({
-  name: z.string().trim().min(2, "Nom trop court").max(120),
+  name: personName,
   email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  password: passwordField().optional(),
+  // Honeypot anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
+  /** Jeton reCAPTCHA v3, présent uniquement si la protection est activée. */
+  recaptchaToken: z.string().max(5000).optional(),
+});
+
+/**
+ * Confirmation d'une demande de compte, depuis le lien reçu par e-mail. Le mot
+ * de passe se choisit ici, et pas à la demande : une demande déposée à
+ * l'adresse d'un autre ne donne ainsi à son auteur aucun mot de passe valable.
+ */
+export const accountConfirmSchema = z.object({
+  token: z.string().min(16).max(200),
+  name: personName,
   password: passwordField(),
 });
 
@@ -551,6 +590,25 @@ export const SIGNUP_NOTICE_MODE_LABELS: Record<SignupNoticeMode, string> = {
   quotidien: "Un récapitulatif par jour",
   immediat: "Un e-mail à chaque inscription",
   aucun: "Aucun avis",
+};
+
+/**
+ * Ce que chaque mode envoie vraiment à l'adresse de contact, dit là où l'on
+ * choisit. Le récapitulatif ne porte pas que les inscriptions : quitter ce
+ * mode, c'est aussi renoncer au point quotidien sur les tâches et au bilan
+ * des demandes de compte refusées, et le réglage doit le dire avant, pas
+ * après.
+ *
+ * Les comptes en attente de validation échappent à ce choix (voir
+ * `remindBureauOfPendingAccounts`) : le formulaire le dit à part.
+ */
+export const SIGNUP_NOTICE_MODE_HINTS: Record<SignupNoticeMode, string> = {
+  quotidien:
+    "Un seul message par jour, avec les autres tâches planifiées : nouvelles inscriptions et réponses aux réunions, tâches en retard ou à venir, comptes à valider et demandes de compte refusées.",
+  immediat:
+    "Un message à chaque inscription de bénévole, à chaque réponse à une réunion et à chaque compte à valider — ces derniers se suspendent quand les demandes affluent. Pas de récapitulatif : le point sur les tâches et les demandes de compte refusées se suivent dans l’application.",
+  aucun:
+    "Aucun message pour les inscriptions ni pour les réponses aux réunions, et pas de récapitulatif : tout se suit dans l’application.",
 };
 
 export const MEMBERSHIP_FEE_BASES = ["famille", "enfant", "non_precise"] as const;

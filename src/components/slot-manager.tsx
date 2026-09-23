@@ -9,11 +9,22 @@ import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
 import { api } from "@/lib/client";
 import { formatDateTime, toDatetimeLocal } from "@/lib/dates";
 
+/** Les coordonnées d'un bénévole : réservées aux organisateurs. */
+export interface SignupContact {
+  email: string | null;
+  phone: string | null;
+}
+
 export interface SignupItemData {
   id: string;
   name: string;
-  email: string | null;
-  phone: string | null;
+  /**
+   * Absent pour qui n'est pas organisateur — pas vide, absent : la page ne
+   * l'envoie pas au navigateur, si bien qu'il ne figure pas davantage dans le
+   * code de la page que sur l'écran. Même règle que l'export CSV et l'outil
+   * MCP des inscriptions, réservés aux organisateurs.
+   */
+  contact?: SignupContact;
 }
 
 export interface SlotItemData {
@@ -430,7 +441,9 @@ export function SlotManager({
                         plutôt qu'en repliant à nouveau ce qu'on vient de
                         montrer. */}
                     <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {slot.signups.map((signup) => (
+                      {slot.signups.map((signup) => {
+                        const contact = signup.contact;
+                        return (
                         <li
                           key={signup.id}
                           className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2.5"
@@ -445,9 +458,9 @@ export function SlotManager({
                                 quelqu'un. Les deux étaient jusqu'ici dans la
                                 même nuance et la même taille, donc rien ne
                                 distinguait la donnée demandée. */}
-                            {signup.phone && (
+                            {contact?.phone && (
                               <a
-                                href={`tel:${signup.phone.replace(/[^+0-9]/g, "")}`}
+                                href={`tel:${contact.phone.replace(/[^+0-9]/g, "")}`}
                                 className="mt-0.5 flex min-h-11 w-fit max-w-full items-center gap-1.5 rounded text-sm font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                               >
                                 <Phone
@@ -464,13 +477,13 @@ export function SlotManager({
                                   Appeler {signup.name} au{" "}
                                 </span>
                                 <span className="[overflow-wrap:anywhere]">
-                                  {signup.phone}
+                                  {contact.phone}
                                 </span>
                               </a>
                             )}
-                            {signup.email && (
+                            {contact?.email && (
                               <a
-                                href={`mailto:${signup.email}`}
+                                href={`mailto:${contact.email}`}
                                 className="mt-0.5 flex min-h-11 w-fit max-w-full items-center gap-1.5 rounded text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                               >
                                 <Mail
@@ -481,7 +494,7 @@ export function SlotManager({
                                   Écrire à {signup.name} à{" "}
                                 </span>
                                 <span className="[overflow-wrap:anywhere]">
-                                  {signup.email}
+                                  {contact.email}
                                 </span>
                               </a>
                             )}
@@ -491,14 +504,18 @@ export function SlotManager({
                                 rappel, ni lien de désinscription : le dire ici
                                 transforme une panne silencieuse en coup de
                                 fil, puisque le numéro est juste au-dessus. */}
-                            {!signup.email && (
+                            {/* Sans coordonnées transmises (membre non
+                                organisateur), l'avertissement n'a pas lieu
+                                d'être : il dirait « aucune coordonnée » de
+                                quelqu'un qui en a laissé. */}
+                            {contact && !contact.email && (
                               <span className="mt-0.5 flex items-start gap-1.5 text-xs font-semibold text-sand-800">
                                 <TriangleAlert
                                   className="mt-0.5 h-3.5 w-3.5 shrink-0"
                                   aria-hidden="true"
                                 />
                                 <span>
-                                  {signup.phone
+                                  {contact.phone
                                     ? "Sans e-mail : ne recevra ni rappel, ni lien de désinscription. Prévenez-la par téléphone."
                                     : "Aucune coordonnée laissée : ni rappel, ni moyen de la joindre."}
                                 </span>
@@ -516,7 +533,8 @@ export function SlotManager({
                             </button>
                           )}
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

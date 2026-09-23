@@ -69,7 +69,7 @@ export default async function EventDetailLayout({
     inscrits.map((s) => s.email?.trim().toLowerCase()).filter(Boolean),
   ).size;
   const presents = estReunion
-    ? (await getMeetingAttendance(event.id)).filter((r) => r.status === "yes")
+    ? (await getMeetingAttendance(event.id, user)).filter((r) => r.status === "yes")
         .length
     : 0;
 

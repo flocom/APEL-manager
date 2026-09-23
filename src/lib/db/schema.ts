@@ -5,6 +5,7 @@ import type {
   ReglesStatutaires,
 } from "@/lib/documents/ag-types";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -192,6 +193,24 @@ export const users = pgTable("users", {
   onboardingSeenAt: timestamp("onboarding_seen_at", { withTimezone: true }),
   /** Interrupteur des notifications sur appareil, à la main du membre. */
   pushEnabled: boolean("push_enabled").notNull().default(true),
+  /**
+   * Validation du compte par un administrateur. `null` : compte en attente.
+   *
+   * L'inscription reste ouverte à tous — c'est ainsi qu'un nouveau bénévole
+   * rejoint l'équipe sans qu'on lui crée son compte — mais un compte que
+   * personne n'a validé ne voit rien : le rôle « membre » ouvre les notes
+   * internes, les brouillons et l'annuaire de l'équipe, et n'importe qui sur
+   * Internet pouvait se l'attribuer. Seul le tout premier compte, qui devient
+   * administrateur, est validé d'office : il n'y a encore personne pour le faire.
+   */
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  /**
+   * L'administrateur qui a validé le compte. Nul pour le premier compte et pour
+   * ceux qui existaient avant la validation, tenus pour validés à leur création.
+   */
+  approvedBy: uuid("approved_by").references((): AnyPgColumn => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -445,6 +464,87 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Demandes de compte dont l'adresse n'est pas encore confirmée.
+ *
+ * Une demande n'est pas un compte : elle n'entre dans `users` qu'une fois le
+ * lien reçu par e-mail ouvert, et c'est à ce moment-là que la personne choisit
+ * son mot de passe. Sans cette étape, n'importe qui pouvait déposer une
+ * demande au nom et à l'adresse d'un parent connu du bureau, et se la voir
+ * valider. Tant qu'elle n'est pas confirmée, une demande n'apparaît nulle
+ * part — ni dans l'écran Utilisateurs, ni dans les avis au bureau — et elle
+ * s'efface d'elle-même à son expiration.
+ *
+ * Chaque envoi du formulaire admis sous les plafonds laisse une ligne, que
+ * l'adresse ait déjà un compte ou non : ce sont elles qui comptent les
+ * demandes, au total et par connexion sur l'heure, par adresse sur la journée,
+ * pour que le formulaire ne serve pas à inonder une boîte au nom de
+ * l'association. La ligne est écrite avant la réponse, sans jeton ; le jeton
+ * ne s'y ajoute qu'ensuite, si un lien part. Pour une adresse déjà inscrite,
+ * ou une demande restée sans suite, elle n'en a donc jamais.
+ */
+export const accountRequests = pgTable(
+  "account_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Toujours en minuscules : c'est ainsi que `users.email` est comparé. */
+    email: text("email").notNull(),
+    /** Le nom saisi, repris dans le formulaire de confirmation, où il se corrige. */
+    name: text("name").notNull(),
+    /** Empreinte du jeton envoyé ; nulle quand aucun lien n'est parti. */
+    tokenHash: text("token_hash"),
+    /**
+     * Connexion d'où vient la demande, lue comme le journal d'audit la lit.
+     * Elle ne sert qu'au plafond par connexion, et s'efface avec la ligne.
+     */
+    ipAddress: text("ip_address"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex("account_requests_token_idx").on(t.tokenHash),
+    emailIdx: index("account_requests_email_idx").on(t.email, t.createdAt),
+    ipIdx: index("account_requests_ip_idx").on(t.ipAddress, t.createdAt),
+    createdIdx: index("account_requests_created_idx").on(t.createdAt),
+  }),
+);
+
+/** Pourquoi une demande de compte n'a pas eu de suite. */
+export type AccountRequestDropReason =
+  /** Trop de demandes dans l'heure, toutes connexions confondues. */
+  | "plafond_general"
+  /** Trop de demandes dans l'heure depuis la même connexion. */
+  | "plafond_connexion"
+  /** Trop de messages partis vers la même adresse dans la journée. */
+  | "plafond_adresse"
+  /** Trop de comptes attendent déjà une décision du bureau. */
+  | "comptes_en_attente";
+
+/**
+ * Demandes de compte écartées par un plafond, comptées par heure et par motif.
+ *
+ * Un compteur plutôt qu'une ligne par refus : un robot qui insiste ferait
+ * grossir la table d'autant, et la ligne garderait l'adresse d'une personne
+ * qui n'a rien demandé. Il ne reste que des nombres, que le récapitulatif
+ * quotidien et l'écran Utilisateurs montrent au bureau — sans eux, un
+ * formulaire fermé par un abus ne se remarquait pas.
+ */
+export const accountRequestDrops = pgTable(
+  "account_request_drops",
+  {
+    /** Début de l'heure, tronqué par Postgres. */
+    hour: timestamp("hour", { withTimezone: true }).notNull(),
+    reason: text("reason").$type<AccountRequestDropReason>().notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.hour, t.reason] }),
+  }),
+);
 
 /** Journal des notifications envoyées : évite les doublons (un rappel par tâche/membre/type). */
 export const notificationsLog = pgTable(

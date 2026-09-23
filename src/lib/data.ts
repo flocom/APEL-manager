@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
+import { hasRole } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
 import {
   checklistTemplates,
@@ -12,6 +13,7 @@ import {
   users,
   volunteerSignups,
   volunteerSlots,
+  type Role,
 } from "@/lib/db/schema";
 
 /**
@@ -168,9 +170,22 @@ export async function getUpcomingMeetings() {
  * public mêlés. Le nom affiché vient du compte quand il y en a un, du
  * formulaire sinon — `nomPresent()` fait ce choix en un seul endroit pour que
  * les trois colonnes de la page réunion ne divergent jamais.
+ *
+ * Les coordonnées sont filtrées ICI, selon le rôle de qui lit, plutôt que dans
+ * chaque écran : un écran qui oublie de masquer ne peut plus afficher ce qu'il
+ * n'a pas reçu.
+ * - Le téléphone et l'e-mail laissés par un invité : organisateurs seulement,
+ *   comme les coordonnées des bénévoles.
+ * - Le téléphone tiré de la fiche d'adhérent : administrateurs seulement,
+ *   puisque le registre des adhérents leur est réservé partout ailleurs.
  */
-export async function getMeetingAttendance(eventId: string) {
-  return db.query.meetingAttendance.findMany({
+export async function getMeetingAttendance(
+  eventId: string,
+  lecteur: { role: Role },
+) {
+  const voitCoordonnees = hasRole(lecteur, "manager");
+  const voitRegistre = hasRole(lecteur, "admin");
+  const reponses = await db.query.meetingAttendance.findMany({
     where: eq(meetingAttendance.eventId, eventId),
     orderBy: [asc(meetingAttendance.createdAt)],
     with: {
@@ -183,6 +198,16 @@ export async function getMeetingAttendance(eventId: string) {
       },
     },
   });
+  return reponses.map((r) => ({
+    ...r,
+    phone: voitCoordonnees ? r.phone : null,
+    email: voitCoordonnees ? r.email : null,
+    user: r.user && {
+      id: r.user.id,
+      name: r.user.name,
+      associationMember: voitRegistre ? r.user.associationMember : null,
+    },
+  }));
 }
 
 /** Le nom sous lequel afficher une réponse de présence. */
@@ -263,6 +288,9 @@ export const getMemberOptions = unstable_cache(
     db
       .select({ id: users.id, name: users.name })
       .from(users)
+      // Un compte en attente ne voit rien : lui assigner une tâche la
+      // confierait à quelqu'un qui ne peut même pas l'ouvrir.
+      .where(isNotNull(users.approvedAt))
       .orderBy(asc(users.name)),
   ["member-options"],
   { tags: ["members"] },
@@ -277,6 +305,7 @@ export async function getAllMembers() {
       email: users.email,
       role: users.role,
       telegramChatId: users.telegramChatId,
+      approvedAt: users.approvedAt,
       createdAt: users.createdAt,
     })
     .from(users)

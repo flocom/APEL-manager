@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getBaseUrl } from "@/lib/base-url";
 import { formatDateTime } from "@/lib/dates";
@@ -87,7 +88,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const currentUser = await getCurrentUser();
+    // Un compte en attente s'inscrit comme n'importe quel visiteur : rattacher
+    // l'inscription à un compte que personne n'a validé le ferait passer pour
+    // un membre de l'équipe dans la liste des bénévoles.
+    const sessionUser = await getCurrentUser();
+    const currentUser = isApproved(sessionUser) ? sessionUser : null;
     const cancelToken = generateToken(18);
 
     // Insertion atomique : on n'insère que si le créneau n'est pas déjà complet.

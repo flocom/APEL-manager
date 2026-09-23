@@ -51,7 +51,11 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center px-4">
+    // `minmax(0,1fr)` : une colonne de grille automatique s'élargit jusqu'au
+    // plus long mot insécable du contenu. Une adresse e-mail citée dans la
+    // description poussait ainsi le dialogue hors d'un écran de téléphone,
+    // bouton de fermeture compris.
+    <div className="fixed inset-0 z-[70] grid grid-cols-[minmax(0,1fr)] place-items-center px-4">
       <button
         type="button"
         className="absolute inset-0 cursor-default bg-brand-950/70"
@@ -64,7 +68,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-description"
-        className="relative w-full max-w-md rounded-2xl border-2 border-slate-200 bg-white p-6"
+        className="relative w-full min-w-0 max-w-md rounded-2xl border-2 border-slate-200 bg-white p-6"
       >
         <button
           ref={cancelRef}
@@ -81,13 +85,15 @@ export function ConfirmDialog({
         </span>
         <h2
           id="confirm-dialog-title"
-          className="mt-4 pr-8 text-xl font-bold text-slate-950"
+          className="mt-4 pr-8 text-xl font-bold text-slate-950 [overflow-wrap:anywhere]"
         >
           {title}
         </h2>
+        {/* `anywhere` et non `break-word` : seul le premier permet de couper
+            une adresse ou un nom sans espace quand la largeur manque. */}
         <p
           id="confirm-dialog-description"
-          className="mt-2 text-sm leading-6 text-slate-600"
+          className="mt-2 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]"
         >
           {description}
         </p>

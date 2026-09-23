@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -47,6 +47,10 @@ import {
   templateSchema,
 } from "@/lib/validation";
 import { recordAudit } from "@/lib/services/audit";
+import {
+  changeUserRole,
+  deleteUserAccount,
+} from "@/lib/services/user-accounts";
 
 import {
   destructiveTool,
@@ -1024,6 +1028,9 @@ export function registerCoreTools(
           email: users.email,
           role: users.role,
           telegramChatId: users.telegramChatId,
+          // `null` : compte en attente de validation, qui ne voit rien tant
+          // qu'un administrateur ne l'a pas validé depuis l'écran Utilisateurs.
+          approvedAt: users.approvedAt,
           createdAt: users.createdAt,
         })
         .from(users)
@@ -1046,30 +1053,17 @@ export function registerCoreTools(
     },
     async ({ id, role }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      if (id === principal.userId && role !== "admin") {
-        throw new Error(
-          "Vous ne pouvez pas retirer votre propre rôle administrateur.",
-        );
-      }
-      const [user] = await db
-        .update(users)
-        .set({ role })
-        .where(eq(users.id, id))
-        .returning({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          role: users.role,
-        });
-      if (!user) throw new Error("Utilisateur introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "user.role_update",
-        "user",
+      // Même service que l'écran Utilisateurs : sessions et jetons du compte
+      // fermés, changement journalisé, compte en attente refusé.
+      const { user, changed } = await changeUserRole(
         id,
-        { role },
+        role,
+        mcpAuditActor(principal),
       );
-      return toolResult({ user }, "Rôle mis à jour.");
+      return toolResult(
+        { user },
+        changed ? "Rôle mis à jour." : "Le compte avait déjà ce rôle.",
+      );
     },
   );
 
@@ -1087,20 +1081,7 @@ export function registerCoreTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      if (id === principal.userId) {
-        throw new Error("Vous ne pouvez pas supprimer votre propre compte.");
-      }
-      const [deleted] = await db
-        .delete(users)
-        .where(eq(users.id, id))
-        .returning({ id: users.id });
-      if (!deleted) throw new Error("Utilisateur introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "user.delete",
-        "user",
-        id,
-      );
+      await deleteUserAccount(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );
@@ -1401,10 +1382,17 @@ export function registerCoreTools(
     },
     async ({ subject, message, role }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
+      // Un compte en attente n'est pas encore de l'équipe : il ne reçoit pas
+      // ce qu'on écrit à l'équipe.
       const rows = await db
         .select({ email: users.email })
         .from(users)
-        .where(role ? eq(users.role, role) : undefined);
+        .where(
+          and(
+            isNotNull(users.approvedAt),
+            role ? eq(users.role, role) : undefined,
+          ),
+        );
       const recipients = uniqueRecipients(rows.map((row) => row.email));
       if (recipients.length === 0) {
         throw new Error("Aucun membre à contacter.");

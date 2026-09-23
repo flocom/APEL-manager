@@ -1,26 +1,83 @@
+import { MailWarning } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth-shell";
 import { RegisterForm } from "@/components/auth-forms";
+import { buttonClasses } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth/session";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
-  const [user, settings] = await Promise.all([
+  const [user, settings, unCompte, messagerie] = await Promise.all([
     getCurrentUser(),
     getAssociationSettings(),
+    db.select({ id: users.id }).from(users).limit(1),
+    getOutboundMailRuntimeConfig(),
   ]);
   if (user) redirect("/dashboard");
+  const existe = unCompte.length > 0;
 
+  // Une demande se confirme par e-mail. Sans messagerie configurée, le lien ne
+  // partirait jamais : mieux vaut le dire ici que laisser la personne guetter
+  // un message qui n'arrivera pas. Le premier compte, lui, n'en a pas besoin.
+  if (existe && !messagerie) {
+    return (
+      <AuthShell
+        eyebrow="Compte de gestion"
+        title="Demander un compte"
+        description={`Les demandes de compte se confirment par e-mail, et l’espace ${settings.associationName} n’a pas encore de messagerie configurée.`}
+      >
+        <div className="space-y-4">
+          <div
+            role="status"
+            className="flex items-start gap-3 rounded-xl border-2 border-sand-200 bg-sand-50 px-4 py-3.5 text-sm leading-6 text-slate-700"
+          >
+            <MailWarning
+              className="mt-0.5 h-4 w-4 shrink-0 text-sand-700"
+              aria-hidden="true"
+            />
+            <p>
+              Rapprochez-vous d’un membre du bureau : un administrateur doit
+              d’abord configurer la messagerie de l’espace de gestion.
+            </p>
+          </div>
+          <Link
+            href="/login"
+            className={cn(buttonClasses("outline"), "min-h-12 w-full")}
+          >
+            Se connecter
+          </Link>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  // Deux situations, deux promesses : sur une installation neuve, le compte
+  // créé ouvre l'espace ; ensuite, il n'est qu'une demande. Annoncer
+  // l'administration à tout visiteur faisait croire qu'on entrait d'office.
   return (
     <AuthShell
       eyebrow="Compte de gestion"
-      title="Créer un compte"
-      description={`Le premier compte créé devient administrateur de l’espace ${settings.associationName}.`}
+      title={existe ? "Demander un compte" : "Créer un compte"}
+      description={
+        existe
+          ? "Vous confirmerez votre adresse depuis le lien reçu par e-mail, puis un administrateur de l’association validera votre compte."
+          : `Le premier compte créé devient administrateur de l’espace ${settings.associationName}.`
+      }
     >
-      <RegisterForm />
+      <RegisterForm
+        demande={existe}
+        recaptchaSiteKey={
+          settings.recaptchaReady ? settings.recaptchaSiteKey : null
+        }
+      />
     </AuthShell>
   );
 }

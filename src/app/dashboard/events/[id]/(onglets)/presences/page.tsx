@@ -35,7 +35,10 @@ export default async function PresencesPage({
   ]);
   if (!event || event.kind !== "meeting") notFound();
 
-  const presences = await getMeetingAttendance(event.id);
+  // Les coordonnées arrivent déjà filtrées selon le rôle (voir
+  // getMeetingAttendance) : un membre ne reçoit aucun numéro, un organisateur
+  // ceux des invités, un administrateur aussi ceux des fiches d'adhérent.
+  const presences = await getMeetingAttendance(event.id, user);
   const maReponse =
     (presences.find((r) => r.userId === user.id)?.status as
       | MeetingReply

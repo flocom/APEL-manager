@@ -1,5 +1,10 @@
 import { APP_NAME } from "@/lib/app-config";
 import {
+  droppedAccountRequestNotices,
+  totalDroppedAccountRequests,
+  type DroppedAccountRequests,
+} from "@/lib/labels";
+import {
   bouton,
   citation,
   COULEURS,
@@ -347,8 +352,34 @@ type DigestTache = {
  * vise l'adresse de contact. Même tâche, deux destinataires, deux usages : la
  * vue d'ensemble du bureau d'un côté, le rappel personnel de l'autre.
  */
+/**
+ * Dit au bureau que le plafond des comptes en attente est atteint. Une seule
+ * formule pour le récapitulatif et le rappel : les deux se relaient selon le
+ * réglage des avis, et doivent alerter de la même façon.
+ */
+const FORMULAIRE_DE_DEMANDE_FERME =
+  "Le plafond des comptes en attente est atteint : les nouvelles demandes de compte restent sans suite tant que ceux-ci n’ont pas été traités.";
+
 export function dailyDigestEmail(ctx: {
   taches: { enRetard: DigestTache[]; aVenir: DigestTache[] };
+  /**
+   * Comptes qui attendent leur validation. Un *état*, comme les tâches : redit
+   * chaque jour tant que personne n'a tranché, parce qu'une demande annoncée
+   * une seule fois est une demande qu'on laisse en plan.
+   */
+  comptesEnAttente?: {
+    nombre: number;
+    url: string;
+    /** Plafond atteint : les nouvelles demandes restent sans suite. */
+    formulaireFerme?: boolean;
+  };
+  /**
+   * Demandes de compte écartées par un plafond depuis le dernier récapitulatif,
+   * motif par motif. Un formulaire saturé refuse aussi les parents : sans ces
+   * lignes, personne au bureau ne le saurait. `url` mène à l'écran où l'on
+   * traite les comptes en attente — le seul motif qui appelle un geste.
+   */
+  demandesDeCompteIgnorees?: { parMotif: DroppedAccountRequests; url: string };
   /** Un bloc par événement ou réunion ayant reçu des réponses. */
   rendezVous: {
     titre: string;
@@ -378,8 +409,17 @@ export function dailyDigestEmail(ctx: {
   );
   const nbRetard = ctx.taches.enRetard.length;
   const nbAVenir = ctx.taches.aVenir.length;
+  const nbComptes = ctx.comptesEnAttente?.nombre ?? 0;
+  const refus = ctx.demandesDeCompteIgnorees
+    ? droppedAccountRequestNotices(ctx.demandesDeCompteIgnorees.parMotif)
+    : [];
+  const nbIgnorees = ctx.demandesDeCompteIgnorees
+    ? totalDroppedAccountRequests(ctx.demandesDeCompteIgnorees.parMotif)
+    : 0;
   const REPONSE = { yes: "sera là", maybe: "peut-être", no: "ne viendra pas" };
   const s = (n: number) => (n > 1 ? "s" : "");
+  const libelleComptes = `${nbComptes} compte${s(nbComptes)} en attente de validation`;
+  const TRAITER_LES_COMPTES = "Traiter les comptes en attente";
 
   const coord = (phone: string | null, email: string | null) => {
     const bouts = [
@@ -466,7 +506,40 @@ export function dailyDigestEmail(ctx: {
     )
     .join("");
 
+  // En tête du message : c'est la seule rubrique où quelqu'un attend, bloqué,
+  // une réponse du bureau — et la seule qui touche à qui entre dans l'espace.
+  const blocComptes =
+    nbComptes > 0 && ctx.comptesEnAttente
+      ? `${encart(
+          nbComptes > 1
+            ? `${libelleComptes}. Tant qu’un administrateur ne les a pas validés, ces comptes ne voient rien.`
+            : `${libelleComptes}. Tant qu’un administrateur ne l’a pas validé, ce compte ne voit rien.`,
+        )}${
+          ctx.comptesEnAttente.formulaireFerme
+            ? encart(FORMULAIRE_DE_DEMANDE_FERME, "alerte")
+            : ""
+        }${bouton(ctx.comptesEnAttente.url, "Valider ou refuser")}`
+      : "";
+
+  // Juste après : ces refus parlent eux aussi de qui peut entrer. Une ligne
+  // par motif, parce qu'ils ne demandent pas la même chose : la plupart
+  // viennent d'un robot et n'appellent aucun geste — un encart d'alerte
+  // crierait pour rien —, mais ceux dus aux comptes en attente disent que le
+  // formulaire reste fermé tant que le bureau n'a pas fait le tri.
+  const blocIgnorees = refus
+    .map(
+      (r) =>
+        `${p(`<strong>${esc(r.nombre)}</strong> depuis ${ctx.depuis} : ${esc(r.motif)}.`, "margin-bottom:4px;")}${pDiscret(
+          r.reason === "comptes_en_attente" && ctx.demandesDeCompteIgnorees
+            ? `${esc(r.explication)} ${lien(ctx.demandesDeCompteIgnorees.url, TRAITER_LES_COMPTES)}.`
+            : esc(r.explication),
+        )}`,
+    )
+    .join("");
+
   const corps = [
+    blocComptes,
+    blocIgnorees,
     sectionTaches(
       `En retard — ${nbRetard} tâche${s(nbRetard)}`,
       COULEURS.alerte,
@@ -498,7 +571,11 @@ export function dailyDigestEmail(ctx: {
           : null;
   const subject =
     [
+      nbComptes ? libelleComptes : null,
       partTaches,
+      nbIgnorees
+        ? `${nbIgnorees} demande${s(nbIgnorees)} de compte écartée${s(nbIgnorees)}`
+        : null,
       total ? `${total} nouvelle${s(total)} inscription${s(total)}` : null,
     ]
       .filter(Boolean)
@@ -539,6 +616,24 @@ export function dailyDigestEmail(ctx: {
     .join("\n\n");
 
   const texte = [
+    nbComptes && ctx.comptesEnAttente
+      ? `${libelleComptes.toUpperCase()}\n${
+          ctx.comptesEnAttente.formulaireFerme
+            ? `  ${FORMULAIRE_DE_DEMANDE_FERME}\n`
+            : ""
+        }  Valider ou refuser : ${ctx.comptesEnAttente.url}`
+      : null,
+    ...refus.map((r) =>
+      [
+        `${r.nombre.toUpperCase()} DEPUIS ${ctx.depuis} : ${r.motif}.`,
+        `  ${r.explication}`,
+        r.reason === "comptes_en_attente" && ctx.demandesDeCompteIgnorees
+          ? `  ${TRAITER_LES_COMPTES} : ${ctx.demandesDeCompteIgnorees.url}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    ),
     texteTaches("EN RETARD", ctx.taches.enRetard, true),
     texteTaches("À TRAITER BIENTÔT", ctx.taches.aVenir, false),
     total
@@ -642,6 +737,216 @@ export function broadcastEmail(ctx: {
       ctx.identity,
     ),
     text: `${ctx.message}${ctx.senderName ? `\n\n— ${ctx.senderName}` : ""}`,
+  };
+}
+
+/**
+ * Le lien qui confirme une demande de compte, envoyé à l'adresse saisie.
+ *
+ * Il ne reprend pas le nom saisi : n'importe qui peut remplir le formulaire
+ * avec l'adresse de n'importe qui, et ce message, parti de l'adresse de
+ * l'association, ne doit pas porter un texte choisi par un inconnu. Il dit
+ * aussi quoi faire quand on n'a rien demandé : rien.
+ */
+export function accountRequestEmail(ctx: {
+  confirmUrl: string;
+  validiteJours: number;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const associationName = ctx.identity?.associationName || APP_NAME;
+  const validite = `${ctx.validiteJours} jour${ctx.validiteJours > 1 ? "s" : ""}`;
+  return {
+    subject: `Confirmez votre demande de compte — ${associationName}`,
+    html: layout(
+      "Confirmez votre demande de compte",
+      "Ouvrez le lien pour confirmer votre adresse et choisir votre mot de passe.",
+      `${p("Bonjour,")}
+       ${p(`Une demande de compte vient d’être faite avec cette adresse sur l’espace de gestion de l’association <strong>${esc(associationName)}</strong>. Pour la confirmer, ouvrez ce lien : vous y choisirez votre mot de passe. Il est valable <strong>${validite}</strong>.`)}
+       ${bouton(ctx.confirmUrl, "Confirmer ma demande")}
+       ${p("Un administrateur de l’association validera ensuite votre compte. Vous recevrez un e-mail à ce moment-là.")}
+       ${pDiscret("Vous n’êtes pas à l’origine de cette demande ? Ignorez ce message : aucun compte n’est créé sans cette confirmation.")}`,
+      ctx.identity,
+    ),
+    text: `Bonjour,
+
+Une demande de compte vient d'être faite avec cette adresse sur l'espace de gestion de l'association ${associationName}. Pour la confirmer et choisir votre mot de passe, ouvrez ce lien (valable ${validite}) :
+${ctx.confirmUrl}
+
+Un administrateur de l'association validera ensuite votre compte. Vous recevrez un e-mail à ce moment-là.
+
+Vous n'êtes pas à l'origine de cette demande ? Ignorez ce message : aucun compte n'est créé sans cette confirmation.`,
+  };
+}
+
+/**
+ * La réponse à une demande de compte faite avec une adresse qui en a déjà un.
+ *
+ * L'écran d'inscription répond la même chose dans les deux cas, pour ne pas
+ * apprendre à un inconnu quelles adresses ont un compte. C'est ce message,
+ * que seul le titulaire de l'adresse reçoit, qui lui dit la différence — et
+ * comment rentrer s'il avait oublié son mot de passe.
+ */
+export function existingAccountEmail(ctx: {
+  name: string;
+  loginUrl: string;
+  forgotUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const associationName = ctx.identity?.associationName || APP_NAME;
+  return {
+    subject: `Vous avez déjà un compte — ${associationName}`,
+    html: layout(
+      "Vous avez déjà un compte",
+      "Aucun nouveau compte n’a été créé : connectez-vous avec celui-ci.",
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p(`Une demande de compte vient d’être faite avec votre adresse, mais vous avez déjà un compte sur l’espace de gestion de l’association <strong>${esc(associationName)}</strong>. Aucun nouveau compte n’a été créé.`)}
+       ${bouton(ctx.loginUrl, "Me connecter")}
+       ${p(`Mot de passe oublié ? ${lien(ctx.forgotUrl, "Choisissez-en un nouveau")}.`)}
+       ${pDiscret("Vous n’êtes pas à l’origine de cette demande ? Ignorez ce message : votre compte n’a pas changé.")}`,
+      ctx.identity,
+    ),
+    text: `Bonjour ${ctx.name},
+
+Une demande de compte vient d'être faite avec votre adresse, mais vous avez déjà un compte sur l'espace de gestion de l'association ${associationName}. Aucun nouveau compte n'a été créé.
+
+Me connecter : ${ctx.loginUrl}
+Mot de passe oublié : ${ctx.forgotUrl}
+
+Vous n'êtes pas à l'origine de cette demande ? Ignorez ce message : votre compte n'a pas changé.`,
+  };
+}
+
+/**
+ * L'avis au bureau qu'un compte attend sa validation, quand l'association a
+ * choisi d'être prévenue à chaque inscription.
+ *
+ * Il ne part qu'une fois l'adresse confirmée depuis sa boîte, et il le dit :
+ * c'est l'adresse qu'il faut reconnaître, le nom n'étant que celui que la
+ * personne a saisi. Le bouton mène à l'écran où l'on valide ; valider depuis
+ * un lien d'e-mail ferait d'un message transféré par erreur une clé d'entrée.
+ *
+ * `enAttente` compte tous les comptes en attente, celui-ci compris. Les avis
+ * se suspendent quand les demandes affluent : le suivant rattrape ainsi ceux
+ * qui ne sont pas partis.
+ */
+export function pendingAccountNoticeEmail(ctx: {
+  name: string;
+  email: string;
+  enAttente: number;
+  reviewUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const autres =
+    ctx.enAttente > 1
+      ? `En tout, ${ctx.enAttente} comptes attendent une décision.`
+      : null;
+  return {
+    subject: `Compte à valider — ${ctx.name}`,
+    html: layout(
+      "Un compte attend sa validation",
+      `${ctx.name} demande à rejoindre l’espace de gestion.`,
+      `${p(`<strong>${esc(ctx.name)}</strong> demande à rejoindre l’espace de gestion. Tant qu’un administrateur n’a pas validé ce compte, il ne voit rien.`)}
+       ${fiche([
+         { label: "Nom déclaré", valeur: esc(ctx.name) },
+         {
+           label: "Adresse confirmée",
+           valeur: lien(`mailto:${esc(ctx.email)}`, esc(ctx.email)),
+         },
+       ])}
+       ${autres ? encart(autres) : ""}
+       ${pDiscret("L’adresse a été confirmée depuis sa boîte e-mail ; le nom est celui que la personne a saisi. Si vous ne reconnaissez pas l’adresse, refusez la demande : le compte sera supprimé.")}
+       ${bouton(ctx.reviewUrl, "Valider ou refuser")}`,
+      ctx.identity,
+    ),
+    text: [
+      `${ctx.name} (${ctx.email}) demande à rejoindre l'espace de gestion. Tant qu'un administrateur n'a pas validé ce compte, il ne voit rien.`,
+      autres,
+      "L'adresse a été confirmée depuis sa boîte e-mail ; le nom est celui que la personne a saisi. Si vous ne reconnaissez pas l'adresse, refusez la demande : le compte sera supprimé.",
+      `Valider ou refuser : ${ctx.reviewUrl}`,
+    ]
+      .filter((ligne): ligne is string => Boolean(ligne))
+      .join("\n\n"),
+  };
+}
+
+/**
+ * Le rappel quotidien des comptes qui attendent leur validation, quand le
+ * récapitulatif ne l'a pas déjà porté : en mode « immédiat » ou « aucun », ou
+ * sans adresse de contact pour le recevoir.
+ *
+ * Il ne dépend pas du réglage des avis d'inscription, et le dit : ce réglage
+ * dose les nouvelles d'inscription, pas le sort d'une personne bloquée à
+ * l'entrée. En mode « aucun », rien d'autre ne l'aurait signalé hors de
+ * l'application ; en mode « immédiat », les avis se taisent quand les comptes
+ * affluent, et un avis lu une fois s'oublie.
+ *
+ * `formulaireFerme` : le plafond des comptes en attente est atteint, et les
+ * nouvelles demandes restent sans suite tant que le bureau n'a pas fait le tri.
+ */
+export function pendingAccountsReminderEmail(ctx: {
+  enAttente: number;
+  formulaireFerme: boolean;
+  reviewUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const associationName = ctx.identity?.associationName || APP_NAME;
+  const plusieurs = ctx.enAttente > 1;
+  const libelle = plusieurs
+    ? `${ctx.enAttente} comptes en attente de validation`
+    : "1 compte en attente de validation";
+  const etat = plusieurs
+    ? `${ctx.enAttente} comptes attendent qu’un administrateur les valide ou les refuse. D’ici là, ils ne voient rien de l’espace de gestion.`
+    : "Un compte attend qu’un administrateur le valide ou le refuse. D’ici là, il ne voit rien de l’espace de gestion.";
+  const ferme = FORMULAIRE_DE_DEMANDE_FERME;
+  const pourquoi =
+    "Ce rappel part chaque jour tant qu’un compte attend, quel que soit le réglage des avis d’inscription.";
+  return {
+    subject: `${libelle} — ${associationName}`,
+    html: layout(
+      plusieurs
+        ? "Des comptes attendent leur validation"
+        : "Un compte attend sa validation",
+      libelle,
+      `${p(etat)}
+       ${ctx.formulaireFerme ? encart(ferme, "alerte") : ""}
+       ${bouton(ctx.reviewUrl, "Valider ou refuser")}
+       ${pDiscret(pourquoi)}`,
+      ctx.identity,
+    ),
+    text: [
+      etat,
+      ctx.formulaireFerme ? ferme : null,
+      `Valider ou refuser : ${ctx.reviewUrl}`,
+      pourquoi,
+    ]
+      .filter((ligne): ligne is string => Boolean(ligne))
+      .join("\n\n"),
+  };
+}
+
+/**
+ * La réponse à la personne dont le compte vient d'être validé. Sans elle, il
+ * ne lui resterait qu'à revenir essayer de temps en temps.
+ */
+export function accountApprovedEmail(ctx: {
+  name: string;
+  loginUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const associationName = ctx.identity?.associationName || APP_NAME;
+  return {
+    subject: `Votre compte est validé — ${associationName}`,
+    html: layout(
+      "Votre compte est validé",
+      "Vous pouvez vous connecter à l’espace de gestion.",
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p(`Un administrateur de l’association <strong>${esc(associationName)}</strong> a validé votre compte. Connectez-vous avec l’adresse et le mot de passe choisis à l’inscription.`)}
+       ${bouton(ctx.loginUrl, "Me connecter")}`,
+      ctx.identity,
+    ),
+    text: `Bonjour ${ctx.name},
+
+Un administrateur de l'association ${associationName} a validé votre compte. Connectez-vous avec l'adresse et le mot de passe choisis à l'inscription : ${ctx.loginUrl}`,
   };
 }
 

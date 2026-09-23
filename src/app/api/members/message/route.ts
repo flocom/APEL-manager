@@ -1,3 +1,4 @@
+import { isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
@@ -15,7 +16,12 @@ export async function POST(req: Request) {
     const sender = await requireApiRole("admin");
     const { subject, message } = messageSchema.parse(await req.json());
 
-    const members = await db.select({ email: users.email }).from(users);
+    // Les comptes en attente sont exclus : ce qu'on écrit à l'équipe n'a pas à
+    // partir chez quelqu'un que personne n'a encore reconnu comme en faisant partie.
+    const members = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(isNotNull(users.approvedAt));
     const recipients = uniqueRecipients(members.map((member) => member.email));
     if (recipients.length === 0) {
       throw new HttpError(400, "Aucun membre à contacter.");

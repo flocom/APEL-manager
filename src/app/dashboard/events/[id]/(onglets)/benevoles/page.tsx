@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { BroadcastForm } from "@/components/broadcast-form";
 import { SectionHeading } from "@/components/event-detail";
 import { ShareLink } from "@/components/share-link";
-import { SlotManager } from "@/components/slot-manager";
+import { SlotManager, type SlotItemData } from "@/components/slot-manager";
 import { buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import { getBaseUrl } from "@/lib/base-url";
@@ -34,19 +34,23 @@ export default async function BenevolesPage({
   );
   // Les créneaux sont recopiés colonne par colonne : passer l'objet entier
   // enverrait au navigateur le jeton d'annulation de chaque bénévole.
-  const slots = event.volunteerSlots.map((s) => ({
+  //
+  // Les coordonnées ne partent que chez les organisateurs, comme l'export CSV
+  // et l'API des inscriptions. Un membre voit qui vient, pas comment joindre
+  // les familles : ce sont des parents qui ont laissé leur numéro à l'équipe
+  // qui organise, pas à tous les comptes de l'application.
+  const slots: SlotItemData[] = event.volunteerSlots.map((s) => ({
     id: s.id,
     title: s.title,
     description: s.description,
     capacity: s.capacity,
     startAt: s.startAt ? s.startAt.toISOString() : null,
     endAt: s.endAt ? s.endAt.toISOString() : null,
-    signups: s.signups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      email: g.email,
-      phone: g.phone,
-    })),
+    signups: s.signups.map((g) =>
+      canManage
+        ? { id: g.id, name: g.name, contact: { email: g.email, phone: g.phone } }
+        : { id: g.id, name: g.name },
+    ),
   }));
 
   return (

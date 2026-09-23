@@ -61,8 +61,12 @@ export default async function ApercuPage({
   if (!event) notFound();
 
   const canManage = canManageEvents(user);
+  // Les pièces jointes (devis, attestations, plans) sont réservées aux
+  // organisateurs, comme leur API et le téléchargement des fichiers : un
+  // membre recevait la liste et des liens qui lui répondaient 403. On ne la
+  // charge donc même pas pour lui.
   const [attachments, templates] = await Promise.all([
-    listEventAttachments(event.id),
+    canManage ? listEventAttachments(event.id) : Promise.resolve([]),
     canManage ? getChecklistTemplates() : Promise.resolve([]),
   ]);
 
@@ -240,24 +244,28 @@ export default async function ApercuPage({
           )}
         </div>
       </Card>
-      <SectionHeading
-        icon={Paperclip}
-        title="Pièces jointes"
-        description="Devis, affiches, attestations et plans de salle rattachés à l’événement."
-      />
-      <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
-        <EventAttachmentsManager
-          eventId={event.id}
-          attachments={attachments.map((attachment) => ({
-            id: attachment.id,
-            label: attachment.label,
-            fileUrl: attachment.fileUrl,
-            uploaderName: attachment.uploaderName,
-            createdAt: attachment.createdAt.toISOString(),
-          }))}
-          canManage={canManage}
-        />
-      </Card>
+      {canManage && (
+        <>
+          <SectionHeading
+            icon={Paperclip}
+            title="Pièces jointes"
+            description="Devis, affiches, attestations et plans de salle rattachés à l’événement."
+          />
+          <Card className="!rounded-2xl !shadow-none p-5 sm:p-6">
+            <EventAttachmentsManager
+              eventId={event.id}
+              attachments={attachments.map((attachment) => ({
+                id: attachment.id,
+                label: attachment.label,
+                fileUrl: attachment.fileUrl,
+                uploaderName: attachment.uploaderName,
+                createdAt: attachment.createdAt.toISOString(),
+              }))}
+              canManage={canManage}
+            />
+          </Card>
+        </>
+      )}
 
       {canManage && (
         <>

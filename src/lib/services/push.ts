@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import webpush from "web-push";
 
 import { HttpError } from "@/lib/auth/guards";
@@ -364,6 +364,9 @@ export async function listPushRecipients() {
     })
     .from(users)
     .leftJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+    // Un compte en attente ne peut pas s'abonner ; le proposer comme
+    // destinataire ferait croire qu'il recevra quelque chose.
+    .where(isNotNull(users.approvedAt))
     .groupBy(users.id)
     .orderBy(users.name);
   return lignes;

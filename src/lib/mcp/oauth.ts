@@ -5,9 +5,10 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 
 import { APP_NAME } from "@/lib/app-config";
+import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import {
@@ -918,6 +919,21 @@ function scopeLabel(scope: string): string {
   return scope;
 }
 
+/**
+ * Un compte en attente ne délègue rien : il n'a lui-même accès à rien. Page
+ * d'erreur plutôt que redirection vers le client, pour que la personne lise
+ * pourquoi — le connecteur, lui, n'afficherait qu'un refus sans explication.
+ */
+function ensureApprovedForOAuth(user: { approvedAt: Date | null }) {
+  if (!isApproved(user)) {
+    throw new OAuthProtocolError(
+      "access_denied",
+      "Votre compte est en attente de validation par un administrateur de l’association : il ne peut pas encore autoriser de connecteur.",
+      403,
+    );
+  }
+}
+
 function scopesAllowedForRole(role: Role): string[] {
   return role === "member"
     ? ["mcp:read"]
@@ -1006,6 +1022,7 @@ export async function authorizeOAuthGet(
     if (!user) {
       return loginRedirect(request, authorizationPath(validation.value));
     }
+    ensureApprovedForOAuth(user);
     const scopes = scopesGrantedToRole(validation.value.scopes, user.role);
     if (scopes.length === 0) {
       return authorizationErrorRedirect(
@@ -1057,6 +1074,7 @@ export async function authorizeOAuthPost(
         403,
       );
     }
+    ensureApprovedForOAuth(user);
 
     const [client] = await db
       .select()
@@ -1495,11 +1513,15 @@ export async function exchangeOAuthToken(
     const client = await authenticateOAuthClient(request, form);
     const grantType = form.get("grant_type");
 
+    // `return await`, pas `return` : une promesse rendue telle quelle quitte
+    // le `try` avant d'être rejetée, et son refus (jeton révoqué, code déjà
+    // utilisé) échappait au `catch` — le client recevait une erreur serveur
+    // vide au lieu du 400 `invalid_grant` qui lui dit de redemander l'accès.
     if (grantType === "authorization_code") {
-      return exchangeAuthorizationCode(client, form, request);
+      return await exchangeAuthorizationCode(client, form, request);
     }
     if (grantType === "refresh_token") {
-      return rotateRefreshToken(client, form, request);
+      return await rotateRefreshToken(client, form, request);
     }
     throw new OAuthProtocolError(
       "unsupported_grant_type",
@@ -1626,6 +1648,9 @@ export async function authenticateMcpRequest(
         isNull(oauthTokens.revokedAt),
         gt(oauthTokens.expiresAt, now),
         eq(oauthClients.enabled, true),
+        // Le jeton d'un compte qui n'est pas (ou plus) validé ne vaut rien,
+        // quelle que soit la façon dont il a été obtenu.
+        isNotNull(users.approvedAt),
       ),
     )
     .limit(1);

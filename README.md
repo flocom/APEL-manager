@@ -68,7 +68,10 @@ docker compose up --build -d
 
 Au premier lancement, les secrets internes sont générés, PostgreSQL est
 initialisé et les migrations sont appliquées automatiquement. Le **premier
-compte créé** depuis `/register` devient administrateur. Il peut ensuite ouvrir
+compte créé** depuis `/register` devient administrateur. Ensuite, chaque
+demande se confirme depuis le lien reçu par e-mail, puis reste **en attente** —
+elle ne voit rien — jusqu’à ce qu’un administrateur la valide dans
+**Utilisateurs**. L’administrateur peut ensuite ouvrir
 **Configuration** pour renseigner l’identité officielle (nom de l’association,
 établissement, e-mail de contact, numéro RNA), les fenêtres de rappel, Telegram
 et le fournisseur e-mail.
