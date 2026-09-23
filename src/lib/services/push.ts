@@ -239,12 +239,15 @@ export async function sendPushNotification(
 
   webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
   const base = await getBaseUrl();
+  // Sans adresse publique configurée, les chemins restent relatifs : le
+  // service worker les résout lui-même par rapport au site qui l'a installé,
+  // ce qui vaut mieux qu'une adresse déduite de la requête (lib/base-url.ts).
+  const absolue = (chemin: string) =>
+    base ? new URL(chemin, `${base}/`).toString() : chemin;
   // Le logo de l'association sert d'icône : sans lui, le système affiche une
   // pastille générique où rien ne dit d'où vient le message.
   const identite = await getAssociationSettings();
-  const icone = identite.logoUrl
-    ? new URL(identite.logoUrl, base).toString()
-    : null;
+  const icone = identite.logoUrl ? absolue(identite.logoUrl) : null;
   let failures = 0;
   const perimes: string[] = [];
 
@@ -253,7 +256,7 @@ export async function sendPushNotification(
       const charge = JSON.stringify({
         title,
         body,
-        url: url ? new URL(url, base).toString() : base,
+        url: absolue(url || "/"),
         icon: icone,
         ack: ackToken,
       });

@@ -7,7 +7,7 @@ import { ShareLink } from "@/components/share-link";
 import { SlotManager, type SlotItemData } from "@/components/slot-manager";
 import { buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
-import { getBaseUrl } from "@/lib/base-url";
+import { displayBaseUrl } from "@/lib/base-url";
 import { getEventWithDetails } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,9 @@ export default async function BenevolesPage({
   const [user, event, baseUrl] = await Promise.all([
     requireUser(),
     getEventWithDetails(id),
-    getBaseUrl(),
+    // Adresse affichée à l'organisateur, jamais envoyée : le repli sur la
+    // requête ne trompe que qui l'a forgée (voir lib/base-url.ts).
+    displayBaseUrl(),
   ]);
   if (!event) notFound();
 

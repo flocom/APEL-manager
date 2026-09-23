@@ -546,6 +546,63 @@ export const accountRequestDrops = pgTable(
   }),
 );
 
+/**
+ * Compteurs du limiteur de débit partagé (lib/services/rate-limit.ts), un par
+ * seau, clé et fenêtre.
+ *
+ * La clé n'est jamais une adresse ou une IP en clair, mais leur empreinte
+ * HMAC : la table dit qu'une même source a insisté, pas qui elle est, et une
+ * copie de la base n'apprend rien de plus. Les lignes d'une fenêtre close ne
+ * servent plus à rien ; le cron quotidien les efface.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    /** L'usage limité : « connexion:adresse », « contact:ip »… */
+    bucket: text("bucket").notNull(),
+    /** Empreinte de ce qui est compté (adresse, IP, compte, événement). */
+    key: text("key").notNull(),
+    /** Début de la fenêtre, aligné sur sa durée. */
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    /** Fin de la fenêtre : c'est elle qui dit quand la ligne peut partir. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.bucket, t.key, t.windowStart] }),
+    expiresIdx: index("rate_limits_expires_idx").on(t.expiresAt),
+  }),
+);
+
+/**
+ * Sessions fermées avant leur échéance : une déconnexion, un « se déconnecter
+ * de tous les appareils » qui passe par ici pour la session courante.
+ *
+ * La session vit dans un cookie signé, valable sept jours : effacer le cookie
+ * ne suffit pas, une copie volée resterait valable jusqu'au bout. Seules les
+ * sessions fermées ont une ligne, gardée jusqu'à l'échéance du jeton — au-delà
+ * il est refusé de lui-même — et la lecture se fait dans la même requête que
+ * celle du compte, que la session relit déjà à chaque page.
+ */
+export const revokedSessions = pgTable(
+  "revoked_sessions",
+  {
+    /** Identifiant `sid` porté par le jeton, ou empreinte d'un jeton ancien. */
+    sessionId: text("session_id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Échéance du jeton révoqué : la ligne peut partir ensuite. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    expiresIdx: index("revoked_sessions_expires_idx").on(t.expiresAt),
+  }),
+);
+
 /** Journal des notifications envoyées : évite les doublons (un rappel par tâche/membre/type). */
 export const notificationsLog = pgTable(
   "notifications_log",
@@ -1099,6 +1156,12 @@ export const oauthClients = pgTable(
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /**
+     * Dernier code d'autorisation délivré à ce client. L'enregistrement est
+     * ouvert à tous (RFC 7591) : un client resté sans aucun usage un jour
+     * après sa création n'est qu'une ligne de plus, et le cron l'efface.
+     */
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

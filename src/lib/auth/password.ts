@@ -2,6 +2,12 @@ import { randomBytes } from "node:crypto";
 
 import bcrypt from "bcryptjs";
 
+import { APP_NAME } from "@/lib/app-config";
+import { getAssociationSettings } from "@/lib/services/association-settings";
+
+import { HttpError } from "./guards";
+import { passwordProblem } from "./password-policy";
+
 const SALT_ROUNDS = 10;
 
 /** La forme d'une empreinte bcrypt : préfixe, coût, sel et hachage (60 signes). */
@@ -46,4 +52,24 @@ let leurre: Promise<string> | null = null;
 export function dummyPasswordHash(): Promise<string> {
   leurre ??= bcrypt.hash(randomBytes(32).toString("hex"), SALT_ROUNDS);
   return leurre;
+}
+
+/**
+ * Refuse un nouveau mot de passe trop faible (voir password-policy.ts), avec
+ * le message qui dit pourquoi. Appelée partout où un mot de passe se choisit :
+ * premier compte, confirmation d'une demande, réinitialisation, changement.
+ *
+ * Le nom de l'association et celui de l'école viennent de Configuration, pas
+ * du code : ce sont eux que tout le monde, ici, essaierait d'abord.
+ */
+export async function assertAcceptablePassword(
+  password: string,
+  email: string | null | undefined,
+): Promise<void> {
+  const association = await getAssociationSettings();
+  const probleme = passwordProblem(password, {
+    email,
+    names: [association.associationName, association.schoolName, APP_NAME],
+  });
+  if (probleme) throw new HttpError(400, probleme);
 }

@@ -43,6 +43,10 @@ export function VolunteerSignupForm({
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
   const available = slots.filter((s) => s.remaining > 0);
   const [done, setDone] = useState(false);
+  // L'inscription est prise, mais sans e-mail de confirmation (plafond de
+  // l'adresse atteint pour la journée, ou envoi en échec) : sans le dire, le
+  // bénévole guetterait un lien de désinscription qui ne viendra pas.
+  const [sansConfirmation, setSansConfirmation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -64,6 +68,12 @@ export function VolunteerSignupForm({
         <p className="mt-1 text-sm text-slate-600">
           À très bientôt pour donner un coup de main. ⚓
         </p>
+        {sansConfirmation && (
+          <p className="mt-3 text-sm leading-6 text-slate-700">
+            L’e-mail de confirmation n’a pas été envoyé cette fois-ci : notez
+            votre créneau. Pour vous désinscrire, prévenez l’association.
+          </p>
+        )}
         {ticketingUrl && (
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Votre place à l’événement n’est pas réservée pour autant.{" "}
@@ -111,7 +121,7 @@ export function VolunteerSignupForm({
     setLoading(true);
     const form = new FormData(e.currentTarget);
     try {
-      await api("/api/signup", {
+      const reponse = await api<{ ok: true; confirmation?: boolean }>("/api/signup", {
         body: {
           token,
           slotId: form.get("slotId"),
@@ -123,6 +133,7 @@ export function VolunteerSignupForm({
           recaptchaToken: await executerRecaptcha("inscription"),
         },
       });
+      setSansConfirmation(reponse.confirmation === false);
       setDone(true);
       void celebrate();
     } catch (err) {

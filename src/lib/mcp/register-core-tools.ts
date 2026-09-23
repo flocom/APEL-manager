@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { getBaseUrl } from "@/lib/base-url";
+import { secureLinkBaseUrl } from "@/lib/base-url";
 import {
   computeDueAt,
   formatDateTime,
@@ -48,6 +48,7 @@ import {
   templateSchema,
 } from "@/lib/validation";
 import { recordAudit } from "@/lib/services/audit";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import {
   changeUserRole,
   deleteUserAccount,
@@ -1270,8 +1271,13 @@ export function registerCoreTools(
       const signupId = (inserted[0] as { id: string }).id;
 
       let notified = false;
-      if (notify && normalizedEmail) {
-        const baseUrl = await getBaseUrl();
+      // Le lien de retrait porte un jeton : sans adresse publique configurée,
+      // la confirmation ne part pas (lib/base-url.ts), l'inscription reste.
+      const baseUrl =
+        notify && normalizedEmail
+          ? secureLinkBaseUrl("Confirmation d'inscription bénévole (MCP)")
+          : null;
+      if (notify && normalizedEmail && baseUrl) {
         const mail = volunteerConfirmationEmail({
           name,
           eventTitle: slot.event.title,
@@ -1329,6 +1335,12 @@ export function registerCoreTools(
       if (recipients.length === 0) {
         throw new Error("Aucun bénévole inscrit avec une adresse e-mail.");
       }
+      // Mêmes plafonds que depuis l'écran : le serveur MCP n'est pas une
+      // porte de derrière pour relancer un envoi à l'infini.
+      await assertBroadcastAllowed(principal.userId, {
+        type: "evenement",
+        eventId,
+      });
 
       const mail = broadcastEmail({
         subject,
@@ -1390,6 +1402,7 @@ export function registerCoreTools(
       if (recipients.length === 0) {
         throw new Error("Aucun membre à contacter.");
       }
+      await assertBroadcastAllowed(principal.userId, { type: "equipe" });
 
       const mail = broadcastEmail({
         subject,

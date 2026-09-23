@@ -4,6 +4,7 @@ import { z } from "zod";
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { webAuditActor } from "@/lib/services/audit";
 import { sendPushNotification } from "@/lib/services/push";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   try {
     const user = await requireApiRole("admin");
     const data = schema.parse(await req.json());
+    await assertBroadcastAllowed(user.id, { type: "appareil" });
     const result = await sendPushNotification(
       {
         title: data.title,

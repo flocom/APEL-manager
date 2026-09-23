@@ -1,3 +1,4 @@
+import { redactError } from "@/lib/errors";
 import { getTelegramBotToken } from "@/lib/services/association-settings";
 
 const VERIFY_TIMEOUT_MS = 8000;
@@ -89,7 +90,7 @@ export async function sendTelegram(
     }
     return true;
   } catch (error) {
-    console.error("[telegram] erreur réseau:", error);
+    console.error("[telegram] erreur réseau:", redactError(error));
     return false;
   }
 }

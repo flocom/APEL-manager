@@ -1,3 +1,4 @@
+import { clientIpAddress } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import { auditLogs } from "@/lib/db/schema";
 
@@ -6,22 +7,6 @@ export interface AuditActor {
   source: "web" | "mcp";
   oauthClientId?: string | null;
   ipAddress?: string | null;
-}
-
-/**
- * Adresse IP du client, telle que le reverse proxy la transmet.
- *
- * La première adresse de `X-Forwarded-For` : Caddy, dans le déploiement
- * Docker, comme Vercel remplacent l'en-tête reçu du client au lieu d'y
- * ajouter la leur, si bien que cette première adresse n'est pas celle que le
- * visiteur aurait choisi d'écrire.
- */
-export function clientIpAddress(request?: Request): string | null {
-  return (
-    request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request?.headers.get("x-real-ip")?.trim() ||
-    null
-  );
 }
 
 export function webAuditActor(

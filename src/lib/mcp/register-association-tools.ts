@@ -47,6 +47,7 @@ import {
   saveAssociationSettings,
 } from "@/lib/services/association-settings";
 import { recordAudit } from "@/lib/services/audit";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import {
   archiveAssociationDocument,
   createAssociationDocument,
@@ -1018,6 +1019,8 @@ export function registerAssociationTools(
       if (recipients.length === 0) {
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
+      // Même plafond que l'écrit à toute l'équipe : c'est une diffusion à tous.
+      await assertBroadcastAllowed(principal.userId, { type: "equipe" });
       const mail = broadcastEmail({
         subject,
         message,

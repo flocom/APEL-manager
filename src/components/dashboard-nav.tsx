@@ -21,6 +21,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { useToast } from "@/components/toast";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { api } from "@/lib/client";
 import type { Role } from "@/lib/db/schema";
@@ -152,6 +153,7 @@ export function DashboardNav({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -205,7 +207,14 @@ export function DashboardNav({
   }
 
   async function logout() {
-    await api("/api/auth/logout");
+    try {
+      await api("/api/auth/logout");
+    } catch {
+      // La session n'a pas été fermée côté serveur (le cookie est resté) :
+      // le dire, plutôt que d'afficher une déconnexion qui n'a pas eu lieu.
+      toast("La déconnexion n’a pas abouti. Réessayez dans un instant.", "error");
+      return;
+    }
     router.push("/login");
     router.refresh();
   }

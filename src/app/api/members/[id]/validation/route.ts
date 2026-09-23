@@ -3,6 +3,7 @@ import { NextResponse, after } from "next/server";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { getBaseUrl } from "@/lib/base-url";
+import { redactError } from "@/lib/errors";
 import { sendEmail } from "@/lib/notifications/email";
 import { accountApprovedEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
@@ -47,7 +48,7 @@ export async function POST(req: Request, { params }: Params) {
           );
         }
       } catch (erreur) {
-        console.error("[validation] avis de validation non envoyé", erreur);
+        console.error("[validation] avis de validation non envoyé", redactError(erreur));
       }
     });
 

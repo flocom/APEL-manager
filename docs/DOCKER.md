@@ -318,12 +318,17 @@ révision, sa date de construction, la cadence de l'`updater` et signale si une
 version plus récente est publiée. Le bouton **Vérifier maintenant** force un
 contrôle immédiat.
 
-La même information est disponible sans authentification sur `/api/health` :
+Sans session, `/api/health` ne répond que l'état de l'application — c'est ce
+qu'utilisent les contrôles de santé de Docker et de Caddy :
 
 ```bash
 curl -s https://apel.example.org/api/health
-{"status":"ok","database":"up","latencyMs":3,"version":"main-42","revision":"a1b2c3d", ...}
+{"status":"ok"}
 ```
+
+La version, la révision et la date de construction ne sont données qu'à un
+administrateur connecté : elles désignaient, à qui les lisait depuis Internet,
+les instances restées sur une version vulnérable.
 
 Ces indicateurs reposent sur la lecture de l'image publiée dans le registre —
 celle que l'`updater` installerait — et non sur le dernier commit du dépôt :

@@ -61,10 +61,10 @@ réglages métier et de messagerie sont enregistrés depuis
 | Variable | Obligatoire | Description |
 |---|---|---|
 | `DATABASE_URL` | ✅ | Connection string *pooled* Neon |
-| `AUTH_SECRET` | ✅ | Secret de signature des sessions (≥ 32 caractères). Générer : `openssl rand -base64 32` |
-| `OAUTH_SECRET` | ⭐ recommandé | Secret dédié au consentement OAuth du serveur MCP. Si absent, `AUTH_SECRET` est utilisé |
+| `AUTH_SECRET` | ✅ | Secret de signature des sessions (≥ 32 caractères, aléatoire). Générer : `openssl rand -base64 32`. Un secret plus court (16 à 31 caractères) ou répétitif reste accepté pour ne pas bloquer une installation existante, mais il est signalé au démarrage et dans **Configuration**, et une installation neuve refuse d'y créer son premier compte |
+| `OAUTH_SECRET` | ⭐ recommandé | Secret dédié au consentement OAuth du serveur MCP. Si absent, une clé propre à cet usage est dérivée d'`AUTH_SECRET` |
 | `SETTINGS_ENCRYPTION_KEY` | ✅ | Chiffre les secrets saisis dans l'interface, notamment Resend/SMTP. Chaîne stable de 32 caractères minimum ; générer avec `openssl rand -base64 32` |
-| `APP_URL` | ⭐ recommandé | URL publique du site, configurable à l'exécution, ex. `https://apel-manager.vercel.app` |
+| `APP_URL` | ✅ | URL publique du site, configurable à l'exécution, ex. `https://apel-manager.vercel.app`. Seule source des liens envoyés par e-mail : sans elle, les liens porteurs d'un jeton (réinitialisation, confirmation de compte, désinscription) ne partent pas |
 | `OAUTH_ISSUER` | ⛔ optionnel | Origine HTTPS de l'autorité OAuth si elle diffère de `APP_URL` |
 | `MCP_RESOURCE_URL` | ⛔ optionnel | URL HTTPS exacte du connecteur, terminée par `/api/mcp`, si elle doit être surchargée |
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
@@ -73,6 +73,18 @@ réglages métier et de messagerie sont enregistrés depuis
 `SETTINGS_ENCRYPTION_KEY` doit rester **strictement identique** entre les
 déploiements. La changer rendrait illisibles les clés et mots de passe déjà
 enregistrés ; il faudrait alors les saisir à nouveau.
+
+Définissez-la même si l'application fonctionne sans. À défaut, les secrets
+saisis dans **Configuration** sont chiffrés avec une clé tirée
+d'`AUTH_SECRET`, et, depuis la version qui a séparé cette clé de celle des
+sessions, un secret enregistré de nouveau n'est plus lisible par une version
+antérieure. Après un retour en arrière (*Instant Rollback* de Vercel,
+redéploiement d'un ancien commit), ressaisissez donc dans **Configuration**
+ceux que vous avez enregistrés depuis — clé Resend ou mot de passe SMTP,
+jeton Telegram, secret reCAPTCHA ; si la clé des notifications push est née
+entre-temps, les appareils devront s'y réabonner. Avec
+`SETTINGS_ENCRYPTION_KEY` (toujours le cas sous Docker), le format n'a pas
+changé : un retour en arrière ne demande rien.
 
 L’identité de l’association, les fenêtres de rappel, Telegram, Resend et SMTP
 se configurent dans **Tableau de bord → Configuration**. Ne copiez jamais leurs
@@ -224,12 +236,106 @@ disent que le formulaire reste fermé tant qu'ils ne sont pas traités. L'avis
 immédiat au bureau, enfin, se tait au-delà de 5 nouveaux comptes en une
 heure ; le rappel quotidien prend le relais.
 
-Définissez `APP_URL` : sans elle, les liens envoyés par e-mail (confirmation,
-réinitialisation du mot de passe) sont construits à partir de l'en-tête `Host`
-de la requête.
+Définissez `APP_URL` : les liens envoyés par e-mail ne sont construits qu'à
+partir d'elle, jamais de l'en-tête `Host` de la requête (qu'un visiteur peut
+choisir, et qui aurait fait partir un lien de réinitialisation vers son site).
+Sans elle, les demandes de compte sont fermées, et les liens porteurs d'un
+jeton — réinitialisation du mot de passe, confirmation de compte,
+désinscription d'un créneau — ne partent pas ; le journal le dit, et l'écran
+**Configuration** l'affiche aux administrateurs.
 
 Lors de la mise à jour qui introduit cette validation, tous les comptes déjà
 existants sont tenus pour validés : personne n'est enfermé dehors.
+
+## Protections contre les abus
+
+### Plafonds
+
+Ce qui se déclenche sans compte, ou fait partir des e-mails, est plafonné par
+un limiteur commun (`src/lib/services/rate-limit.ts`, table `rate_limits`,
+purgée par le cron quotidien). Les adresses et IP n'y sont jamais écrites en
+clair, seulement leur empreinte HMAC.
+
+| Usage | Plafond | Quand il est atteint |
+|---|---|---|
+| Connexion, par connexion (IP) | 30 essais / 15 min | **429** avec `Retry-After`. |
+| Connexion, par adresse saisie depuis une même IP | 10 essais / 15 min | **429**. Compté pour toute adresse saisie, qu'elle ait un compte ou non : le refus n'apprend rien. |
+| Connexion, par adresse saisie, toutes IP confondues | 100 essais / 15 min | **429**. |
+| Mot de passe oublié, par IP | 10 / heure | **429**. |
+| Mot de passe oublié, par adresse depuis une même IP | 3 / heure, 6 / jour | **Silencieux** : même réponse, aucun e-mail. Une nouvelle demande n'annule plus les liens déjà partis ; le premier utilisé fait tomber les autres. |
+| Mot de passe oublié, par adresse, toutes IP confondues | 15 / jour | **Silencieux**, comme ci-dessus. |
+| Contact et adhésion, par IP | 5 / heure, 20 / jour | **429**. La copie envoyée au parent se tait au-delà de 3 par jour pour une même boîte. |
+| Inscriptions bénévoles et réponses aux réunions, par IP | 40 / heure, 150 / jour | **429**. |
+| Confirmations envoyées à une même boîte | 8 / jour | L'inscription ou la réponse est enregistrée ; seule la confirmation ne part pas. Le formulaire d'inscription le dit au bénévole. |
+| Enregistrement de clients OAuth | 10 / heure par IP, puis 200 / heure en tout | **429** `temporarily_unavailable`. |
+| Diffusions de l'équipe | 5 messages / événement / jour, 3 annulations / événement / jour, 20 diffusions / compte / jour, 5 messages à tous (membres ou adhérents) / compte / jour, 30 notifications / compte / jour | **429** avec un message qui dit quand réessayer. Mêmes plafonds depuis le serveur MCP. |
+
+**Compté avant, rendu après.** Un essai de mot de passe (connexion,
+changement de mot de passe) est compté *avant* la vérification, puis rendu
+s'il était bon : seuls les échecs restent, et des centaines d'essais envoyés en
+même temps ne passent pas tous sous le plafond.
+
+**L'un après l'autre.** Les plafonds emboîtés se comptent dans l'ordre : l'IP,
+puis l'adresse depuis cette IP, puis l'adresse partout (ou le total, pour
+OAuth). Une requête refusée à une étape n'entame pas les suivantes : une
+machine ne verse au plafond commun que ce que le sien lui accorde.
+
+**Ce que cela laisse passer**, en connaissance de cause :
+
+- Le plafond serré de la connexion porte sur le couple adresse + IP : une
+  seule machine ne peut plus tenir une adresse dehors. Il en faut une dizaine,
+  coordonnées, pour atteindre le plafond de l'adresse (100 / 15 min) — qui
+  borne en retour une attaque répartie à 100 essais par quart d'heure sur un
+  compte. Même alors, la propriétaire garde la main : le lien de « Mot de
+  passe oublié » ouvre directement sa session et efface les compteurs de son
+  adresse (ceux de l'IP de l'attaquant restent).
+- « Mot de passe oublié » : trois IP suffisent à épuiser les 15 liens du jour
+  d'une adresse. C'est le prix d'un plafond qui protège la boîte visée d'un
+  bombardement ; une seule machine, elle, n'en consomme que 6.
+- OAuth : une vingtaine d'IP distinctes peuvent encore épuiser les 200
+  enregistrements de l'heure. Un connecteur ne s'enregistre qu'une fois par
+  installation ; les clients jamais utilisés sont effacés par le cron du
+  lendemain, ce qui borne la table.
+- Les plafonds par boîte (accusés de réception, confirmations) comptent
+  `parent+1@…` et `parent@…` ensemble, et ignorent les points des adresses
+  Gmail : c'est la boîte qu'on protège, pas une façon de l'écrire.
+
+Les plafonds par IP lisent la première adresse de `X-Forwarded-For` (puis
+`X-Real-IP`) : c'est sûr derrière Caddy ou Vercel, qui remplacent cet en-tête.
+Une application exposée directement, sans reverse proxy, lirait ce que le
+client envoie : ces plafonds-là ne tiennent plus, ceux par adresse et par
+compte si. Sans IP connue, les plafonds par IP ne s'appliquent pas, et ceux
+« par adresse depuis une même IP » portent sur l'adresse seule.
+
+### Mots de passe
+
+Au moins 10 caractères, sans exigence de majuscule ni de symbole ; sont
+refusés les mots de passe les plus courants (y compris redoublés), les suites
+et zigzags du clavier, les répétitions, les assemblages de ces morceaux,
+l'adresse e-mail ou un de ses morceaux (prénom, nom) à des chiffres près, et
+le nom de l'association ou de l'école (`src/lib/auth/password-policy.ts`). La règle s'applique à chaque choix de mot
+de passe ; un mot de passe déjà en place continue de fonctionner.
+
+### Sessions et requêtes d'un autre site
+
+- La déconnexion ferme la session côté serveur (table `revoked_sessions`) ;
+  **Mon compte → Se déconnecter de tous les appareils** ferme toutes les
+  sessions du compte et coupe ses connecteurs MCP.
+- Le cookie de session est marqué `Secure` dès que le site est servi en HTTPS
+  (`APP_URL` en `https://`, ou `X-Forwarded-Proto: https` du proxy), et en
+  production par défaut sauf `APP_URL` en `http://`.
+- Les API qui modifient refusent une requête venue d'un autre site
+  (`Sec-Fetch-Site`/`Origin`) et un corps qui n'est pas du JSON
+  (`src/middleware.ts`). Les points d'entrée OAuth, MCP et cron, qui ont leur
+  propre authentification, n'y sont pas soumis.
+
+### En-têtes
+
+Chaque page porte une politique de sécurité du contenu (CSP) avec un nonce
+tiré pour elle ; toutes les réponses portent HSTS, `X-Frame-Options`,
+`X-Content-Type-Options`, `Referrer-Policy` et `Permissions-Policy`
+(`next.config.mjs`). `/api/health` ne dit que « vivant ou non » sans session ;
+la version n'est donnée qu'à un administrateur connecté.
 
 ## Rôles & permissions
 

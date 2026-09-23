@@ -7,6 +7,7 @@ import { users } from "@/lib/db/schema";
 import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import { messageSchema } from "@/lib/validation";
 
 export async function POST(req: Request) {
@@ -26,6 +27,8 @@ export async function POST(req: Request) {
     if (recipients.length === 0) {
       throw new HttpError(400, "Aucun membre à contacter.");
     }
+
+    await assertBroadcastAllowed(sender.id, { type: "equipe" });
 
     const mail = broadcastEmail({
       subject,

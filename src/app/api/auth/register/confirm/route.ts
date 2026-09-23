@@ -1,14 +1,19 @@
 import { NextResponse, after } from "next/server";
 
-import { hashPassword } from "@/lib/auth/password";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import {
+  assertAcceptablePassword,
+  hashPassword,
+} from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
+import { clientIpAddress } from "@/lib/client-ip";
 import {
   confirmAccountRequest,
   confirmationLinkExpired,
   findAccountRequest,
   notifyBureauOfPendingAccount,
 } from "@/lib/services/account-requests";
+import { clearPasswordAttempts, ipKey } from "@/lib/services/rate-limit";
 import { accountConfirmSchema } from "@/lib/validation";
 
 /**
@@ -35,9 +40,14 @@ export async function POST(req: Request) {
     // compris. La transaction de `confirmAccountRequest` revérifie le lien
     // sous verrou : deux clics simultanés passent tous deux ce premier
     // contrôle, un seul crée le compte.
-    if (!(await findAccountRequest(token))) {
+    const demande = await findAccountRequest(token);
+    if (!demande) {
       throw confirmationLinkExpired();
     }
+    // La règle des mots de passe se vérifie une fois le lien reconnu : un
+    // jeton inventé n'apprend rien d'elle, et l'adresse de la demande sert à
+    // refuser un mot de passe qui la reprendrait.
+    await assertAcceptablePassword(password, demande.email);
 
     const compte = await confirmAccountRequest({
       token,
@@ -51,6 +61,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // Le lien vient de prouver que la personne tient la boîte : les essais
+    // ratés qu'un tiers aurait comptés contre cette adresse, avant même que
+    // le compte existe, ne doivent pas la tenir dehors ensuite.
+    await clearPasswordAttempts(demande.email, ipKey(clientIpAddress(req)));
     await createSession(compte.id, compte.sessionEpoch);
     after(() => notifyBureauOfPendingAccount(compte));
     return NextResponse.json({ ok: true });

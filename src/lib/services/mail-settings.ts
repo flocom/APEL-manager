@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { HttpError } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { outboundMailSettings } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { emptyToNull } from "@/lib/utils";
 import { outboundMailSettingsSchema } from "@/lib/validation";
 
@@ -145,7 +146,7 @@ export async function getOutboundMailStatus() {
   } catch (error) {
     console.warn(
       "[email] état dynamique indisponible, utilisation du repli historique",
-      error,
+      redactError(error),
     );
   }
   if (settings) {
@@ -398,7 +399,7 @@ export async function getOutboundMailRuntimeConfig(
     // d'environnement historiques continuent de fonctionner.
     console.warn(
       "[email] réglages dynamiques indisponibles, repli sur l’environnement",
-      error,
+      redactError(error),
     );
   }
 
@@ -445,7 +446,7 @@ export async function getOutboundMailRuntimeConfig(
     } catch (error) {
       console.error(
         `[email] impossible de déchiffrer la configuration ${settings.provider}`,
-        error,
+        redactError(error),
       );
       return null;
     }

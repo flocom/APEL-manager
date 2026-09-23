@@ -4,6 +4,10 @@ import { useRef, useState } from "react";
 
 import { useToast } from "@/components/toast";
 import { Button, Field, Input } from "@/components/ui";
+import {
+  PASSWORD_HINT,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import { api } from "@/lib/client";
 
 export function PasswordChangeForm() {
@@ -43,13 +47,17 @@ export function PasswordChangeForm() {
           autoComplete="current-password"
         />
       </Field>
-      <Field label="Nouveau mot de passe" htmlFor="newPassword" hint="8 caractères minimum.">
+      <Field
+        label="Nouveau mot de passe"
+        htmlFor="newPassword"
+        hint={PASSWORD_HINT}
+      >
         <Input
           id="newPassword"
           name="newPassword"
           type="password"
           required
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           autoComplete="new-password"
         />
       </Field>

@@ -5,11 +5,13 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
-import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 import { APP_NAME } from "@/lib/app-config";
 import { isApproved } from "@/lib/auth/roles";
+import { deriveKeyFromAuthSecret } from "@/lib/auth/secrets";
 import { getCurrentUser } from "@/lib/auth/session";
+import { clientIpAddress } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import {
   oauthAuthorizationCodes,
@@ -18,7 +20,14 @@ import {
   users,
   type Role,
 } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import {
+  delaiLisible,
+  hitRateLimitStages,
+  ipKey,
+  PLAFONDS,
+} from "@/lib/services/rate-limit";
 
 const MCP_PATH = "/api/mcp";
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -123,7 +132,7 @@ function oauthErrorResponse(error: unknown): Response {
     );
   }
 
-  console.error("[oauth] erreur inattendue:", error);
+  console.error("[oauth] erreur inattendue:", redactError(error));
   return jsonResponse(
     {
       error: "server_error",
@@ -154,14 +163,27 @@ function equalStrings(left: string, right: string): boolean {
   );
 }
 
+/**
+ * Clé de signature du consentement. OAUTH_SECRET s'il est défini ; sinon une
+ * clé tirée d'AUTH_SECRET pour ce seul usage (lib/auth/secrets.ts), et non
+ * plus AUTH_SECRET lui-même, qui signe aussi les sessions. Un consentement ne
+ * vit que dix minutes : le changement de clé n'a interrompu, au plus, que
+ * l'autorisation en cours au moment de la mise à jour.
+ */
 function getConsentSecret(): Buffer {
-  const secret = process.env.OAUTH_SECRET ?? process.env.AUTH_SECRET;
-  if (!secret || secret.length < 32) {
+  const dedie = process.env.OAUTH_SECRET?.trim();
+  if (dedie) {
+    if (dedie.length < 32) {
+      throw new Error("OAUTH_SECRET doit contenir au moins 32 caractères.");
+    }
+    return createHash("sha256").update(dedie, "utf8").digest();
+  }
+  if ((process.env.AUTH_SECRET?.trim().length ?? 0) < 32) {
     throw new Error(
       "OAUTH_SECRET ou AUTH_SECRET doit contenir au moins 32 caractères.",
     );
   }
-  return createHash("sha256").update(secret, "utf8").digest();
+  return deriveKeyFromAuthSecret("consentement-oauth");
 }
 
 function normalizeConfiguredUrl(value: string, label: string): URL {
@@ -407,6 +429,32 @@ export async function registerOAuthClient(
   request: Request,
 ): Promise<Response> {
   try {
+    // L'enregistrement est ouvert à tous, sans compte (RFC 7591) : c'est ce
+    // qui permet à Claude de se présenter tout seul. Sans plafond, n'importe
+    // qui remplissait la table de clients à la chaîne. Quelques
+    // enregistrements par heure et par connexion suffisent à un connecteur
+    // qui se configure ; le plafond général arrête un abus réparti.
+    //
+    // L'un après l'autre : une requête refusée pour sa connexion ne compte
+    // pas dans le total. Comptée, une seule machine obstinée fermait
+    // l'enregistrement à tout le monde, et plus personne ne pouvait ajouter
+    // le connecteur de l'association.
+    const ip = ipKey(clientIpAddress(request));
+    const { verdict: plafond } = await hitRateLimitStages([
+      [[PLAFONDS.oauthEnregistrementIp, ip]],
+      [[PLAFONDS.oauthEnregistrementTotal, "tous"]],
+    ]);
+    if (!plafond.ok) {
+      return jsonResponse(
+        {
+          error: "temporarily_unavailable",
+          error_description: `Trop d’enregistrements de clients : réessayez ${delaiLisible(plafond.retryAfterSeconds)}.`,
+        },
+        429,
+        { "Retry-After": String(plafond.retryAfterSeconds) },
+      );
+    }
+
     if (!request.headers.get("content-type")?.includes("application/json")) {
       throw new OAuthProtocolError(
         "invalid_client_metadata",
@@ -642,7 +690,7 @@ function oauthHtmlError(error: unknown): Response {
           500,
         );
   if (!(error instanceof OAuthProtocolError)) {
-    console.error("[oauth] erreur d’autorisation inattendue:", error);
+    console.error("[oauth] erreur d’autorisation inattendue:", redactError(error));
   }
   return htmlResponse(
     `<!doctype html>
@@ -1122,6 +1170,12 @@ export async function authorizeOAuthPost(
     }
 
     const authorizationCode = randomOpaqueToken("mcp_code_");
+    // Un client qui obtient un code sert à quelqu'un : le ménage quotidien ne
+    // le touchera plus (voir `purgeOAuthGarbage`).
+    await db
+      .update(oauthClients)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(oauthClients.id, client.id));
     await db.insert(oauthAuthorizationCodes).values({
       codeHash: sha256(authorizationCode),
       oauthClientId: client.id,
@@ -1667,5 +1721,62 @@ export async function authenticateMcpRequest(
     scopes: authenticated.scopes,
     clientId: authenticated.clientId,
     oauthClientId: authenticated.oauthClientId,
+  };
+}
+
+/** Un client enregistré qui n'a servi à personne au bout de ce délai part. */
+const CLIENT_INUTILISE_MS = 24 * 60 * 60 * 1000;
+/** Délai de grâce après expiration, avant d'effacer codes et jetons. */
+const GRACE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Le ménage quotidien des tables OAuth (appelé par le cron).
+ *
+ * - Les jetons expirés : ils ne valent plus rien. Un jeton de
+ *   rafraîchissement révoqué mais pas encore expiré reste, lui : c'est grâce
+ *   à lui qu'une réutilisation se repère et fait tomber toute sa famille
+ *   (`rotateRefreshToken`).
+ * - Les codes d'autorisation expirés auxquels plus aucun jeton ne renvoie :
+ *   tant qu'un jeton y renvoie, le code tient la famille ensemble.
+ * - Les clients enregistrés d'eux-mêmes et jamais utilisés : aucun code
+ *   délivré un jour après leur création. L'enregistrement est ouvert à tous ;
+ *   sans ce ménage, chaque tentative laissait une ligne pour toujours.
+ */
+export async function purgeOAuthGarbage(): Promise<{
+  jetons: number;
+  codes: number;
+  clients: number;
+}> {
+  const now = Date.now();
+  const jetons = await db
+    .delete(oauthTokens)
+    .where(lt(oauthTokens.expiresAt, new Date(now - GRACE_MS)))
+    .returning({ id: oauthTokens.id });
+  const codes = await db
+    .delete(oauthAuthorizationCodes)
+    .where(
+      and(
+        lt(oauthAuthorizationCodes.expiresAt, new Date(now - GRACE_MS)),
+        sql`not exists (select 1 from ${oauthTokens} where ${oauthTokens.authorizationCodeId} = ${oauthAuthorizationCodes.id})`,
+      ),
+    )
+    .returning({ id: oauthAuthorizationCodes.id });
+  const clients = await db
+    .delete(oauthClients)
+    .where(
+      and(
+        isNull(oauthClients.lastUsedAt),
+        // Un client créé par un administrateur n'est pas un déchet.
+        isNull(oauthClients.createdBy),
+        lt(oauthClients.createdAt, new Date(now - CLIENT_INUTILISE_MS)),
+        sql`not exists (select 1 from ${oauthTokens} where ${oauthTokens.oauthClientId} = ${oauthClients.id})`,
+        sql`not exists (select 1 from ${oauthAuthorizationCodes} where ${oauthAuthorizationCodes.oauthClientId} = ${oauthClients.id})`,
+      ),
+    )
+    .returning({ id: oauthClients.id });
+  return {
+    jetons: jetons.length,
+    codes: codes.length,
+    clients: clients.length,
   };
 }

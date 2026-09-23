@@ -5,10 +5,12 @@ import { z } from "zod";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getBaseUrl } from "@/lib/base-url";
+import { getBaseUrl, secureLinkBaseUrl } from "@/lib/base-url";
+import { clientIpAddress } from "@/lib/client-ip";
 import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, volunteerSignups } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { sendEmail } from "@/lib/notifications/email";
 import {
   volunteerConfirmationEmail,
@@ -19,6 +21,15 @@ import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
 } from "@/lib/services/association-settings";
+import {
+  delaiLisible,
+  emailKey,
+  hitRateLimit,
+  hitRateLimits,
+  ipKey,
+  PLAFONDS,
+  rateLimitError,
+} from "@/lib/services/rate-limit";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
@@ -41,6 +52,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // Une même connexion ne remplit pas à elle seule les créneaux d'un
+    // événement : chaque inscription prend une place que personne d'autre ne
+    // pourra prendre, et fait partir un e-mail. Ce refus-là ne dépend pas de
+    // l'adresse saisie : il peut se dire.
+    const ip = clientIpAddress(req);
+    const parConnexion = await hitRateLimits([
+      [PLAFONDS.inscriptionIpHeure, ipKey(ip)],
+      [PLAFONDS.inscriptionIpJour, ipKey(ip)],
+    ]);
+    if (!parConnexion.ok) {
+      throw rateLimitError(
+        parConnexion,
+        `Trop d’inscriptions depuis cette connexion : réessayez ${delaiLisible(parConnexion.retryAfterSeconds)}, ou écrivez à l’association.`,
+      );
+    }
+
     const recaptcha = await getRecaptchaRuntimeConfig();
     if (recaptcha) {
       await verifyRecaptcha({
@@ -48,7 +75,7 @@ export async function POST(req: Request) {
         token: data.recaptchaToken,
         action: "inscription",
         minScore: recaptcha.minScore,
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        ip,
       });
     }
 
@@ -133,18 +160,43 @@ export async function POST(req: Request) {
     const identity = await getNotificationIdentity(association);
 
     // Confirmation par e-mail (avec lien de désinscription), si un e-mail est
-    // fourni. Il l'est désormais toujours, mais la garde ne coûte rien.
-    if (email) {
-      const mail = volunteerConfirmationEmail({
-        name: data.name,
-        eventTitle: event.title,
-        eventDate: formatDateTime(event.startAt),
-        slotTitle: slot.title,
-        location: event.location,
-        cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-        identity,
-      });
-      await sendEmail({ to: email, ...mail });
+    // fourni. Il l'est désormais toujours, mais la garde ne coûte rien. Le
+    // lien de retrait porte un jeton : sans adresse publique configurée, il ne
+    // part pas (lib/base-url.ts) — l'inscription, elle, est prise.
+    //
+    // Chaque confirmation part vers l'adresse saisie, que n'importe qui peut
+    // taper : au-delà de quelques-unes dans la journée, seul l'e-mail cesse de
+    // partir. L'inscription reste prise, comme pour les réponses aux
+    // réunions. Refuser l'inscription elle-même laissait huit envois
+    // anonymes suffire à empêcher un parent de prendre le moindre créneau
+    // jusqu'au lendemain, et arrêtait le membre du bureau qui se met sur neuf
+    // créneaux de la kermesse. Compté ici, après l'insertion : un doublon ou
+    // un créneau complet ne rapprochent pas du plafond, et chaque envoi lit
+    // son propre numéro — deux inscriptions simultanées ne passent pas
+    // ensemble sous le plafond.
+    const baseDesLiens = email
+      ? secureLinkBaseUrl("Confirmation d'inscription bénévole")
+      : null;
+    let confirmation = false;
+    if (email && baseDesLiens) {
+      const parAdresse = await hitRateLimit(
+        PLAFONDS.confirmationAdresseJour,
+        emailKey(email),
+      );
+      if (parAdresse.ok) {
+        const mail = volunteerConfirmationEmail({
+          name: data.name,
+          eventTitle: event.title,
+          eventDate: formatDateTime(event.startAt),
+          slotTitle: slot.title,
+          location: event.location,
+          cancelUrl: `${baseDesLiens}/annulation/${cancelToken}`,
+          identity,
+        });
+        // `sendEmail` rend `false` au lieu de lever : le formulaire dira
+        // alors, lui aussi, que la confirmation n'est pas partie.
+        confirmation = await sendEmail({ to: email, ...mail });
+      }
     }
 
     // Avis au bureau. Envoyé après coup et dans un try/catch : le créneau est
@@ -190,11 +242,14 @@ export async function POST(req: Request) {
           );
         }
       } catch (erreur) {
-        console.error("[signup] avis au bureau non envoyé", erreur);
+        console.error("[signup] avis au bureau non envoyé", redactError(erreur));
       }
     }
 
-    return NextResponse.json({ ok: true });
+    // `confirmation: false` : l'inscription est prise, mais le bénévole n'a
+    // pas reçu de lien de retrait — le formulaire le lui dit, plutôt que de
+    // le laisser guetter un e-mail qui ne viendra pas.
+    return NextResponse.json({ ok: true, confirmation });
   } catch (error) {
     return handleApiError(error);
   }

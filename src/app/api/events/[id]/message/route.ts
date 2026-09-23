@@ -5,6 +5,7 @@ import { getEventWithDetails } from "@/lib/data";
 import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import { messageSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -36,6 +37,8 @@ export async function POST(req: Request, { params }: Params) {
           : "Aucun bénévole inscrit à cet événement.",
       );
     }
+
+    await assertBroadcastAllowed(sender.id, { type: "evenement", eventId: id });
 
     const mail = broadcastEmail({
       subject,

@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, gt, gte, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
-import { getBaseUrl } from "@/lib/base-url";
+import { getBaseUrl, secureLinkBaseUrl } from "@/lib/base-url";
 import { db } from "@/lib/db";
 import {
   accountRequestDrops,
@@ -11,6 +11,7 @@ import {
   users,
   type AccountRequestDropReason,
 } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import {
   ACCOUNT_REQUEST_DROP_REASONS,
   type DroppedAccountRequests,
@@ -271,6 +272,13 @@ export async function submitAccountRequest({
     return;
   }
 
+  // Le lien porte le jeton qui fait naître le compte : il ne part que vers
+  // l'adresse publique configurée (lib/base-url.ts). La route refuse déjà la
+  // demande quand elle manque ; ce contrôle couvre la configuration changée
+  // entre-temps.
+  const baseDesLiens = secureLinkBaseUrl("Lien de confirmation de compte");
+  if (!baseDesLiens) return;
+
   const token = generateToken(32);
   await db
     .update(accountRequests)
@@ -279,7 +287,7 @@ export async function submitAccountRequest({
   const parti = await sendEmail({
     to: email,
     ...accountRequestEmail({
-      confirmUrl: `${baseUrl}/register/${token}`,
+      confirmUrl: `${baseDesLiens}/register/${token}`,
       validiteJours: ACCOUNT_REQUEST_VALIDITY_DAYS,
       identity: await getNotificationIdentity(association),
     }),
@@ -501,7 +509,7 @@ export async function notifyBureauOfPendingAccount(compte: {
       );
     }
   } catch (erreur) {
-    console.error("[inscription] avis au bureau non envoyé", erreur);
+    console.error("[inscription] avis au bureau non envoyé", redactError(erreur));
   }
 }
 

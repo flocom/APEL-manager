@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import { clientIpAddress } from "@/lib/client-ip";
 import { sendEmail } from "@/lib/notifications/email";
 import {
   joinRequestAckEmail,
@@ -11,6 +12,15 @@ import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
 } from "@/lib/services/association-settings";
+import {
+  delaiLisible,
+  emailKey,
+  hitRateLimit,
+  hitRateLimits,
+  ipKey,
+  PLAFONDS,
+  rateLimitError,
+} from "@/lib/services/rate-limit";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { joinRequestSchema } from "@/lib/validation";
 
@@ -31,6 +41,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // Chaque envoi part dans la boîte du bureau : une même connexion n'en
+    // envoie que quelques-uns par heure. Ce refus ne dépend pas de l'adresse
+    // saisie, il peut donc se dire.
+    const ip = clientIpAddress(req);
+    const parConnexion = await hitRateLimits([
+      [PLAFONDS.messageIpHeure, ipKey(ip)],
+      [PLAFONDS.messageIpJour, ipKey(ip)],
+    ]);
+    if (!parConnexion.ok) {
+      throw rateLimitError(
+        parConnexion,
+        `Trop de messages envoyés depuis cette connexion : réessayez ${delaiLisible(parConnexion.retryAfterSeconds)}. Vous pouvez aussi écrire directement à l’association.`,
+      );
+    }
+
     const recaptcha = await getRecaptchaRuntimeConfig();
     if (recaptcha) {
       await verifyRecaptcha({
@@ -38,7 +63,7 @@ export async function POST(req: Request) {
         token: data.recaptchaToken,
         action: "contact",
         minScore: recaptcha.minScore,
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        ip,
       });
     }
 
@@ -77,7 +102,17 @@ export async function POST(req: Request) {
     // seule trace de sa démarche, et il meurt avec l'onglet. L'échec de cet
     // envoi-là ne doit jamais faire échouer la demande : le bureau a déjà reçu
     // le message, c'est ce qui compte.
+    //
+    // Cette copie part vers une adresse que n'importe qui peut saisir : au-delà
+    // de quelques-unes par jour vers la même boîte, elle ne part plus, sans
+    // rien dire — le bureau reçoit toujours le message, et le refus apprendrait
+    // que l'adresse a déjà servi.
     try {
+      const parAdresse = await hitRateLimit(
+        PLAFONDS.accuseAdresseJour,
+        emailKey(data.email),
+      );
+      if (!parAdresse.ok) return NextResponse.json({ ok: true });
       await sendEmail({
         to: data.email,
         replyTo: destination,

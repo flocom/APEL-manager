@@ -5,10 +5,12 @@ import { z } from "zod";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getBaseUrl } from "@/lib/base-url";
+import { getBaseUrl, secureLinkBaseUrl } from "@/lib/base-url";
+import { clientIpAddress } from "@/lib/client-ip";
 import { formatDateTime } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { sendEmail } from "@/lib/notifications/email";
 import {
   meetingAttendanceConfirmationEmail,
@@ -19,6 +21,15 @@ import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
 } from "@/lib/services/association-settings";
+import {
+  delaiLisible,
+  emailKey,
+  hitRateLimit,
+  hitRateLimits,
+  ipKey,
+  PLAFONDS,
+  rateLimitError,
+} from "@/lib/services/rate-limit";
 import { verifyRecaptcha } from "@/lib/services/recaptcha";
 import { generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
@@ -52,6 +63,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // Mêmes plafonds, et même seau, que les inscriptions de bénévoles : c'est
+    // le même geste depuis la même page publique, et chaque réponse fait
+    // partir une confirmation et un avis au bureau.
+    const ip = clientIpAddress(req);
+    const parConnexion = await hitRateLimits([
+      [PLAFONDS.inscriptionIpHeure, ipKey(ip)],
+      [PLAFONDS.inscriptionIpJour, ipKey(ip)],
+    ]);
+    if (!parConnexion.ok) {
+      throw rateLimitError(
+        parConnexion,
+        `Trop de réponses depuis cette connexion : réessayez ${delaiLisible(parConnexion.retryAfterSeconds)}, ou écrivez à l’association.`,
+      );
+    }
+
     const recaptcha = await getRecaptchaRuntimeConfig();
     if (recaptcha) {
       await verifyRecaptcha({
@@ -59,7 +85,7 @@ export async function POST(req: Request) {
         token: data.recaptchaToken,
         action: "inscription",
         minScore: recaptcha.minScore,
-        ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+        ip,
       });
     }
 
@@ -227,10 +253,21 @@ async function envoyerConfirmation({
   reunion: { title: string; startAt: Date; location: string | null };
   cancelToken: string;
 }) {
-  const [baseUrl, association] = await Promise.all([
-    getBaseUrl(),
-    getAssociationSettings(),
-  ]);
+  // Le lien de retrait porte un jeton : il ne part que vers l'adresse
+  // publique configurée (lib/base-url.ts).
+  const baseUrl = secureLinkBaseUrl("Confirmation de présence à une réunion");
+  if (!baseUrl) return;
+  // Changer d'avis renvoie une confirmation à chaque fois : au-delà de
+  // quelques-unes dans la journée vers la même adresse, la réponse est
+  // enregistrée mais plus rien ne part. La personne a déjà reçu les
+  // précédentes, lien de retrait compris, et l'adresse saisie n'est peut-être
+  // pas la sienne. Sans rien dire : le refus apprendrait que l'adresse a servi.
+  const parAdresse = await hitRateLimit(
+    PLAFONDS.confirmationAdresseJour,
+    emailKey(email),
+  );
+  if (!parAdresse.ok) return;
+  const association = await getAssociationSettings();
   const mail = meetingAttendanceConfirmationEmail({
     name: nom,
     eventTitle: reunion.title,
@@ -297,6 +334,6 @@ async function avertirLeBureau({
       );
     }
   } catch (erreur) {
-    console.error("[presences] avis au bureau non envoyé", erreur);
+    console.error("[presences] avis au bureau non envoyé", redactError(erreur));
   }
 }

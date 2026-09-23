@@ -5,6 +5,7 @@ import { formatLongDate } from "@/lib/dates";
 import { pvEnHtml, pvEnTexte } from "@/lib/documents/ag-rendu";
 import type { AgMinutesPayload } from "@/lib/documents/ag-types";
 import { db } from "@/lib/db";
+import { redactError } from "@/lib/errors";
 import {
   ASSOCIATION_DOCUMENT_TYPE_LABELS,
   type AssociationDocumentType,
@@ -18,7 +19,7 @@ import {
   removeUpload,
   storedUploadIdFromUrl,
 } from "@/lib/uploads";
-import { emptyToNull } from "@/lib/utils";
+import { emptyToNull, isUuid } from "@/lib/utils";
 import { reglesStatutairesSchema } from "@/lib/documents/ag-validation";
 import {
   associationDocumentSchema,
@@ -58,6 +59,9 @@ export async function listAssociationDocuments(limit = 200) {
 }
 
 export async function getAssociationDocument(id: string) {
+  // Un identifiant d'URL qui n'est pas un UUID ne désigne aucun document :
+  // l'écran répond « introuvable » au lieu d'une erreur de syntaxe SQL.
+  if (!isUuid(id)) return null;
   const [document] = await db
     .select({
       id: associationDocuments.id,
@@ -315,7 +319,7 @@ export async function deleteArchivedAgMinutes(
         // Le nettoyage quotidien supprimera ce fichier devenu orphelin.
         console.error(
           `[documents] impossible de supprimer la pièce jointe ${uploadId}:`,
-          error,
+          redactError(error),
         );
       }
     }

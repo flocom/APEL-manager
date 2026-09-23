@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import { parseLocalDateTime } from "@/lib/dates";
 import { agMinutesPayloadSchema } from "@/lib/documents/ag-validation";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
@@ -27,12 +31,20 @@ const localDateTime = z.string().min(1, "Date requise").transform((value, ctx) =
 /** Numéro de version pour le verrou optimiste (envoyé par le client à l'édition). */
 const optimisticVersion = z.coerce.number().int().nonnegative().optional();
 
-/** Règle commune de mot de passe (≥ 8 caractères). */
+/**
+ * Longueur d'un nouveau mot de passe. Le reste de la règle (mots de passe
+ * courants, suites, adresse, nom de l'association) se vérifie dans la route,
+ * avec `assertAcceptablePassword` : elle a besoin du contexte, et son refus
+ * doit s'afficher tel quel plutôt qu'en « Données invalides ».
+ */
 const passwordField = (label = "Le mot de passe") =>
   z
     .string()
-    .min(8, `${label} doit faire au moins 8 caractères`)
-    .max(200);
+    .min(
+      PASSWORD_MIN_LENGTH,
+      `${label} doit faire au moins ${PASSWORD_MIN_LENGTH} caractères`,
+    )
+    .max(PASSWORD_MAX_LENGTH);
 
 /**
  * Nom d'une personne qui demande un compte.
@@ -80,8 +92,10 @@ export const accountConfirmSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
-  password: z.string().min(1, "Mot de passe requis"),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide").max(200),
+  // Pas de longueur minimale ici : un mot de passe choisi sous l'ancienne
+  // règle (huit caractères) doit continuer d'ouvrir la session.
+  password: z.string().min(1, "Mot de passe requis").max(PASSWORD_MAX_LENGTH),
 });
 
 export const eventSchema = z.object({
@@ -333,7 +347,9 @@ export const publicMeetingAttendanceSchema = z.object({
 });
 
 export const forgotSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide"),
+  email: z.string().trim().toLowerCase().email("Adresse e-mail invalide").max(200),
+  // Pot de miel anti-robot : champ caché qui doit rester vide.
+  website: z.string().optional(),
 });
 
 export const resetPasswordSchema = z.object({

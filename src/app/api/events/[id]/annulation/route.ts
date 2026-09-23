@@ -10,6 +10,7 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { eventCancelledEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import { eventCancelSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -45,6 +46,13 @@ export async function POST(req: Request, { params }: Params) {
 
     const event = await getEventWithDetails(id);
     if (!event) throw new HttpError(404, "Événement introuvable.");
+
+    // Chaque annulation fait repartir le message vers tous les inscrits : la
+    // basculer dix fois leur en enverrait dix. Contrôlé avant tout
+    // changement, pour que le refus laisse l'événement tel quel.
+    if (annule) {
+      await assertBroadcastAllowed(user.id, { type: "annulation", eventId: id });
+    }
 
     const maintenant = new Date();
     const [maj] = await db

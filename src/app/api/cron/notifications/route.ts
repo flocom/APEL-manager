@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { and, eq, gt, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { formatDateTime, formatDuree } from "@/lib/dates";
@@ -10,10 +10,13 @@ import {
   events,
   meetingAttendance,
   notificationsLog,
+  passwordResetTokens,
+  revokedSessions,
   tasks,
   volunteerSignups,
   volunteerSlots,
 } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { notifyTaskDue, type NotifyKind } from "@/lib/notifications";
 import { sendEmail } from "@/lib/notifications/email";
 import {
@@ -34,6 +37,8 @@ import {
   purgeExpiredAccountRequests,
   remindBureauOfPendingAccounts,
 } from "@/lib/services/account-requests";
+import { purgeOAuthGarbage } from "@/lib/mcp/oauth";
+import { purgeExpiredRateLimits } from "@/lib/services/rate-limit";
 import { collectReferencedUploadIds } from "@/lib/services/uploads-references";
 import { countPendingAccounts } from "@/lib/services/user-accounts";
 import { cleanupOrphanedUploads } from "@/lib/uploads";
@@ -286,7 +291,7 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error(
       "[uploads] nettoyage des fichiers orphelins impossible :",
-      error instanceof Error ? error.message : error,
+      redactError(error),
     );
   }
 
@@ -298,12 +303,15 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error(
       "[cron] purge des demandes de compte expirées impossible :",
-      error instanceof Error ? error.message : error,
+      redactError(error),
     );
   }
 
+  const menage = await menageDeSecurite();
+
   return NextResponse.json({
     ok: true,
+    menage,
     checkedTasks: dueTasks.length,
     /** Tâches écartées parce que leur événement est annulé. */
     tachesEvenementsAnnules: tachesAnnulees,
@@ -321,6 +329,54 @@ export async function GET(req: Request) {
 }
 
 /**
+ * Le ménage des tables qui ne font que grossir : compteurs du limiteur,
+ * sessions fermées, liens de réinitialisation, jetons et clients OAuth.
+ *
+ * Chaque étape a son propre `try` : une panne sur l'une ne doit pas priver
+ * les autres de leur passage, ni faire échouer les rappels déjà envoyés.
+ */
+async function menageDeSecurite() {
+  const etape = async <T>(nom: string, travail: () => Promise<T>) => {
+    try {
+      return await travail();
+    } catch (error) {
+      console.error(`[cron] ${nom} impossible :`, redactError(error));
+      return null;
+    }
+  };
+  const maintenant = Date.now();
+  return {
+    compteursEffaces: await etape("purge des compteurs du limiteur", () =>
+      purgeExpiredRateLimits(),
+    ),
+    sessionsFermeesEffacees: await etape("purge des sessions fermées", async () =>
+      (
+        await db
+          .delete(revokedSessions)
+          .where(lt(revokedSessions.expiresAt, new Date(maintenant)))
+          .returning({ id: revokedSessions.sessionId })
+      ).length,
+    ),
+    liensDeReinitialisationEffaces: await etape(
+      "purge des liens de réinitialisation",
+      async () =>
+        (
+          await db
+            .delete(passwordResetTokens)
+            .where(
+              lt(
+                passwordResetTokens.expiresAt,
+                new Date(maintenant - 24 * 60 * 60 * 1000),
+              ),
+            )
+            .returning({ id: passwordResetTokens.id })
+        ).length,
+    ),
+    oauth: await etape("ménage des tables OAuth", () => purgeOAuthGarbage()),
+  };
+}
+
+/**
  * Le rappel des comptes en attente, sans faire tomber le reste du passage : le
  * nettoyage des fichiers et la purge des demandes expirées viennent après, et
  * n'ont pas à attendre que la base ou la messagerie aille mieux.
@@ -329,7 +385,9 @@ async function rappelerComptesEnAttente() {
   try {
     return await remindBureauOfPendingAccounts();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // Réduite avant d'aller au journal comme dans la réponse : l'erreur d'une
+    // requête SQL recopie toutes ses valeurs (lib/errors.ts).
+    const message = redactError(error).split("\n")[0];
     console.error("[cron] rappel des comptes en attente impossible :", message);
     return { envoye: false, erreur: message };
   }
