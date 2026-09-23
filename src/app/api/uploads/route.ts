@@ -6,6 +6,7 @@ import {
   HttpError,
   requireApiRole,
 } from "@/lib/auth/guards";
+import { brandingLogoProblem } from "@/lib/notifications/logo";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import {
   removeUpload,
@@ -37,6 +38,20 @@ export async function POST(req: Request) {
     }
 
     const saved = await saveUpload(scope, file);
+    if (scope === "branding") {
+      // Le logo part aussi en tête des e-mails, converti en PNG. Un fichier que
+      // cette conversion ne sait pas lire y serait une image cassée, ou
+      // manquerait sans que rien ne le dise : on le refuse ici, pendant que
+      // l'administrateur peut encore en choisir un autre.
+      const refus = await brandingLogoProblem(
+        Buffer.from(await file.arrayBuffer()),
+        saved.contentType,
+      );
+      if (refus) {
+        await removeUpload(saved.id);
+        throw new HttpError(415, refus);
+      }
+    }
     try {
       await recordAudit(
         webAuditActor(user.id, req),

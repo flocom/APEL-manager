@@ -26,7 +26,7 @@ import {
   getAssociationSettings,
   getTelegramBotToken,
 } from "@/lib/services/association-settings";
-import { getBaseUrl } from "@/lib/base-url";
+import { configuredBaseUrl, getBaseUrl } from "@/lib/base-url";
 import { totalDroppedAccountRequests } from "@/lib/labels";
 import {
   accountRequestFormClosed,
@@ -78,18 +78,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const [association, telegramBotToken] = await Promise.all([
+  const [association, telegramBotToken, baseUrl] = await Promise.all([
     getAssociationSettings(),
     getTelegramBotToken(),
+    // Une seule base pour tous les liens du passage — rappels, récapitulatif,
+    // logo : un même message ne peut pas mêler lien absolu et lien relatif.
+    getBaseUrl(),
   ]);
-  const appUrl = (
-    process.env.APP_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    ""
-  ).replace(/\/$/, "");
 
   const now = new Date();
-  const notificationIdentity = await getNotificationIdentity(association);
+  const notificationIdentity = await getNotificationIdentity(
+    association,
+    baseUrl,
+  );
   const horizon = new Date(
     now.getTime() +
       association.taskReminderWindowDays * 24 * 60 * 60 * 1000,
@@ -164,7 +165,7 @@ export async function GET(req: Request) {
         eventTitle: c.task.event.title,
         dueAt: c.task.dueAt,
         kind: c.kind,
-        taskUrl: urlTache(appUrl, c.task),
+        taskUrl: urlTache(baseUrl, c.task),
         identity: notificationIdentity,
         telegramBotToken,
       });
@@ -200,7 +201,7 @@ export async function GET(req: Request) {
   // antérieures à cette règle n'en ont pas toujours. Sans ce décompte, le
   // rappel les sautait en silence, et le réglage « prévenir les inscrits »
   // promettait ce qu'il ne tenait pas.
-  const signups = appUrl
+  const signups = configuredBaseUrl()
     ? await db.query.volunteerSignups.findMany({
         where: isNull(volunteerSignups.remindedAt),
         with: { slot: { with: { event: true } } },
@@ -233,8 +234,8 @@ export async function GET(req: Request) {
           slotTitle: s.slot.title,
           location: ev.location,
           cancelUrl: s.cancelToken
-            ? `${appUrl}/annulation/${s.cancelToken}`
-            : appUrl,
+            ? `${baseUrl}/annulation/${s.cancelToken}`
+            : baseUrl,
           identity: notificationIdentity,
         });
         const ok = await sendEmail({ to: s.email as string, ...mail });
@@ -263,6 +264,7 @@ export async function GET(req: Request) {
   const digest = await envoyerRecapitulatif(
     association,
     notificationIdentity,
+    baseUrl,
     now,
     dueTasks,
   );
@@ -363,6 +365,7 @@ async function rappelerComptesEnAttente() {
 async function envoyerRecapitulatif(
   association: Awaited<ReturnType<typeof getAssociationSettings>>,
   identity: NotificationIdentity,
+  baseUrl: string,
   now: Date,
   dueTasks: {
     id: string;
@@ -476,8 +479,6 @@ async function envoyerRecapitulatif(
       demandesDeCompteIgnorees: 0,
     };
   }
-
-  const baseUrl = await getBaseUrl();
 
   const versTache = (t: (typeof dueTasks)[number], retard: boolean) => ({
     titre: t.title,
