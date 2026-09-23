@@ -67,10 +67,12 @@ import {
 } from "@/lib/validation";
 
 import {
+  AVIS_SAISIE_PUBLIQUE,
   destructiveTool,
   mcpAuditActor,
   readOnlyTool,
   requireMcpAccess,
+  saisiePublique,
   toolResult,
   writeTool,
   type McpAssociationProfile,
@@ -901,7 +903,7 @@ export function registerAssociationTools(
     {
       title: "Configurer la messagerie",
       description:
-        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur.",
+        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur. Changer le fournisseur, l’hôte, le port ou l’identifiant SMTP efface le mot de passe SMTP enregistré : il n’est jamais transmis à un autre serveur que celui pour lequel il a été saisi. Si un identifiant reste renseigné, la modification est refusée tant qu’un administrateur n’a pas saisi le nouveau mot de passe dans l’interface. Hors relais local (localhost, conteneur Docker), l’envoi exige TLS.",
       inputSchema: z.object({
         provider: z.enum(["resend", "smtp"]).optional(),
         enabled: z.boolean(),
@@ -945,7 +947,14 @@ export function registerAssociationTools(
         },
         mcpAuditActor(principal),
       );
-      return toolResult({ settings }, "Configuration e-mail enregistrée.");
+      const motDePasseEfface =
+        current.smtpPasswordConfigured && !settings.smtpPasswordConfigured;
+      return toolResult(
+        { settings, smtpPasswordCleared: motDePasseEfface },
+        motDePasseEfface
+          ? "Configuration e-mail enregistrée. Le serveur SMTP ayant changé, le mot de passe enregistré a été effacé : un administrateur doit saisir celui du nouveau serveur dans l’interface."
+          : "Configuration e-mail enregistrée.",
+      );
     },
   );
 
@@ -954,7 +963,7 @@ export function registerAssociationTools(
     {
       title: "Envoyer un e-mail de test",
       description:
-        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée.",
+        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée. Le mot de passe SMTP n’est présenté qu’au serveur pour lequel il a été saisi, et seulement sur une connexion chiffrée hors relais local.",
       inputSchema: z.object({
         to: z.string().email(),
         confirm: z.literal(true),
@@ -1045,7 +1054,7 @@ export function registerAssociationTools(
     {
       title: "Consulter le journal d’audit",
       description:
-        "Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident.",
+        `Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({
         action: z
           .string()
@@ -1083,7 +1092,17 @@ export function registerAssociationTools(
           actor: { columns: { id: true, name: true, email: true } },
         },
       });
-      return toolResult({ items, count: items.length });
+      return toolResult({
+        items: items.map(({ actor, ...entree }) => ({
+          ...entree,
+          // Nom et adresse de l'auteur : ceux qu'il a saisis en demandant son
+          // compte, comme dans list_users.
+          actor: actor
+            ? { id: actor.id, ...saisiePublique({ name: actor.name, email: actor.email }) }
+            : null,
+        })),
+        count: items.length,
+      });
     },
   );
 

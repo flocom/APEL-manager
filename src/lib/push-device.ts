@@ -1,4 +1,4 @@
-import { api } from "@/lib/client";
+import { api, ApiError } from "@/lib/client";
 
 /**
  * Abonnement push d'un appareil, côté navigateur.
@@ -103,22 +103,37 @@ export async function activerCetAppareil(): Promise<void> {
   }).then((r) => r.json())) as { publicKey: string | null };
   if (!publicKey) throw new Error("Clé du serveur indisponible.");
 
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: base64UrlVersUint8(publicKey),
-  });
-  const brut = subscription.toJSON() as {
-    endpoint: string;
-    keys: { p256dh: string; auth: string };
+  const abonner = () =>
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64UrlVersUint8(publicKey),
+    });
+  const declarer = (subscription: PushSubscription) => {
+    const brut = subscription.toJSON() as {
+      endpoint: string;
+      keys: { p256dh: string; auth: string };
+    };
+    return api("/api/push/subscribe", {
+      body: {
+        endpoint: brut.endpoint,
+        p256dh: brut.keys.p256dh,
+        auth: brut.keys.auth,
+        deviceLabel: nomAppareil(),
+      },
+    });
   };
-  await api("/api/push/subscribe", {
-    body: {
-      endpoint: brut.endpoint,
-      p256dh: brut.keys.p256dh,
-      auth: brut.keys.auth,
-      deviceLabel: nomAppareil(),
-    },
-  });
+
+  const subscription = await abonner();
+  try {
+    await declarer(subscription);
+  } catch (error) {
+    // Le serveur refuse de rattacher à ce compte un abonnement qu'il connaît
+    // sous un autre compte avec d'autres clés. Un abonnement neuf porte une
+    // adresse neuve, qui n'appartient à personne : on repart de là une fois.
+    if (!(error instanceof ApiError) || error.status !== 409) throw error;
+    await subscription.unsubscribe();
+    await declarer(await abonner());
+  }
 }
 
 export async function desactiverCetAppareil(): Promise<void> {

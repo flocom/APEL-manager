@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
 import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
+import { estRelaisLocal } from "@/lib/smtp-relay";
 
 interface EmailParams {
   to: string;
@@ -40,6 +41,12 @@ export async function sendEmail({
         host: config.host,
         port: config.port,
         secure: config.secure,
+        // Hors relais local, STARTTLS est exigé et non plus seulement tenté :
+        // un serveur qui ne le propose pas — ou quelqu'un sur le chemin qui
+        // retire l'annonce — recevait sinon identifiant, mot de passe et liens
+        // de réinitialisation en clair. Le certificat est vérifié, comme par
+        // défaut. Sans effet quand `secure` chiffre dès la connexion.
+        requireTLS: !estRelaisLocal(config.host),
         ...(config.auth ? { auth: config.auth } : {}),
       });
       await transporter.sendMail({

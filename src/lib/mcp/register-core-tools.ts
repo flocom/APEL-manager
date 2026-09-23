@@ -54,10 +54,12 @@ import {
 } from "@/lib/services/user-accounts";
 
 import {
+  AVIS_SAISIE_PUBLIQUE,
   destructiveTool,
   mcpAuditActor,
   readOnlyTool,
   requireMcpAccess,
+  saisiePublique,
   toolResult,
   writeTool,
   type McpAssociationProfile,
@@ -69,6 +71,38 @@ const localDateTime = z
   .string()
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
+
+/**
+ * Les inscriptions bénévoles arrivent du lien public d'un événement : nom et
+ * coordonnées sont ceux qu'un inconnu a tapés. Ils sortent donc à part, sous
+ * la clé que l'avertissement désigne, plutôt que mêlés aux champs du bureau.
+ */
+function inscriptionsMarquees(
+  signups: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    createdAt: Date;
+  }[],
+) {
+  return signups.map(({ id, createdAt, name, email, phone }) => ({
+    id,
+    createdAt,
+    ...saisiePublique({ name, email, phone }),
+  }));
+}
+
+/**
+ * Nom et adresse d'un compte : choisis par la personne elle-même en
+ * demandant son compte sur la page publique d'inscription.
+ */
+function compteMarque<T extends { id: string; name: string; email: string }>(
+  compte: T,
+) {
+  const { name, email, ...reste } = compte;
+  return { ...reste, ...saisiePublique({ name, email }) };
+}
 
 async function requireEvent(id: string) {
   const [event] = await db
@@ -159,7 +193,7 @@ export function registerCoreTools(
     {
       title: "Lire un événement",
       description:
-        "Retourne un événement avec sa checklist, ses assignés, ses créneaux et inscriptions.",
+        `Retourne un événement avec sa checklist, ses assignés, ses créneaux et inscriptions. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({ id: z.string().uuid() }),
       annotations: readOnlyTool,
     },
@@ -167,7 +201,15 @@ export function registerCoreTools(
       requireMcpAccess(principal, "mcp:read", "manager");
       const event = await getEventWithDetails(id);
       if (!event) throw new Error("Événement introuvable.");
-      return toolResult({ event });
+      return toolResult({
+        event: {
+          ...event,
+          volunteerSlots: event.volunteerSlots.map((slot) => ({
+            ...slot,
+            signups: inscriptionsMarquees(slot.signups),
+          })),
+        },
+      });
     },
   );
 
@@ -610,7 +652,7 @@ export function registerCoreTools(
     {
       title: "Lister les inscriptions bénévoles",
       description:
-        "Liste les bénévoles inscrits à tous les créneaux d’un événement.",
+        `Liste les bénévoles inscrits à tous les créneaux d’un événement. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({ eventId: z.string().uuid() }),
       annotations: readOnlyTool,
     },
@@ -636,7 +678,13 @@ export function registerCoreTools(
           },
         },
       });
-      return toolResult({ eventId, slots });
+      return toolResult({
+        eventId,
+        slots: slots.map((slot) => ({
+          ...slot,
+          signups: inscriptionsMarquees(slot.signups),
+        })),
+      });
     },
   );
 
@@ -1016,7 +1064,7 @@ export function registerCoreTools(
     {
       title: "Lister les utilisateurs",
       description:
-        "Liste les comptes applicatifs et leurs rôles, sans aucune donnée secrète.",
+        `Liste les comptes applicatifs et leurs rôles, sans aucune donnée secrète. Le nom et l’adresse de chaque compte sont ceux saisis sur la page publique d’inscription. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({}),
       annotations: readOnlyTool,
     },
@@ -1036,7 +1084,7 @@ export function registerCoreTools(
         })
         .from(users)
         .orderBy(asc(users.name));
-      return toolResult({ items });
+      return toolResult({ items: items.map(compteMarque) });
     },
   );
 
@@ -1092,7 +1140,7 @@ export function registerCoreTools(
     {
       title: "Lister les tâches",
       description:
-        "Liste les tâches de tous les événements, filtrables par statut, échéance, événement ou responsable. Complète get_event, qui ne montre qu’un événement.",
+        `Liste les tâches de tous les événements, filtrables par statut, échéance, événement ou responsable. Complète get_event, qui ne montre qu’un événement. Le nom des responsables est celui qu’ils ont saisi en demandant leur compte. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({
         status: z.enum(["todo", "in_progress", "done"]).optional(),
         eventId: z.string().uuid().optional(),
@@ -1140,7 +1188,16 @@ export function registerCoreTools(
         );
       }
       items = items.slice(0, limit);
-      return toolResult({ items, count: items.length });
+      return toolResult({
+        items: items.map((task) => ({
+          ...task,
+          assignees: task.assignees.map((entry) => ({
+            ...entry,
+            user: compteMarque(entry.user),
+          })),
+        })),
+        count: items.length,
+      });
     },
   );
 

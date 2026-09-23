@@ -3,6 +3,18 @@ name: Publier l'image Docker
 # Publie l'image sur GHCR à chaque évolution de `main` et à chaque tag `v*`.
 # C'est cette image que le service `updater` (Watchtower) surveille sur les
 # instances déployées : une fois poussée, la mise à jour part toute seule.
+#
+# Tout ce qui s'exécute ici finit dans l'image que les instances installent
+# seules. D'où trois précautions :
+# - chaque action est épinglée par l'empreinte complète de son commit
+#   (l'étiquette reste en commentaire) : une étiquette se déplace, et celui qui
+#   la déplacerait exécuterait son code avec le droit de publier l'image ;
+# - chaque tâche ne reçoit que les droits dont elle a besoin ;
+# - l'image publiée est signée sans clé (Sigstore) par l'identité de ce
+#   workflow, ce qui permet à un exploitant de vérifier qu'elle sort bien d'ici
+#   avant de l'installer (docs/DOCKER.md, « Vérifier la signature »).
+# Pour monter une action de version, relever la nouvelle empreinte avec
+#     git ls-remote https://github.com/<propriétaire>/<action> refs/tags/<étiquette>
 
 on:
   push:
@@ -20,6 +32,9 @@ concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: false
 
+# Aucun droit par défaut : chaque tâche déclare les siens.
+permissions: {}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -34,6 +49,8 @@ jobs:
   # Les éprouver ici coûte une minute et referme ce chemin.
   migrations:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:16-alpine
@@ -52,10 +69,14 @@ jobs:
       DATABASE_URL: postgresql://apel:apel-ci@localhost:5432/apel_manager
     steps:
       - name: Récupérer les sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Le jeton ne reste pas dans .git/config pendant que `npm ci` exécute
+          # les scripts d'installation des dépendances.
+          persist-credentials: false
 
       - name: Préparer Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -76,20 +97,30 @@ jobs:
     needs: migrations
     permissions:
       contents: read
+      # Pousser l'image, puis sa signature, sur GHCR.
       packages: write
+      # Jeton OIDC de GitHub, que Sigstore échange contre un certificat
+      # éphémère au nom de ce workflow : aucune clé de signature à conserver
+      # ni à se faire voler.
+      id-token: write
 
     steps:
       - name: Récupérer les sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Préparer QEMU (construction multi-architecture)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Préparer Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Installer cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: S'authentifier sur GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -97,7 +128,7 @@ jobs:
 
       - name: Calculer les tags et métadonnées
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -112,7 +143,8 @@ jobs:
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Construire et publier
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -125,3 +157,17 @@ jobs:
             APP_BUILD_TIME=${{ steps.build-time.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # La signature porte sur l'empreinte (digest) de ce qui vient d'être
+      # poussé, jamais sur une étiquette : `latest` peut désigner autre chose
+      # une minute plus tard, l'empreinte non. Toutes les étiquettes de cette
+      # publication désignent la même empreinte, une signature les couvre donc
+      # toutes. Le nom d'image est mis en minuscules, comme l'exige le registre
+      # et comme l'a fait metadata-action pour les étiquettes.
+      - name: Signer l'image publiée
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME,,}@${DIGEST}"
+          echo "Signature de ${image}"
+          cosign sign --yes "${image}"
