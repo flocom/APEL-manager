@@ -81,16 +81,13 @@ export async function GET(req: Request) {
   const [association, telegramBotToken, baseUrl] = await Promise.all([
     getAssociationSettings(),
     getTelegramBotToken(),
-    // Une seule base pour tous les liens du passage — rappels, récapitulatif,
-    // logo : un même message ne peut pas mêler lien absolu et lien relatif.
+    // Une seule base pour tous les liens du passage — rappels, récapitulatif :
+    // un même message ne peut pas mêler lien absolu et lien relatif.
     getBaseUrl(),
   ]);
 
   const now = new Date();
-  const notificationIdentity = await getNotificationIdentity(
-    association,
-    baseUrl,
-  );
+  const notificationIdentity = await getNotificationIdentity(association);
   const horizon = new Date(
     now.getTime() +
       association.taskReminderWindowDays * 24 * 60 * 60 * 1000,

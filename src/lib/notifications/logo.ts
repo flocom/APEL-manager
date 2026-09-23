@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { HttpError } from "@/lib/auth/guards";
+import { configuredBaseUrl } from "@/lib/base-url";
 import { readUpload, storedUploadIdFromUrl } from "@/lib/uploads";
 
 /**
@@ -15,14 +16,15 @@ import { readUpload, storedUploadIdFromUrl } from "@/lib/uploads";
  * 2 000 px déborde alors de tout le message. D'où :
  *
  * - une route dédiée (/api/logo-email/…) qui sert le logo configuré en PNG,
- *   réduit au double de sa taille d'affichage pour rester net sur un écran
- *   haute densité sans peser dans la boîte de réception ;
+ *   réduit au plus au double de sa taille d'affichage pour rester net sur un
+ *   écran haute densité sans peser dans la boîte de réception ;
  * - une taille d'affichage calculée ici, depuis les dimensions réelles du
  *   fichier, et écrite en attributs dans le message.
  *
  * Les deux côtés partagent `emailLogoSize`, et le PNG est rendu dans la case
  * exacte des attributs : Outlook, qui s'y tient, étirerait sinon toute image
- * d'une autre proportion.
+ * d'une autre proportion. Ils partagent aussi `emailLogoFile` : le message ne
+ * montre le logo que si la route saura le servir.
  */
 
 export interface EmailLogo {
@@ -52,6 +54,12 @@ const DISPLAY_HEIGHT = 56;
 const DISPLAY_MAX_WIDTH = 240;
 
 /**
+ * Largeur minimale de la case : voir `emailLogoSize`. De quoi écrire le nom de
+ * l'association sur deux ou trois lignes quand les images sont bloquées.
+ */
+const DISPLAY_MIN_WIDTH = 120;
+
+/**
  * Au-delà, l'image n'est pas décodée : un PNG de quelques mégaoctets peut se
  * déplier en gigaoctets de mémoire. 40 millions de pixels, c'est déjà une
  * photo de 7 000 × 5 700 — bien plus qu'aucun logo.
@@ -63,10 +71,13 @@ export const MAX_SOURCE_PIXELS = 40_000_000;
  * elle entre dans l'URL, et les caches (le proxy d'images de Gmail en tête)
  * gardent sinon l'ancienne version pendant un an.
  */
-const RENDER_REVISION = 2;
+const RENDER_REVISION = 3;
 
-/** Taille d'affichage : hauteur fixe, largeur proportionnelle et plafonnée. */
-export function emailLogoSize(source: Dimensions): Dimensions {
+/**
+ * Taille du logo lui-même à l'affichage : hauteur fixe, largeur
+ * proportionnelle et plafonnée.
+ */
+function logoDisplaySize(source: Dimensions): Dimensions {
   // Jamais d'agrandissement : un petit logo étiré devient flou.
   let height = Math.min(DISPLAY_HEIGHT, source.height);
   let width = Math.round((source.width * height) / source.height);
@@ -75,6 +86,23 @@ export function emailLogoSize(source: Dimensions): Dimensions {
     height = Math.round((source.height * width) / source.width);
   }
   return { width: Math.max(1, width), height: Math.max(1, height) };
+}
+
+/**
+ * La case de l'image dans le message : ses attributs `width` et `height`.
+ *
+ * Celle du logo, sauf pour un logo haut et étroit : à 56 px de haut, un écusson
+ * de 200 × 800 ne ferait que 14 px de large — un trait à l'écran, et, images
+ * bloquées, un nom d'association coupé à la deuxième lettre. La case garde
+ * donc une largeur minimale ; le PNG, rendu à sa taille, y place le logo à
+ * gauche et à ses proportions, sur un blanc qui se confond avec la rangée.
+ */
+export function emailLogoSize(source: Dimensions): Dimensions {
+  const logo = logoDisplaySize(source);
+  return {
+    width: Math.min(DISPLAY_MAX_WIDTH, Math.max(logo.width, DISPLAY_MIN_WIDTH)),
+    height: logo.height,
+  };
 }
 
 /**
@@ -272,47 +300,63 @@ function headerDimensions(data: Buffer): Dimensions | null {
   return dimensions;
 }
 
-/** Les dimensions, ou `null` si l'image est illisible ou trop grande. */
-export function imageDimensions(data: Buffer): Dimensions | null {
-  const dimensions = headerDimensions(data);
-  return dimensions && dimensions.width * dimensions.height <= MAX_SOURCE_PIXELS
-    ? dimensions
-    : null;
+type Sharp = typeof import("sharp");
+
+/**
+ * La bibliothèque d'images, chargée une fois pour toutes — ou `null` si son
+ * binaire natif manque à l'installation. Chargée à la demande seulement : elle
+ * n'a rien à faire dans les autres routes. Un binaire absent ne réapparaît pas
+ * sans redémarrage : l'échec est retenu, et signalé une seule fois.
+ */
+let sharpCharge: Promise<Sharp | null> | null = null;
+
+function chargerSharp(): Promise<Sharp | null> {
+  sharpCharge ??= import("sharp").then(
+    (module) => module.default,
+    (error: unknown) => {
+      console.warn(
+        "[logo-email] sharp indisponible, logo non converti :",
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    },
+  );
+  return sharpCharge;
+}
+
+/** Vrai si le logo peut être converti en PNG sur ce serveur. */
+export async function sharpDisponible(): Promise<boolean> {
+  return (await chargerSharp()) !== null;
 }
 
 /**
  * Le PNG servi aux clients de messagerie, ou `null` si la bibliothèque
- * d'images ne se charge pas (binaire natif absent de l'installation). Lève une
- * erreur si le fichier ne se décode pas.
+ * d'images ne se charge pas. Lève une erreur si le fichier ne se décode pas.
  */
 export async function renderEmailLogo(source: {
   data: Buffer;
   contentType: string;
   dimensions: Dimensions;
 }): Promise<Buffer | null> {
-  // Chargé ici seulement : la bibliothèque native n'a rien à faire dans les
-  // autres routes.
-  const sharp = await import("sharp").then(
-    (module) => module.default,
-    (error: unknown) => {
-      console.warn(
-        "[logo-email] sharp indisponible :",
-        error instanceof Error ? error.message : error,
-      );
-      return null;
-    },
-  );
+  const sharp = await chargerSharp();
   if (!sharp) return null;
 
   const box = emailLogoSize(source.dimensions);
-  // Le double de la taille d'affichage, net sur un écran haute densité — sauf
-  // si le fichier est plus petit : l'agrandir le rendrait flou sans rien
-  // apporter.
-  const scale =
-    source.dimensions.width >= box.width * 2 &&
-    source.dimensions.height >= box.height * 2
-      ? 2
-      : 1;
+  const logo = logoDisplaySize(source.dimensions);
+  // Jusqu'au double de la taille d'affichage, net sur un écran haute densité —
+  // mais jamais au-delà de ce que contient le fichier : l'agrandir le rendrait
+  // flou sans rien apporter. Une échelle fractionnaire, pas un choix entre 1
+  // et 2 : un logo de 1,8 fois la taille d'affichage retombait sinon à 1, flou
+  // sur tous les écrans haute densité. Mesurée sur le logo et non sur la case,
+  // plus large pour un logo étroit : c'est lui qu'il faut garder net.
+  const scale = Math.max(
+    1,
+    Math.min(
+      2,
+      source.dimensions.width / logo.width,
+      source.dimensions.height / logo.height,
+    ),
+  );
   let image = sharp(source.data, {
     limitInputPixels: MAX_SOURCE_PIXELS,
     // Un fichier tronqué ou abîmé est refusé ; un simple avertissement du
@@ -325,12 +369,15 @@ export async function renderEmailLogo(source: {
   return (
     image
       .resize({
-        width: box.width * scale,
-        height: box.height * scale,
+        width: Math.round(box.width * scale),
+        height: Math.round(box.height * scale),
         // La case exacte des attributs, et non « au plus » : si le décodeur
         // voyait une autre proportion que l'en-tête, l'image s'y loge avec une
-        // marge blanche au lieu d'être étirée par Outlook.
+        // marge blanche au lieu d'être étirée par Outlook. À gauche, comme le
+        // texte : c'est là que la case plus large qu'un logo étroit met le
+        // blanc.
         fit: "contain",
+        position: "left",
         background: "#ffffff",
       })
       // Posé sur blanc : les logos sont dessinés pour un fond clair. Un client
@@ -370,62 +417,164 @@ export async function brandingLogoProblem(
   return null;
 }
 
+/** Ce que la route sert pour le logo configuré. */
+export interface EmailLogoFile {
+  /**
+   * Les attributs `width` et `height` qui conviennent à ce fichier-ci : la
+   * case du PNG rendu, ou la taille du logo lui-même pour le fichier d'origine.
+   */
+  size: Dimensions;
+  body: Buffer;
+  contentType: string;
+  /**
+   * Vrai pour le PNG rendu, qui peut se garder un an en cache ; faux pour le
+   * fichier d'origine servi faute de sharp, qui doit céder la place au PNG dès
+   * que sharp sera de retour.
+   */
+  definitif: boolean;
+}
+
 /**
- * Le fichier du logo configuré et ses dimensions, ou `null` s'il n'y en a pas
- * d'exploitable. Seul un chemin du scope `branding` est lu : jamais une
- * adresse venue d'ailleurs.
+ * Le fichier du logo configuré, ou `null` s'il n'est pas dans le scope
+ * `branding` ou n'existe plus. Seul ce scope est lu : jamais une adresse venue
+ * d'ailleurs.
  */
-export async function readBrandingLogo(logoUrl: string | null | undefined) {
-  if (!logoUrl) return null;
+async function readBrandingFile(logoUrl: string) {
   const id = storedUploadIdFromUrl(logoUrl, "branding");
   const filename = logoUrl.split("/").pop();
   if (!id || !filename) return null;
-  let file: Awaited<ReturnType<typeof readUpload>>;
   try {
-    file = await readUpload(id, filename);
+    return await readUpload(id, filename);
   } catch (error) {
     if (error instanceof HttpError && error.status === 404) return null;
     throw error;
   }
-  const dimensions = imageDimensions(file.data);
-  return dimensions ? { ...file, dimensions } : null;
+}
+
+async function prepareEmailLogoFile(
+  logoUrl: string,
+): Promise<EmailLogoFile | null> {
+  // Une fois par logo, pas à chaque message : assez pour qu'un administrateur
+  // trouve au journal pourquoi les e-mails partent sans, sans le noyer.
+  const refuser = (motif: string) => {
+    console.warn(
+      `[logo-email] logo configuré écarté des e-mails (${motif}) : ${logoUrl}`,
+    );
+    return null;
+  };
+
+  const source = await readBrandingFile(logoUrl);
+  if (!source) return refuser("fichier introuvable");
+  const dimensions = headerDimensions(source.data);
+  if (!dimensions) return refuser("en-tête illisible, fichier abîmé");
+  if (dimensions.width * dimensions.height > MAX_SOURCE_PIXELS) {
+    return refuser(
+      `${dimensions.width} × ${dimensions.height} pixels, au-delà de la limite de ${MAX_SOURCE_PIXELS / 1_000_000} millions`,
+    );
+  }
+
+  if (!(await sharpDisponible())) {
+    // Sans sharp, un PNG ou un JPEG d'origine s'affiche encore partout — plus
+    // lourd, mais présent. Un WebP, non : Outlook pour Windows n'en montrerait
+    // qu'une case vide.
+    if (source.contentType === "image/webp") {
+      return refuser("WebP, que sharp absent ne peut convertir en PNG");
+    }
+    return {
+      // Pas la case à largeur minimale : ce fichier-là n'a pas de marge
+      // blanche pour la remplir, et Outlook étirerait un écusson étroit à sa
+      // largeur.
+      size: logoDisplaySize(dimensions),
+      body: source.data,
+      contentType: source.contentType,
+      definitif: false,
+    };
+  }
+
+  let rendu: Buffer | null;
+  try {
+    rendu = await renderEmailLogo({ ...source, dimensions });
+  } catch (error) {
+    // Le téléversement refuse ces fichiers ; seul un logo importé avant cette
+    // vérification, ou abîmé depuis sur le disque, peut encore en arriver là.
+    return refuser(
+      `image indécodable : ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!rendu) return refuser("sharp indisponible");
+  return {
+    size: emailLogoSize(dimensions),
+    body: rendu,
+    contentType: "image/png",
+    definitif: true,
+  };
 }
 
 /**
- * Dimensions du logo en cours, gardées d'un envoi à l'autre : une diffusion
- * construit plusieurs messages, et le fichier peut peser jusqu'à la limite
- * des téléversements. Une seule entrée : il n'y a qu'un logo à la fois.
+ * Dernier verdict gardé en mémoire, fichier rendu compris : une diffusion
+ * construit des dizaines de messages, puis fait ouvrir le même logo par
+ * autant de boîtes. Une seule entrée : il n'y a qu'un logo à la fois, et le
+ * fichier d'une adresse donnée ne change pas.
  */
-let memo: { logoUrl: string; dimensions: Dimensions | null } | null = null;
+let memo: { logoUrl: string; file: Promise<EmailLogoFile | null> } | null =
+  null;
+
+/**
+ * Le logo tel que la route le sert, ou `null` si elle ne le servira pas.
+ *
+ * Le message et la route posent la même question, à la même fonction : un
+ * message qui annoncerait un logo que la route refuse ensuite montrerait une
+ * image cassée à chaque ouverture — pour un fichier abîmé que seul le décodage
+ * révèle, ou pour un WebP quand sharp manque.
+ */
+export function emailLogoFile(logoUrl: string): Promise<EmailLogoFile | null> {
+  if (memo?.logoUrl !== logoUrl) {
+    const file = prepareEmailLogoFile(logoUrl);
+    memo = { logoUrl, file };
+    // Une panne de lecture (disque, base) ne dit rien du logo : elle n'est pas
+    // retenue, et le prochain envoi réessaiera.
+    file.catch(() => {
+      if (memo?.file === file) memo = null;
+    });
+  }
+  return memo.file;
+}
+
+/** Retenu pour ne signaler l'absence d'APP_URL qu'une fois. */
+let sansAdresseSignale = false;
 
 /**
  * Le logo à placer en tête des e-mails, ou `null` — auquel cas le message
  * garde l'en-tête d'avant, sans case vide ni image cassée.
  *
- * Il faut un logo configuré *et* une adresse absolue du site : une URL
- * relative ne mène nulle part depuis une boîte de réception.
+ * Il faut un logo configuré *et* l'adresse configurée du site (APP_URL) : une
+ * URL relative ne mène nulle part depuis une boîte de réception, et l'adresse
+ * déduite de la requête n'est pas sûre. Son en-tête Host est choisi par qui
+ * l'envoie : un formulaire public posté avec « Host: attaquant.example »
+ * ferait partir des e-mails dont l'image se charge chez l'attaquant — qui
+ * apprendrait qui les ouvre, et quand —, et le planificateur, qui appelle le
+ * cron par l'adresse interne du conteneur, y mettrait une image cassée.
  */
 export async function emailLogo(
   logoUrl: string | null | undefined,
-  baseUrl: string,
 ): Promise<EmailLogo | null> {
-  if (!logoUrl || !/^https?:\/\/[^/]/i.test(baseUrl)) return null;
-  try {
-    if (memo?.logoUrl !== logoUrl) {
-      const source = await readBrandingLogo(logoUrl);
-      memo = { logoUrl, dimensions: source?.dimensions ?? null };
-      if (!source) {
-        // Une fois par logo, pas à chaque message : assez pour qu'on trouve
-        // pourquoi les e-mails partent sans, sans noyer le journal.
-        console.warn(
-          `[email] logo configuré inutilisable (fichier absent, illisible ou de plus de ${MAX_SOURCE_PIXELS / 1_000_000} millions de pixels), envoi sans logo : ${logoUrl}`,
-        );
-      }
+  if (!logoUrl) return null;
+  const baseUrl = configuredBaseUrl();
+  if (!/^https?:\/\/[^/]/i.test(baseUrl)) {
+    if (!sansAdresseSignale) {
+      sansAdresseSignale = true;
+      console.warn(
+        "[email] APP_URL absente ou invalide : les e-mails partent sans le logo configuré.",
+      );
     }
-    if (!memo.dimensions) return null;
+    return null;
+  }
+  try {
+    const file = await emailLogoFile(logoUrl);
+    if (!file) return null;
     return {
       url: `${baseUrl.replace(/\/+$/, "")}/api/logo-email/${emailLogoVersion(logoUrl)}.png`,
-      ...emailLogoSize(memo.dimensions),
+      ...file.size,
     };
   } catch (error) {
     // Un message sans logo vaut mieux qu'un message qui ne part pas.

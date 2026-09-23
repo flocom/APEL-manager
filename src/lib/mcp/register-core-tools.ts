@@ -1279,7 +1279,7 @@ export function registerCoreTools(
           slotTitle: slot.title,
           location: slot.event.location,
           cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-          identity: await getNotificationIdentity(undefined, baseUrl),
+          identity: await getNotificationIdentity(),
         });
         notified = Boolean(await sendEmail({ to: normalizedEmail, ...mail }));
       }

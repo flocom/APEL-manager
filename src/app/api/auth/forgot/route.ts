@@ -49,9 +49,7 @@ export async function POST(req: Request) {
         const mail = passwordResetEmail({
           name: user.name,
           resetUrl: `${baseUrl}/reset/${token}`,
-          // L'adresse du site est passée telle qu'elle a été lue avant la
-          // réponse : ici, après coup, la requête n'est plus là pour la donner.
-          identity: await getNotificationIdentity(undefined, baseUrl),
+          identity: await getNotificationIdentity(),
         });
         await sendEmail({ to: email, ...mail });
       } catch (err) {

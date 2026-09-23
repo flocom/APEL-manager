@@ -238,7 +238,7 @@ async function envoyerConfirmation({
     location: reunion.location,
     status: statut,
     cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-    identity: await getNotificationIdentity(association, baseUrl),
+    identity: await getNotificationIdentity(association),
   });
   await sendEmail({ to: email, ...mail });
 }
@@ -288,7 +288,7 @@ async function avertirLeBureau({
         location: reunion.location,
         status: statut,
         eventUrl: `${baseUrl}/dashboard/events/${reunion.id}/presences`,
-        identity: await getNotificationIdentity(association, baseUrl),
+        identity: await getNotificationIdentity(association),
       }),
     });
     if (!parti) {

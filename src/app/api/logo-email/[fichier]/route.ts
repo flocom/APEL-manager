@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  emailLogoVersion,
-  readBrandingLogo,
-  renderEmailLogo,
-} from "@/lib/notifications/logo";
+import { emailLogoFile, emailLogoVersion } from "@/lib/notifications/logo";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
 export const runtime = "nodejs";
@@ -20,20 +16,9 @@ type Params = { params: Promise<{ fichier: string }> };
  * *configuré* — le nom du fichier demandé n'est qu'une empreinte, comparée et
  * jamais utilisée comme chemin.
  *
- * Voir lib/notifications/logo.ts pour le pourquoi du PNG et de la taille.
+ * Voir lib/notifications/logo.ts pour le pourquoi du PNG et de la taille, et
+ * pour le rendu gardé en mémoire d'une requête à l'autre.
  */
-
-/**
- * Dernier rendu gardé en mémoire : une diffusion fait ouvrir le même logo par
- * des centaines de boîtes, et chacune le demande.
- */
-let cache: {
-  version: string;
-  body: Buffer;
-  type: string;
-  /** Faux pour le fichier d'origine servi faute de sharp : voir plus bas. */
-  definitif: boolean;
-} | null = null;
 
 function introuvable() {
   // Jamais mis en cache : la même adresse servira dès qu'un logo existera.
@@ -50,53 +35,28 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const { logoUrl } = await getAssociationSettings();
     if (!logoUrl) return introuvable();
-    const version = emailLogoVersion(logoUrl);
     // L'adresse d'un ancien logo ne sert plus rien. Y servir le logo actuel le
     // ferait entrer dans la case d'un autre : les messages déjà envoyés gardent
     // la largeur et la hauteur de l'ancien, et Outlook, qui s'y tient, le
     // déformerait. Ils montrent à la place le nom de l'association.
-    if (fichier !== `${version}.png`) return introuvable();
+    if (fichier !== `${emailLogoVersion(logoUrl)}.png`) return introuvable();
 
-    if (cache?.version !== version) {
-      const source = await readBrandingLogo(logoUrl);
-      if (!source) return introuvable();
-      let rendu: Buffer | null;
-      try {
-        rendu = await renderEmailLogo(source);
-      } catch (error) {
-        // Fichier abîmé : rien à servir, et surtout rien à garder un an en
-        // cache. Le téléversement refuse ces fichiers ; seul un logo importé
-        // avant cette vérification peut encore en arriver là.
-        console.warn(
-          "[logo-email] logo indécodable, non servi :",
-          error instanceof Error ? error.message : error,
-        );
-        return introuvable();
-      }
-      if (rendu) {
-        cache = { version, body: rendu, type: "image/png", definitif: true };
-      } else {
-        // Sans sharp, un PNG ou un JPEG d'origine s'affiche encore partout —
-        // plus lourd, mais présent. Un WebP, non.
-        if (source.contentType === "image/webp") return introuvable();
-        cache = {
-          version,
-          body: source.data,
-          type: source.contentType,
-          definitif: false,
-        };
-      }
-    }
+    // Le verdict même qui a mis le logo dans les messages : un fichier abîmé,
+    // ou un WebP sans sharp, n'y figure pas, et n'est pas servi ici non plus —
+    // encore moins gardé un an en cache.
+    const logo = await emailLogoFile(logoUrl);
+    if (!logo) return introuvable();
 
-    return new NextResponse(new Uint8Array(cache.body), {
+    return new NextResponse(new Uint8Array(logo.body), {
       headers: {
-        "Content-Type": cache.type,
-        "Content-Length": String(cache.body.byteLength),
+        "Content-Type": logo.contentType,
+        "Content-Length": String(logo.body.byteLength),
         "Content-Disposition": "inline",
-        // L'empreinte change avec le logo : le rendu peut se garder un an. Le
-        // fichier d'origine servi en secours, non : il doit céder la place au
-        // PNG dès que sharp sera de retour.
-        "Cache-Control": cache.definitif
+        // L'empreinte change avec le logo : le PNG rendu, décodé puis
+        // réencodé ici, peut se garder un an. Le fichier d'origine servi en
+        // secours, non : il doit céder la place au PNG dès que sharp sera de
+        // retour.
+        "Cache-Control": logo.definitif
           ? "public, max-age=31536000, immutable"
           : "public, max-age=3600",
         "Content-Security-Policy": "default-src 'none'; sandbox",

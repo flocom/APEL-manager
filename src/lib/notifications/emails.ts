@@ -50,7 +50,7 @@ export interface NotificationIdentity {
  * - un texte de remplacement écrit comme le nom du bandeau, en foncé sur le
  *   blanc : Outlook bloque les images par défaut, et c'est alors ce texte, et
  *   non une case vide, qui ouvre le message. Petit à dessein : il s'inscrit
- *   dans la largeur du logo, parfois 56 px pour un logo carré.
+ *   dans la case du logo, qui ne descend jamais sous 120 px de large.
  */
 function rangeeLogo(logo: EmailLogo, associationName: string): string {
   return `

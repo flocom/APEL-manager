@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       getBaseUrl(),
       getAssociationSettings(),
     ]);
-    const identity = await getNotificationIdentity(association, baseUrl);
+    const identity = await getNotificationIdentity(association);
 
     // Confirmation par e-mail (avec lien de désinscription), si un e-mail est
     // fourni. Il l'est désormais toujours, mais la garde ne coûte rien.
