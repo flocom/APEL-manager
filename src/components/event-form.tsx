@@ -15,7 +15,9 @@ import {
   effectiveTicketingKind,
   TICKETING_GENERIC_TITLE,
   TICKETING_KINDS,
+  ticketingAutoChoiceLabel,
   ticketingHostLabel,
+  ticketingKindOrigin,
   ticketingWording,
   type TicketingKind,
 } from "@/lib/ticketing";
@@ -58,6 +60,7 @@ export function EventForm({
     event?.ticketingKind ?? "",
   );
   const usageDetecte = detectTicketingKind(ticketingUrl);
+  const origineUsage = ticketingKindOrigin(usageChoisi || null, ticketingUrl);
   const titreVuParLesFamilles = ticketingWording(
     effectiveTicketingKind(ticketingUrl, usageChoisi || null),
   ).titre;
@@ -355,11 +358,7 @@ export function EventForm({
               }
               aria-describedby="ticketingKind-aide"
             >
-              <option value="">
-                {usageDetecte
-                  ? `Détecter automatiquement (${ticketingWording(usageDetecte).reconnu})`
-                  : "Détecter automatiquement"}
-              </option>
+              <option value="">{ticketingAutoChoiceLabel(usageDetecte)}</option>
               {TICKETING_KINDS.map((usage) => (
                 <option key={usage} value={usage}>
                   {ticketingWording(usage).choix}
@@ -371,7 +370,20 @@ export function EventForm({
               aria-live="polite"
               className="mt-2 text-xs leading-5 text-slate-500"
             >
-              {aideSurUsage(usageChoisi || null, usageDetecte)}{" "}
+              <span
+                className={
+                  origineUsage.contradiction
+                    ? "font-semibold text-coral-800"
+                    : undefined
+                }
+              >
+                {origineUsage.texte}
+              </span>{" "}
+              {/* Hors de la phrase partagée : c'est la liste juste au-dessus
+                  qui permet de choisir, et la carte du tableau de bord n'en a
+                  pas. */}
+              {!usageChoisi && !usageDetecte &&
+                "Choisissez son usage s’il sert à autre chose. "}
               <strong className="font-semibold text-slate-700">
                 Les familles verront «&nbsp;{titreVuParLesFamilles}&nbsp;».
               </strong>
@@ -449,29 +461,6 @@ export function EventForm({
       </div>
     </form>
   );
-}
-
-/**
- * Ce que le formulaire dit de l'usage du lien. L'organisateur voit la
- * détection à l'œuvre sans ouvrir la page publique, et un choix manuel qui
- * contredit l'adresse est signalé : c'est le plus souvent un reste d'un lien
- * précédent.
- */
-function aideSurUsage(
-  choix: TicketingKind | null,
-  detecte: TicketingKind | null,
-): string {
-  if (choix) {
-    return detecte && detecte !== choix
-      ? `Choisi à la main — l’adresse ressemble pourtant à une ${ticketingWording(detecte).reconnu} HelloAsso.`
-      : "Choisi à la main.";
-  }
-  if (detecte) {
-    return `Détecté d’après l’adresse : ${ticketingWording(detecte).reconnu} HelloAsso.`;
-  }
-  // Autre plateforme, page d'un organisme HelloAsso, adresse encore
-  // incomplète : dans tous les cas le lien garde le sens qu'il avait avant.
-  return "L’adresse ne dit pas à quoi sert le lien : il est présenté par défaut comme une billetterie. Choisissez son usage s’il sert à autre chose.";
 }
 
 function FormSection({

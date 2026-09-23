@@ -19,7 +19,11 @@ import { TICKETING_KIND_ICONS } from "@/components/ticketing-kind-icon";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { getAssociationSettings } from "@/lib/services/association-settings";
-import { effectiveTicketingKind, ticketingWording } from "@/lib/ticketing";
+import {
+  effectiveTicketingKind,
+  publicTicketingUrl,
+  ticketingWording,
+} from "@/lib/ticketing";
 
 export const dynamic = "force-dynamic";
 
@@ -239,12 +243,12 @@ export default async function HomePage() {
                   // une fête décommandée enverrait quelqu'un pour rien.
                   const annule = event.cancelledAt !== null;
                   // Le badge dit ce que le lien propose — « Boutique » pour une
-                  // vente de sapins —, avec les mots de la fiche publique.
-                  const usageLien = event.ticketingUrl
-                    ? effectiveTicketingKind(
-                        event.ticketingUrl,
-                        event.ticketingKind,
-                      )
+                  // vente de sapins —, avec les mots de la fiche publique. Et,
+                  // comme elle, rien pour une réunion : « Réunion » à côté de
+                  // « Boutique » promettrait un bandeau que la fiche n'a pas.
+                  const lienEnLigne = publicTicketingUrl(event);
+                  const usageLien = lienEnLigne
+                    ? effectiveTicketingKind(lienEnLigne, event.ticketingKind)
                     : null;
                   const IconeLien = usageLien
                     ? TICKETING_KIND_ICONS[usageLien]
@@ -368,7 +372,7 @@ export default async function HomePage() {
                               ? "En savoir plus"
                               : event.kind === "meeting"
                                 ? "Voir la réunion"
-                                : remaining > 0 && !event.ticketingUrl
+                                : remaining > 0 && !lienEnLigne
                                   ? "Voir et se proposer"
                                   : "Voir l’événement"}
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

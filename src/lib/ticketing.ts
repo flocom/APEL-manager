@@ -255,7 +255,11 @@ interface TicketingKindWording {
   depuisBenevolat: string;
   /** Renvoi quand aucun créneau de bénévolat n'est ouvert. */
   sansCreneau: string;
-  /** Phrase qui précède le lien, une fois un coup de main enregistré. */
+  /**
+   * Phrase qui précède le lien, une fois un coup de main enregistré. Une
+   * phrase complète, jamais « Pour commander : » : le lien qui suit dirait
+   * « Commander sur HelloAsso » une seconde fois.
+   */
   rappel: string;
   /** Texte de ce lien, avant « sur {hôte} ». */
   lienRappel: string;
@@ -302,7 +306,7 @@ const LIBELLES: Record<TicketingKind, TicketingKindWording> = {
     apercu: "commandez en ligne ou donnez un coup de main.",
     depuisBenevolat: `Pour commander, c’est à part : ${cite("Je passe commande")}.`,
     sansCreneau: `La boutique, elle, est déjà ouverte : c’est ${cite("Je passe commande")}.`,
-    rappel: "Pour commander, c’est à part :",
+    rappel: "Votre commande, elle, se fait à part.",
     lienRappel: "Commander",
     choix: "Commander (boutique, vente)",
     reconnu: "boutique",
@@ -321,7 +325,7 @@ const LIBELLES: Record<TicketingKind, TicketingKindWording> = {
     apercu: "faites un don ou proposez-vous comme bénévole.",
     depuisBenevolat: `Pour faire un don, c’est à part : ${cite("Je fais un don")}.`,
     sansCreneau: `Les dons, eux, sont déjà possibles : c’est ${cite("Je fais un don")}.`,
-    rappel: "Pour faire un don, c’est à part :",
+    rappel: "Votre don, lui, se fait à part.",
     lienRappel: "Faire un don",
     choix: "Faire un don (don, collecte)",
     reconnu: "page de don",
@@ -340,7 +344,7 @@ const LIBELLES: Record<TicketingKind, TicketingKindWording> = {
     apercu: "adhérez en ligne ou donnez un coup de main.",
     depuisBenevolat: `Pour adhérer, c’est à part : ${cite("J’adhère")}.`,
     sansCreneau: `L’adhésion, elle, est déjà possible : c’est ${cite("J’adhère")}.`,
-    rappel: "Pour adhérer, c’est à part :",
+    rappel: "Votre adhésion, elle, se fait à part.",
     lienRappel: "Adhérer",
     choix: "Adhérer (adhésion, cotisation)",
     reconnu: "page d’adhésion",
@@ -350,16 +354,18 @@ const LIBELLES: Record<TicketingKind, TicketingKindWording> = {
     badgeCourt: "Paiement en ligne",
     badge: "Paiement en ligne",
     badgeAvecBenevoles: "Paiement et bénévoles",
-    surtitre: "Paiement en ligne",
+    // Pas « Paiement en ligne » : répété sous le badge du même nom, le bandeau
+    // n'aurait rien dit de plus — il nomme la démarche, comme les autres.
+    surtitre: "Participer aux frais",
     titre: "Je règle en ligne",
     verbe: "Payer",
     seFait: "Le paiement se fait",
-    detail: "Vous y voyez ce qu’il y a à régler et payez en ligne.",
+    detail: "Vous y retrouvez le montant à régler et payez directement.",
     hoteParDefaut: "la page de paiement",
     apercu: "réglez en ligne ou donnez un coup de main.",
     depuisBenevolat: `Pour régler en ligne, c’est à part : ${cite("Je règle en ligne")}.`,
     sansCreneau: `Le paiement, lui, est déjà possible : c’est ${cite("Je règle en ligne")}.`,
-    rappel: "Pour régler en ligne, c’est à part :",
+    rappel: "Votre paiement, lui, se fait à part.",
     lienRappel: "Payer",
     choix: "Payer (repas, sortie, participation…)",
     reconnu: "page de paiement",
@@ -391,3 +397,123 @@ export function ticketingWording(kind: TicketingKind, hote?: string | null) {
  * carte du tableau de bord d'un événement qui n'a pas de lien.
  */
 export const TICKETING_GENERIC_TITLE = "Billetterie, boutique ou paiement en ligne";
+
+/**
+ * Libellé de l'option « automatique » sous « Ce lien sert à ». Un mode, pas
+ * un verbe : les autres options complètent la phrase (« Ce lien sert à
+ * commander »), celle-ci ne le peut pas — « sert à détecter
+ * automatiquement », lu par un lecteur d'écran, dirait autre chose.
+ */
+export function ticketingAutoChoiceLabel(detecte: TicketingKind | null): string {
+  return detecte
+    ? `Automatique : ${LIBELLES[detecte].reconnu} (d’après l’adresse)`
+    : "Automatique";
+}
+
+/**
+ * D'où vient l'usage retenu, en une phrase : sous la liste du formulaire et
+ * sur la carte du tableau de bord.
+ *
+ * Un choix manuel qui contredit l'adresse est signalé aux deux endroits. C'est
+ * le plus souvent le reste d'un lien précédent — le choix survit au
+ * remplacement de l'adresse —, et la carte du tableau de bord est celle que
+ * l'organisateur relit : s'il ne l'y voyait pas, il ne le verrait qu'en
+ * rouvrant le formulaire.
+ */
+export function ticketingKindOrigin(
+  choix: TicketingKind | null | undefined,
+  url: string | null | undefined,
+): { texte: string; contradiction: boolean } {
+  const detecte = detectTicketingKind(url);
+  if (choix) {
+    return detecte && detecte !== choix
+      ? {
+          texte: `Usage choisi à la main — l’adresse ressemble pourtant à une ${LIBELLES[detecte].reconnu} HelloAsso.`,
+          contradiction: true,
+        }
+      : { texte: "Usage choisi à la main.", contradiction: false };
+  }
+  if (detecte) {
+    return {
+      texte: `Usage reconnu d’après l’adresse : ${LIBELLES[detecte].reconnu} HelloAsso.`,
+      contradiction: false,
+    };
+  }
+  // Autre plateforme, page d'un organisme HelloAsso, adresse encore
+  // incomplète : dans tous les cas le lien garde le sens qu'il avait avant.
+  return {
+    texte:
+      "L’adresse ne dit pas à quoi sert le lien : il est présenté par défaut comme une billetterie.",
+    contradiction: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quand un événement porte un lien
+// ---------------------------------------------------------------------------
+
+type EventKind = "event" | "meeting";
+
+/**
+ * Le lien à montrer aux familles, ou null.
+ *
+ * Une réunion n'en porte jamais — le formulaire masque le champ, et l'API le
+ * vide (cf. onlineLinkAfter). Mais des réunions enregistrées avant, par un
+ * assistant MCP, en ont gardé un : sans ce garde, la fiche afficherait
+ * « Je passe commande » sous « Réunion de l'association ».
+ *
+ * `trim()` : un espace collé depuis un traitement de texte est truthy, et
+ * afficherait un bouton qui ne mène nulle part.
+ */
+export function publicTicketingUrl(event: {
+  kind: EventKind;
+  ticketingUrl: string | null;
+}): string | null {
+  if (event.kind === "meeting") return null;
+  return event.ticketingUrl?.trim() || null;
+}
+
+interface OnlineLinkState {
+  kind: EventKind;
+  ticketingUrl: string | null;
+  ticketingKind: TicketingKind | null;
+}
+
+const SANS_LIEN: OnlineLinkState = {
+  kind: "event",
+  ticketingUrl: null,
+  ticketingKind: null,
+};
+
+/**
+ * Le lien et son usage tels qu'ils doivent être enregistrés, une fois la
+ * demande appliquée à l'état actuel (`avant`, omis à la création). Dans la
+ * demande, `undefined` veut dire « inchangé ».
+ *
+ * La règle se juge sur l'état final, jamais sur la seule requête. Un usage
+ * envoyé seul, sur un événement sans lien, restait en base et s'appliquait en
+ * silence au prochain lien collé : une boutique annoncée « J'adhère ». Et un
+ * événement passé en réunion par un assistant MCP gardait son lien, que le
+ * formulaire, lui, retire : la même réunion n'avait pas les mêmes données
+ * selon le chemin qui l'avait modifiée.
+ */
+export function onlineLinkAfter(
+  demande: {
+    kind?: EventKind;
+    ticketingUrl?: string | null;
+    ticketingKind?: TicketingKind | null;
+  },
+  avant: OnlineLinkState = SANS_LIEN,
+): { ticketingUrl: string | null; ticketingKind: TicketingKind | null } {
+  const kind = demande.kind ?? avant.kind;
+  const url =
+    demande.ticketingUrl !== undefined ? demande.ticketingUrl : avant.ticketingUrl;
+  if (kind === "meeting" || !url?.trim()) {
+    return { ticketingUrl: null, ticketingKind: null };
+  }
+  const usage =
+    demande.ticketingKind !== undefined
+      ? demande.ticketingKind
+      : avant.ticketingKind;
+  return { ticketingUrl: url, ticketingKind: usage ?? null };
+}

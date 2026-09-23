@@ -42,7 +42,12 @@ import {
 } from "@/lib/services/events";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
-import { effectiveTicketingKind, TICKETING_KINDS } from "@/lib/ticketing";
+import {
+  effectiveTicketingKind,
+  onlineLinkAfter,
+  publicTicketingUrl,
+  TICKETING_KINDS,
+} from "@/lib/ticketing";
 import { generateShareToken, generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import {
@@ -117,7 +122,7 @@ function compteMarque<T extends { id: string; name: string; email: string }>(
 }
 
 const TICKETING_URL_DESCRIPTION =
-  "Lien de paiement en ligne présenté aux familles à côté de l’appel aux bénévoles : billetterie, boutique, collecte, adhésion ou paiement (HelloAsso le plus souvent). null ou \"\" le retire, et retire avec lui ticketingKind.";
+  "Lien de paiement en ligne présenté aux familles à côté de l’appel aux bénévoles : billetterie, boutique, collecte, adhésion ou paiement (HelloAsso le plus souvent). null ou \"\" le retire, et retire avec lui ticketingKind. Sans objet pour une réunion : il est retiré quand kind vaut ou devient meeting.";
 
 /**
  * Les commentaires du schéma ne sortent pas du code : seul `.describe()`
@@ -129,7 +134,7 @@ const ticketingKindInput = z
   .nullable()
   .optional()
   .describe(
-    "Ce que les familles font sur ticketingUrl, qui décide des mots de la page publique : billetterie (« Je réserve ma place »), boutique (« Je passe commande »), don (« Je fais un don »), adhesion (« J’adhère »), paiement (« Je règle en ligne »). null : automatique — déduit de l’adresse HelloAsso (/evenements/, /boutiques/, /collectes/ ou /formulaires/, /adhesions/, /paiements/), sinon billetterie. À ne renseigner que si la déduction se trompe. L’usage retenu se lit dans ticketingKindEffective.",
+    "Ce que les familles font sur ticketingUrl, qui décide des mots de la page publique : billetterie (« Je réserve ma place »), boutique (« Je passe commande »), don (« Je fais un don »), adhesion (« J’adhère »), paiement (« Je règle en ligne »). null : automatique — déduit de l’adresse HelloAsso (/evenements/, /boutiques/, /collectes/ ou /formulaires/, /adhesions/, /paiements/), sinon billetterie. À ne renseigner que si la déduction se trompe. Ignoré tant que l’événement n’a pas de lien (il n’est pas gardé pour le suivant) et pour une réunion. L’usage retenu se lit dans ticketingKindEffective.",
   );
 
 /**
@@ -137,13 +142,16 @@ const ticketingKindInput = z
  * `ticketingKind` ne porte que le choix manuel : un assistant qui lirait `null`
  * conclurait à tort qu'une boutique est affichée comme une billetterie.
  */
-function withTicketingKind<T extends Pick<Event, "ticketingUrl" | "ticketingKind">>(
-  event: T,
-) {
+function withTicketingKind<
+  T extends Pick<Event, "kind" | "ticketingUrl" | "ticketingKind">,
+>(event: T) {
+  // Même garde que la fiche publique : une réunion restée avec un lien ne le
+  // montre pas, et l'assistant doit lire ce que voient les familles.
+  const lien = publicTicketingUrl(event);
   return {
     ...event,
-    ticketingKindEffective: event.ticketingUrl
-      ? effectiveTicketingKind(event.ticketingUrl, event.ticketingKind)
+    ticketingKindEffective: lien
+      ? effectiveTicketingKind(lien, event.ticketingKind)
       : null,
   };
 }
@@ -210,7 +218,7 @@ export function registerCoreTools(
     {
       title: "Lister les événements",
       description:
-        "Liste les événements avec leurs compteurs de tâches et créneaux bénévoles. ticketingKindEffective dit comment le lien en ligne est présenté aux familles (billetterie, boutique, don, adhesion, paiement), null sans lien.",
+        "Liste les événements avec leurs compteurs de tâches et créneaux bénévoles. ticketingKindEffective dit comment le lien en ligne est présenté aux familles (billetterie, boutique, don, adhesion, paiement), null sans lien ou pour une réunion.",
       inputSchema: z.object({
         status: z.enum(["draft", "published", "archived"]).optional(),
         limit: z.number().int().min(1).max(200).default(50),
@@ -286,6 +294,8 @@ export function registerCoreTools(
     async (input) => {
       requireMcpAccess(principal, "mcp:write", "manager");
       const data = eventSchema.parse(input);
+      // Comme le formulaire : pas d'usage sans lien, ni de lien pour une réunion.
+      const lien = onlineLinkAfter(data);
       const [event] = await db
         .insert(events)
         .values({
@@ -293,9 +303,8 @@ export function registerCoreTools(
           title: data.title,
           description: emptyToNull(data.description),
           publicDescription: emptyToNull(data.publicDescription),
-          ticketingUrl: data.ticketingUrl ?? null,
-          // Sans lien, un usage n'a pas d'objet : on ne le garde pas.
-          ticketingKind: data.ticketingUrl ? (data.ticketingKind ?? null) : null,
+          ticketingUrl: lien.ticketingUrl,
+          ticketingKind: lien.ticketingKind,
           location: emptyToNull(data.location),
           startAt: data.startAt,
           endAt: data.endAt ?? null,
@@ -350,12 +359,19 @@ export function registerCoreTools(
         updates.description = emptyToNull(data.description);
       if (data.publicDescription !== undefined)
         updates.publicDescription = emptyToNull(data.publicDescription);
-      if (data.ticketingUrl !== undefined)
-        updates.ticketingUrl = data.ticketingUrl;
-      // Retirer le lien retire aussi son usage, comme dans le formulaire.
-      if (data.ticketingUrl === null) updates.ticketingKind = null;
-      else if (data.ticketingKind !== undefined)
-        updates.ticketingKind = data.ticketingKind;
+      // Jugés sur l'état final, `current` compris : un usage envoyé seul sur
+      // un événement sans lien s'appliquait sinon en silence au prochain lien
+      // collé, et une réunion gardait le lien de l'événement qu'elle était.
+      // L'écriture ne passe que si `current` est toujours la version en base.
+      if (
+        data.kind !== undefined ||
+        data.ticketingUrl !== undefined ||
+        data.ticketingKind !== undefined
+      ) {
+        const lien = onlineLinkAfter(data, current);
+        updates.ticketingUrl = lien.ticketingUrl;
+        updates.ticketingKind = lien.ticketingKind;
+      }
       if (data.location !== undefined)
         updates.location = emptyToNull(data.location);
       if (data.startAt !== undefined) updates.startAt = data.startAt;

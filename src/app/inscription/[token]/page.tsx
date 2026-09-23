@@ -26,6 +26,7 @@ import { getEventByShareToken } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import {
   effectiveTicketingKind,
+  publicTicketingUrl,
   ticketingHostLabel,
   ticketingWording,
 } from "@/lib/ticketing";
@@ -84,7 +85,7 @@ export async function generateMetadata({
   // qui voulaient réserver, commander ou donner. Annulé, il n'appelle plus à
   // rien : « commandez en ligne » sous une fête décommandée ferait payer pour
   // rien.
-  const lienEnLigne = event.ticketingUrl?.trim() || null;
+  const lienEnLigne = publicTicketingUrl(event);
   const action = event.cancelledAt
     ? "annulé, ce rendez-vous n’aura pas lieu."
     : event.kind === "meeting"
@@ -197,10 +198,10 @@ export default async function InscriptionPage({
     (sum, slot) => sum + slot.remaining,
     0,
   );
-  // `trim()` : un espace collé depuis un traitement de texte est truthy, et
-  // afficherait un bouton « Réserver » qui ne mène nulle part.
   const estReunion = event.kind === "meeting";
-  const lienEnLigne = event.ticketingUrl?.trim() || null;
+  // Toujours null pour une réunion, même si un lien est resté en base : le
+  // bandeau, le badge et les renvois en dépendent tous.
+  const lienEnLigne = publicTicketingUrl(event);
   // Billetterie, boutique, collecte… : chaque phrase qui parle du lien vient
   // de la même table, pour que le bandeau, l'appel aux bénévoles et le rappel
   // de fin désignent la même démarche avec les mêmes mots.
@@ -427,22 +428,27 @@ export default async function InscriptionPage({
             <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-brand-950 sm:text-3xl">
               Je donne un coup de main
             </h2>
-            <p className="mb-6 mt-2 text-sm font-medium leading-6 text-slate-600">
-              {lienEnLigne ? (
-                <>
-                  Choisissez une mission et laissez vos coordonnées. Gratuit,
-                  sans compte, en moins d’une minute.{" "}
-                  {libelles.depuisBenevolat}
-                </>
-              ) : (
-                <>
-                  Choisissez une mission et laissez vos coordonnées. Cela prend
-                  moins d’une minute.
-                </>
-              )}
-            </p>
-            {event.volunteerSlots.length === 0 ? (
-              <p className="rounded-xl bg-slate-100 px-4 py-4 text-sm font-medium leading-6 text-slate-600">
+            {/* Seulement s'il y a une mission à choisir. Sans créneau, l'encadré
+                gris dit tout — y compris le renvoi vers le lien, qui
+                apparaissait sinon deux fois de suite. */}
+            {aDesCreneaux && (
+              <p className="mb-6 mt-2 text-sm font-medium leading-6 text-slate-600">
+                {lienEnLigne ? (
+                  <>
+                    Choisissez une mission et laissez vos coordonnées. Gratuit,
+                    sans compte, en moins d’une minute.{" "}
+                    {libelles.depuisBenevolat}
+                  </>
+                ) : (
+                  <>
+                    Choisissez une mission et laissez vos coordonnées. Cela
+                    prend moins d’une minute.
+                  </>
+                )}
+              </p>
+            )}
+            {!aDesCreneaux ? (
+              <p className="mt-4 rounded-xl bg-slate-100 px-4 py-4 text-sm font-medium leading-6 text-slate-600">
                 {lienEnLigne ? (
                   <>
                     Aucun créneau de bénévolat n’est ouvert pour l’instant.{" "}

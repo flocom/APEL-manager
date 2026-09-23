@@ -8,6 +8,7 @@ import {
   Paperclip,
   Pencil,
   Ticket,
+  TriangleAlert,
   UserRoundPlus,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,9 +28,9 @@ import {
 import { toDatetimeLocal } from "@/lib/dates";
 import { listEventAttachments } from "@/lib/services/event-attachments";
 import {
-  detectTicketingKind,
   effectiveTicketingKind,
   TICKETING_GENERIC_TITLE,
+  ticketingKindOrigin,
   ticketingWording,
 } from "@/lib/ticketing";
 
@@ -107,11 +108,12 @@ export default async function ApercuPage({
     : null;
   const libellesLien = usageLien ? ticketingWording(usageLien) : null;
   const IconeLien = usageLien ? TICKETING_KIND_ICONS[usageLien] : Ticket;
-  const origineUsage = event.ticketingKind
-    ? "usage choisi à la main."
-    : detectTicketingKind(event.ticketingUrl)
-      ? "usage reconnu d’après l’adresse HelloAsso."
-      : "usage par défaut, l’adresse ne disant pas à quoi elle sert.";
+  // Même phrase que sous la liste du formulaire, alerte comprise : un choix
+  // manuel qui contredit l'adresse doit se voir ici, où l'on relit.
+  const origineUsage = ticketingKindOrigin(
+    event.ticketingKind,
+    event.ticketingUrl,
+  );
 
   return (
       <div className="space-y-5">
@@ -237,39 +239,51 @@ export default async function ApercuPage({
 
         {/* Lecture seule, et volontairement pas de bouton « copier » : le
             lien qui doit circuler est celui de la page publique, qui porte
-            les deux démarches. */}
-        <div className="mt-5 border-t-2 border-slate-100 pt-5">
-          <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
-            <IconeLien className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
-            {libellesLien ? libellesLien.badge : TICKETING_GENERIC_TITLE}
-          </p>
-          {event.ticketingUrl && libellesLien ? (
-            <>
-              <p className="mt-1 text-sm text-slate-500">
-                Les familles voient «&nbsp;{libellesLien.titre}&nbsp;» —{" "}
-                {origineUsage}
-              </p>
-              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                <span className="break-all">{event.ticketingUrl}</span>
-                <a
-                  href={event.ticketingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer external"
-                  className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-700 underline"
-                >
-                  Vérifier
-                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only"> (ouvre un nouvel onglet)</span>
-                </a>
-              </p>
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-slate-500">
-              Aucun lien : la page publique ne propose que les créneaux de
-              bénévoles.
+            les deux démarches. Rien pour une réunion : elle n'a pas de lien,
+            et le formulaire ne propose pas d'en saisir. */}
+        {event.kind !== "meeting" && (
+          <div className="mt-5 border-t-2 border-slate-100 pt-5">
+            <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
+              <IconeLien className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+              {libellesLien ? libellesLien.badge : TICKETING_GENERIC_TITLE}
             </p>
-          )}
-        </div>
+            {event.ticketingUrl && libellesLien ? (
+              <>
+                <p className="mt-1 text-sm text-slate-500">
+                  Les familles voient «&nbsp;{libellesLien.titre}&nbsp;».
+                  {!origineUsage.contradiction && ` ${origineUsage.texte}`}
+                </p>
+                {origineUsage.contradiction && (
+                  <p className="mt-1 flex items-start gap-1.5 text-sm font-semibold text-coral-800">
+                    <TriangleAlert
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    {origineUsage.texte}
+                  </p>
+                )}
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                  <span className="break-all">{event.ticketingUrl}</span>
+                  <a
+                    href={event.ticketingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer external"
+                    className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-700 underline"
+                  >
+                    Vérifier
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    <span className="sr-only"> (ouvre un nouvel onglet)</span>
+                  </a>
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">
+                Aucun lien : la page publique ne propose que les créneaux de
+                bénévoles.
+              </p>
+            )}
+          </div>
+        )}
       </Card>
       {canManage && (
         <>
