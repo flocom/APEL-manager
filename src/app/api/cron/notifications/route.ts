@@ -19,12 +19,14 @@ import { sendEmail } from "@/lib/notifications/email";
 import {
   dailyDigestEmail,
   volunteerReminderEmail,
+  type NotificationIdentity,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   getAssociationSettings,
   getTelegramBotToken,
 } from "@/lib/services/association-settings";
-import { getBaseUrl } from "@/lib/base-url";
+import { configuredBaseUrl, getBaseUrl } from "@/lib/base-url";
 import { totalDroppedAccountRequests } from "@/lib/labels";
 import {
   accountRequestFormClosed,
@@ -38,6 +40,18 @@ import { cleanupOrphanedUploads } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/**
+ * Une tâche, dans l'onglet « préparation » de son événement — celui qui porte
+ * la check-list —, ancre comprise : le lien tombe sur la tâche elle-même, pas
+ * sur une liste où il faudrait la chercher.
+ */
+function urlTache(
+  baseUrl: string,
+  task: { id: string; event: { id: string } },
+): string {
+  return `${baseUrl}/dashboard/events/${task.event.id}/preparation#tache-${task.id}`;
+}
 
 /**
  * Déclenché par le Cron Vercel (voir vercel.json). Parcourt les tâches non
@@ -64,22 +78,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const [association, telegramBotToken] = await Promise.all([
+  const [association, telegramBotToken, baseUrl] = await Promise.all([
     getAssociationSettings(),
     getTelegramBotToken(),
+    // Une seule base pour tous les liens du passage — rappels, récapitulatif :
+    // un même message ne peut pas mêler lien absolu et lien relatif.
+    getBaseUrl(),
   ]);
-  const appUrl = (
-    process.env.APP_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    ""
-  ).replace(/\/$/, "");
 
   const now = new Date();
-  const notificationIdentity = {
-    associationName: association.associationName,
-    schoolName: association.schoolName,
-    rna: association.rna,
-  };
+  const notificationIdentity = await getNotificationIdentity(association);
   const horizon = new Date(
     now.getTime() +
       association.taskReminderWindowDays * 24 * 60 * 60 * 1000,
@@ -154,7 +162,7 @@ export async function GET(req: Request) {
         eventTitle: c.task.event.title,
         dueAt: c.task.dueAt,
         kind: c.kind,
-        appUrl,
+        taskUrl: urlTache(baseUrl, c.task),
         identity: notificationIdentity,
         telegramBotToken,
       });
@@ -190,7 +198,7 @@ export async function GET(req: Request) {
   // antérieures à cette règle n'en ont pas toujours. Sans ce décompte, le
   // rappel les sautait en silence, et le réglage « prévenir les inscrits »
   // promettait ce qu'il ne tenait pas.
-  const signups = appUrl
+  const signups = configuredBaseUrl()
     ? await db.query.volunteerSignups.findMany({
         where: isNull(volunteerSignups.remindedAt),
         with: { slot: { with: { event: true } } },
@@ -223,8 +231,8 @@ export async function GET(req: Request) {
           slotTitle: s.slot.title,
           location: ev.location,
           cancelUrl: s.cancelToken
-            ? `${appUrl}/annulation/${s.cancelToken}`
-            : appUrl,
+            ? `${baseUrl}/annulation/${s.cancelToken}`
+            : baseUrl,
           identity: notificationIdentity,
         });
         const ok = await sendEmail({ to: s.email as string, ...mail });
@@ -250,7 +258,13 @@ export async function GET(req: Request) {
   // `dueTasks` est réutilisé tel quel : c'est exactement la même sélection
   // (non terminées, échéance dans la fenêtre de rappel) que celle qui vient de
   // servir aux rappels individuels. Une seconde requête dirait la même chose.
-  const digest = await envoyerRecapitulatif(association, now, dueTasks);
+  const digest = await envoyerRecapitulatif(
+    association,
+    notificationIdentity,
+    baseUrl,
+    now,
+    dueTasks,
+  );
 
   // --- Comptes en attente de validation, quel que soit le mode d'avis --------
   // Le récapitulatif les porte déjà quand il part : un second message ne dirait
@@ -347,6 +361,8 @@ async function rappelerComptesEnAttente() {
  */
 async function envoyerRecapitulatif(
   association: Awaited<ReturnType<typeof getAssociationSettings>>,
+  identity: NotificationIdentity,
+  baseUrl: string,
   now: Date,
   dueTasks: {
     id: string;
@@ -461,14 +477,10 @@ async function envoyerRecapitulatif(
     };
   }
 
-  const baseUrl = await getBaseUrl();
-
   const versTache = (t: (typeof dueTasks)[number], retard: boolean) => ({
     titre: t.title,
     evenement: t.event.title,
-    // L'onglet « préparation » est celui qui porte la check-list : le lien
-    // tombe sur la tâche, pas sur la fiche à charge de la chercher.
-    url: `${baseUrl}/dashboard/events/${t.event.id}/preparation`,
+    url: urlTache(baseUrl, t),
     delai: retard ? formatDuree(t.dueAt, now) : formatDuree(now, t.dueAt),
     echeance: formatDateTime(t.dueAt),
     // Le nom d'abord ; l'adresse ne sert que si le compte n'en a pas.
@@ -538,11 +550,7 @@ async function envoyerRecapitulatif(
       },
       rendezVous: [...parRendezVous.values()],
       depuis: formatDateTime(depuis),
-      identity: {
-        associationName: association.associationName,
-        schoolName: association.schoolName,
-        rna: association.rna,
-      },
+      identity,
     }),
   });
 

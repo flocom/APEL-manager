@@ -22,6 +22,7 @@ import {
   pendingAccountNoticeEmail,
   pendingAccountsReminderEmail,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { generateToken, hashToken } from "@/lib/tokens";
 
 import { getAssociationSettings } from "./association-settings";
@@ -96,16 +97,6 @@ const MAX_AVIS_IMMEDIATS_PAR_HEURE = 5;
 const CONSERVATION_REFUS_JOURS = 30;
 
 type Client = Pick<typeof db, "insert">;
-
-function identiteDe(
-  association: Awaited<ReturnType<typeof getAssociationSettings>>,
-) {
-  return {
-    associationName: association.associationName,
-    schoolName: association.schoolName,
-    rna: association.rna,
-  };
-}
 
 /**
  * Compte une demande écartée par un plafond, dans la case de l'heure en cours.
@@ -262,7 +253,7 @@ export async function submitAccountRequest({
         name: compte.name,
         loginUrl: `${baseUrl}/login`,
         forgotUrl: `${baseUrl}/forgot`,
-        identity: identiteDe(association),
+        identity: await getNotificationIdentity(association),
       }),
     });
     if (!parti) {
@@ -290,7 +281,7 @@ export async function submitAccountRequest({
     ...accountRequestEmail({
       confirmUrl: `${baseUrl}/register/${token}`,
       validiteJours: ACCOUNT_REQUEST_VALIDITY_DAYS,
-      identity: identiteDe(association),
+      identity: await getNotificationIdentity(association),
     }),
   });
   if (!parti) {
@@ -501,7 +492,7 @@ export async function notifyBureauOfPendingAccount(compte: {
         email: compte.email,
         enAttente,
         reviewUrl: `${baseUrl}/dashboard/members`,
-        identity: identiteDe(association),
+        identity: await getNotificationIdentity(association),
       }),
     });
     if (!parti) {
@@ -562,7 +553,7 @@ export async function remindBureauOfPendingAccounts(): Promise<{
     enAttente,
     formulaireFerme: accountRequestFormClosed(enAttente),
     reviewUrl: `${baseUrl}/dashboard/members`,
-    identity: identiteDe(association),
+    identity: await getNotificationIdentity(association),
   });
   // Un message par administrateur, jamais un seul à plusieurs : chacun n'a pas
   // à lire l'adresse personnelle des autres.

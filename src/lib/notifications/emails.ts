@@ -1,4 +1,5 @@
 import { APP_NAME } from "@/lib/app-config";
+import type { EmailLogo } from "@/lib/notifications/logo";
 import {
   droppedAccountRequestNotices,
   totalDroppedAccountRequests,
@@ -29,11 +30,41 @@ export interface NotificationIdentity {
   associationName: string;
   schoolName?: string | null;
   rna?: string | null;
+  /** Fourni par `getNotificationIdentity` ; absent, l'en-tête reste sans logo. */
+  logo?: EmailLogo | null;
 }
 
 /**
- * Le document complet : fond coloré, carte blanche de 600 px centrée, bandeau
- * d'en-tête au nom de l'association, contenu, pied de page.
+ * La rangée du logo, au-dessus du bandeau.
+ *
+ * Sur blanc et non sur le bandeau bleu : un logo d'école est dessiné pour un
+ * fond clair, et ses lettres foncées disparaîtraient sur le bleu. Aligné à
+ * gauche, sur le même retrait que le nom de l'association et le titre.
+ *
+ * L'image elle-même suit ce qu'exigent les clients de messagerie :
+ * - `width` et `height` en attributs, les seuls que lit le moteur de Word ;
+ * - en style, la largeur, `max-width:100%` et `height:auto`, pour que les
+ *   autres réduisent le logo en gardant ses proportions si la place manque ;
+ * - `display:block` contre l'espace fantôme sous une image en ligne, `border`
+ *   et `outline` à zéro contre le cadre de certains webmails ;
+ * - un texte de remplacement écrit comme le nom du bandeau, en foncé sur le
+ *   blanc : Outlook bloque les images par défaut, et c'est alors ce texte, et
+ *   non une case vide, qui ouvre le message. Petit à dessein : il s'inscrit
+ *   dans la case du logo, qui ne descend jamais sous 120 px de large.
+ */
+function rangeeLogo(logo: EmailLogo, associationName: string): string {
+  return `
+        <tr>
+          <td bgcolor="${COULEURS.carte}" style="padding:24px 28px 20px;background-color:${COULEURS.carte};border-radius:14px 14px 0 0;">
+            <img src="${esc(logo.url)}" width="${logo.width}" height="${logo.height}" alt="${esc(associationName)}" style="display:block;width:${logo.width}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;font-family:${POLICE};font-size:14px;line-height:20px;font-weight:bold;letter-spacing:0.4px;color:${COULEURS.titre};" />
+          </td>
+        </tr>`;
+}
+
+/**
+ * Le document complet : fond coloré, carte blanche de 600 px centrée, logo de
+ * l'association s'il y en a un, bandeau d'en-tête à son nom, contenu, pied de
+ * page. Sans logo, l'en-tête commence directement par le bandeau.
  *
  * La carte est fluide (`width:100%`) et plafonnée à 600 px : figée à 600 px,
  * elle débordait de l'écran d'un téléphone, qu'il fallait alors balayer
@@ -59,6 +90,7 @@ function layout(
     identity?.schoolName?.trim(),
     identity?.rna?.trim() ? `RNA ${identity.rna.trim()}` : null,
   ].filter((value): value is string => Boolean(value));
+  const logo = identity?.logo;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="fr">
@@ -77,9 +109,9 @@ function layout(
   <tr>
     <td align="center" style="padding:24px 12px;">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COULEURS.carte}" style="width:100%;max-width:600px;margin:0 auto;background-color:${COULEURS.carte};border-radius:14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${COULEURS.carte}" style="width:100%;max-width:600px;margin:0 auto;background-color:${COULEURS.carte};border-radius:14px;">${logo ? rangeeLogo(logo, associationName) : ""}
         <tr>
-          <td bgcolor="${COULEURS.bandeau}" style="padding:16px 28px;background-color:${COULEURS.bandeau};border-radius:14px 14px 0 0;font-family:${POLICE};font-size:14px;line-height:20px;font-weight:bold;color:#ffffff;letter-spacing:0.4px;">${esc(associationName)}</td>
+          <td bgcolor="${COULEURS.bandeau}" style="padding:16px 28px;background-color:${COULEURS.bandeau};${logo ? "" : "border-radius:14px 14px 0 0;"}font-family:${POLICE};font-size:14px;line-height:20px;font-weight:bold;color:#ffffff;letter-spacing:0.4px;">${esc(associationName)}</td>
         </tr>
         <tr>
           <td style="padding:28px 28px 8px;">
@@ -715,6 +747,56 @@ export function volunteerReminderEmail(ctx: VolunteerCtx): EmailContent {
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},\n\nRappel : bénévole pour ${ctx.eventTitle} (${ctx.eventDate}), créneau ${ctx.slotTitle}.\nMe désinscrire : ${ctx.cancelUrl}`,
+  };
+}
+
+/**
+ * Le rappel d'une tâche à la personne qui en a la charge.
+ *
+ * Il était jusqu'ici mis en page à part, dans un `<div>` que le moteur de Word
+ * rend mal, et restait le seul message sans l'en-tête de l'association.
+ *
+ * Le lien mène à la tâche elle-même, dans la check-list de son événement, et
+ * non à la liste « Mes tâches » : le message parle d'une tâche précise, c'est
+ * elle qu'on veut trouver en cliquant.
+ */
+export function taskDueEmail(ctx: {
+  name: string;
+  taskTitle: string;
+  eventTitle: string;
+  /** Date de traitement, déjà mise en forme. */
+  due: string;
+  kind: "reminder" | "overdue";
+  taskUrl: string;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const heading =
+    ctx.kind === "overdue"
+      ? `⏰ Tâche à traiter maintenant : ${ctx.taskTitle}`
+      : `🔔 Tâche bientôt à traiter : ${ctx.taskTitle}`;
+  const tache = esc(ctx.taskTitle);
+  const evenement = esc(ctx.eventTitle);
+  const htmlIntro =
+    ctx.kind === "overdue"
+      ? `La tâche « <strong>${tache}</strong> » pour l'événement « <strong>${evenement}</strong> » est à traiter <strong>à partir de maintenant</strong> (date de traitement : ${ctx.due}).`
+      : `La tâche « <strong>${tache}</strong> » pour l'événement « <strong>${evenement}</strong> » pourra être traitée à partir du <strong>${ctx.due}</strong>.`;
+  const textIntro =
+    ctx.kind === "overdue"
+      ? `La tâche « ${ctx.taskTitle} » pour l'événement « ${ctx.eventTitle} » est à traiter à partir de maintenant (date de traitement : ${ctx.due}).`
+      : `La tâche « ${ctx.taskTitle} » pour l'événement « ${ctx.eventTitle} » pourra être traitée à partir du ${ctx.due}.`;
+  return {
+    subject: heading,
+    html: layout(
+      esc(heading),
+      ctx.kind === "overdue"
+        ? `${ctx.eventTitle} — à traiter dès maintenant.`
+        : `${ctx.eventTitle} — à traiter à partir du ${ctx.due}.`,
+      `${p(`Bonjour ${esc(ctx.name)},`)}
+       ${p(htmlIntro)}
+       ${bouton(ctx.taskUrl, "Voir la tâche")}`,
+      ctx.identity,
+    ),
+    text: `${heading}\n\nBonjour ${ctx.name},\n${textIntro}\n\nVoir la tâche : ${ctx.taskUrl}`,
   };
 }
 

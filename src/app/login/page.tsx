@@ -3,31 +3,10 @@ import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth-shell";
 import { LoginForm } from "@/components/auth-forms";
+import { safeNextPath } from "@/lib/auth/return-path";
 import { getCurrentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
-
-function safeNextPath(value: string | string[] | undefined): string {
-  if (
-    typeof value !== "string" ||
-    value.length > 4_096 ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    value.includes("\\") ||
-    /[\u0000-\u001f\u007f]/.test(value)
-  ) {
-    return "/dashboard";
-  }
-
-  try {
-    const base = new URL("https://apel.local");
-    const parsed = new URL(value, base);
-    if (parsed.origin !== base.origin) return "/dashboard";
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return "/dashboard";
-  }
-}
 
 export default async function LoginPage({
   searchParams,

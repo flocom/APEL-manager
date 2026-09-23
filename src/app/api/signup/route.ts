@@ -14,6 +14,7 @@ import {
   volunteerConfirmationEmail,
   volunteerSignupNoticeEmail,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -129,11 +130,7 @@ export async function POST(req: Request) {
       getBaseUrl(),
       getAssociationSettings(),
     ]);
-    const identity = {
-      associationName: association.associationName,
-      schoolName: association.schoolName,
-      rna: association.rna,
-    };
+    const identity = await getNotificationIdentity(association);
 
     // Confirmation par e-mail (avec lien de désinscription), si un e-mail est
     // fourni. Il l'est désormais toujours, mais la garde ne coûte rien.

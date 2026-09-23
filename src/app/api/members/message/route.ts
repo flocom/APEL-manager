@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
-import { getAssociationSettings } from "@/lib/services/association-settings";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { messageSchema } from "@/lib/validation";
 
 export async function POST(req: Request) {
@@ -27,16 +27,11 @@ export async function POST(req: Request) {
       throw new HttpError(400, "Aucun membre à contacter.");
     }
 
-    const association = await getAssociationSettings();
     const mail = broadcastEmail({
       subject,
       message,
       senderName: sender.name,
-      identity: {
-        associationName: association.associationName,
-        schoolName: association.schoolName,
-        rna: association.rna,
-      },
+      identity: await getNotificationIdentity(),
     });
     const sent = await sendBulkEmail(recipients, mail);
 

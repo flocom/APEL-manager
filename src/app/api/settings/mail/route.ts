@@ -4,7 +4,7 @@ import { z } from "zod";
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { sendEmail } from "@/lib/notifications/email";
 import { mailSettingsTestEmail } from "@/lib/notifications/emails";
-import { getAssociationSettings } from "@/lib/services/association-settings";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { webAuditActor } from "@/lib/services/audit";
 import {
   getOutboundMailStatus,
@@ -48,12 +48,7 @@ export async function POST(req: Request) {
       })
       .parse(body);
     const actor = webAuditActor(user.id, req);
-    const association = await getAssociationSettings();
-    const mail = mailSettingsTestEmail({
-      associationName: association.associationName,
-      schoolName: association.schoolName,
-      rna: association.rna,
-    });
+    const mail = mailSettingsTestEmail(await getNotificationIdentity());
     const sent = await sendEmail({
       to: testEmail,
       ...mail,

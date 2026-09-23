@@ -29,6 +29,7 @@ import {
   broadcastEmail,
   volunteerConfirmationEmail,
 } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   createEventAttachment,
   deleteEventAttachment,
@@ -1278,11 +1279,7 @@ export function registerCoreTools(
           slotTitle: slot.title,
           location: slot.event.location,
           cancelUrl: `${baseUrl}/annulation/${cancelToken}`,
-          identity: {
-            associationName: association.associationName,
-            schoolName: association.schoolName,
-            rna: association.rna,
-          },
+          identity: await getNotificationIdentity(),
         });
         notified = Boolean(await sendEmail({ to: normalizedEmail, ...mail }));
       }
@@ -1337,11 +1334,7 @@ export function registerCoreTools(
         subject,
         message,
         senderName: principal.name,
-        identity: {
-          associationName: association.associationName,
-          schoolName: association.schoolName,
-          rna: association.rna,
-        },
+        identity: await getNotificationIdentity(),
       });
       const sent = await sendBulkEmail(recipients, mail);
 
@@ -1402,11 +1395,7 @@ export function registerCoreTools(
         subject,
         message,
         senderName: principal.name,
-        identity: {
-          associationName: association.associationName,
-          schoolName: association.schoolName,
-          rna: association.rna,
-        },
+        identity: await getNotificationIdentity(),
       });
       const sent = await sendBulkEmail(recipients, mail);
 

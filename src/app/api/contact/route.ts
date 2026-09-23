@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError } from "@/lib/auth/guards";
 import { sendEmail } from "@/lib/notifications/email";
 import { familyMessageEmail } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   getAssociationSettings,
   getRecaptchaRuntimeConfig,
@@ -60,11 +61,7 @@ export async function POST(req: Request) {
         schoolClass: data.schoolClass,
         topic: data.topic,
         message: data.message,
-        identity: {
-          associationName: settings.associationName,
-          schoolName: settings.schoolName,
-          rna: settings.rna,
-        },
+        identity: await getNotificationIdentity(settings),
       }),
     });
 

@@ -5,6 +5,7 @@ import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { getBaseUrl } from "@/lib/base-url";
 import { sendEmail } from "@/lib/notifications/email";
 import { accountApprovedEmail } from "@/lib/notifications/emails";
+import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import { webAuditActor } from "@/lib/services/audit";
 import {
@@ -37,11 +38,7 @@ export async function POST(req: Request, { params }: Params) {
           ...accountApprovedEmail({
             name: approved.name,
             loginUrl: `${baseUrl}/login`,
-            identity: {
-              associationName: association.associationName,
-              schoolName: association.schoolName,
-              rna: association.rna,
-            },
+            identity: await getNotificationIdentity(association),
           }),
         });
         if (!parti) {

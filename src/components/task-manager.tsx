@@ -129,6 +129,55 @@ export function TaskManager({
     setOrderVersion(eventVersion);
   }, [eventVersion, tasks]);
 
+  // Les rappels envoyés par e-mail visent une tâche (#tache-…). Le navigateur
+  // n'y descend pas seul : la check-list arrive en streaming, après qu'il a
+  // cherché l'ancre, et le retour de la page de connexion est une navigation
+  // côté client, où il ne la cherche pas du tout. Mesuré : la tâche restait
+  // 2 000 px plus bas sur un téléphone.
+  //
+  // Un seul défilement ne suffit pas : ce qui s'affiche au-dessus après coup
+  // repousse la tâche vers le bas. Le bandeau des notifications push, en tête
+  // du tableau de bord, attend la réponse du service worker et arrive souvent
+  // juste après : mesuré, la tâche finissait 124 px trop bas trois fois sur
+  // quatre. On la recale donc pendant une seconde, à chaque image, si elle a
+  // bougé — et plus du tout dès que le membre fait défiler, touche l'écran ou
+  // presse une touche : la page est alors à lui.
+  useEffect(() => {
+    const ancre = window.location.hash.slice(1);
+    if (!ancre.startsWith("tache-")) return;
+    const cible = document.getElementById(ancre);
+    if (!cible) return;
+    // Sans l'animation que le site donne au défilement : chaque recalage la
+    // relancerait, et la tâche glisserait encore quand on la mesure.
+    const aligner = () =>
+      cible.scrollIntoView({ block: "start", behavior: "instant" });
+    aligner();
+
+    let position = cible.getBoundingClientRect().top;
+    const fin = performance.now() + 1000;
+    let image = requestAnimationFrame(function suivre(maintenant) {
+      const top = cible.getBoundingClientRect().top;
+      if (Math.abs(top - position) > 1) {
+        aligner();
+        position = cible.getBoundingClientRect().top;
+      }
+      if (maintenant < fin) image = requestAnimationFrame(suivre);
+      else arreter();
+    });
+
+    const gestes = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    function arreter() {
+      cancelAnimationFrame(image);
+      for (const geste of gestes) {
+        window.removeEventListener(geste, arreter, true);
+      }
+    }
+    for (const geste of gestes) {
+      window.addEventListener(geste, arreter, { capture: true, passive: true });
+    }
+    return arreter;
+  }, []);
+
   // --- Formulaire d'ajout ---------------------------------------------------
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState("");
@@ -535,6 +584,10 @@ export function TaskManager({
             return (
               <li
                 key={task.id}
+                // Cible des liens envoyés par e-mail (rappel, récapitulatif) :
+                // ils tombent sur la tâche, pas en haut de la check-list. La
+                // marge garde la tâche visible sous la barre fixe du mobile.
+                id={`tache-${task.id}`}
                 onDragOver={
                   canManage
                     ? (event) => targetDuringDrag(event, task.id)
@@ -546,7 +599,7 @@ export function TaskManager({
                     : undefined
                 }
                 className={cn(
-                  "relative p-4 transition-[background-color,opacity]",
+                  "relative scroll-mt-24 p-4 transition-[background-color,opacity] lg:scroll-mt-6",
                   isDragging && "bg-brand-50/70 opacity-45",
                   isDropTarget && "bg-brand-50/40",
                 )}
