@@ -6,7 +6,6 @@ import {
   ExternalLink,
   Hand,
   MapPin,
-  Ticket,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -15,6 +14,7 @@ import { FormattedText } from "@/components/formatted-text";
 import { MeetingAttendanceForm } from "@/components/meeting-attendance-form";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { TICKETING_KIND_ICONS } from "@/components/ticketing-kind-icon";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import {
   VolunteerSignupForm,
@@ -24,7 +24,11 @@ import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getEventByShareToken } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
-import { ticketingHostLabel } from "@/lib/ticketing";
+import {
+  effectiveTicketingKind,
+  ticketingHostLabel,
+  ticketingWording,
+} from "@/lib/ticketing";
 
 export const dynamic = "force-dynamic";
 
@@ -77,12 +81,18 @@ export async function generateMetadata({
   }
   // Ce texte est l'aperçu affiché quand le lien circule dans un groupe de
   // classe : n'annoncer que le bénévolat ferait manquer la page aux familles
-  // qui voulaient réserver.
-  const action =
-    event.kind === "meeting"
+  // qui voulaient réserver, commander ou donner. Annulé, il n'appelle plus à
+  // rien : « commandez en ligne » sous une fête décommandée ferait payer pour
+  // rien.
+  const lienEnLigne = event.ticketingUrl?.trim() || null;
+  const action = event.cancelledAt
+    ? "annulé, ce rendez-vous n’aura pas lieu."
+    : event.kind === "meeting"
       ? "dites-nous si vous venez."
-      : event.ticketingUrl
-        ? "réservez votre place ou donnez un coup de main."
+      : lienEnLigne
+        ? ticketingWording(
+            effectiveTicketingKind(lienEnLigne, event.ticketingKind),
+          ).apercu
         : "proposez-vous comme bénévole.";
   const desc = `${formatDateTime(event.startAt)}${
     event.location ? ` · ${event.location}` : ""
@@ -190,8 +200,13 @@ export default async function InscriptionPage({
   // `trim()` : un espace collé depuis un traitement de texte est truthy, et
   // afficherait un bouton « Réserver » qui ne mène nulle part.
   const estReunion = event.kind === "meeting";
-  const billetterie = event.ticketingUrl?.trim() || null;
-  const hote = ticketingHostLabel(billetterie) ?? "la billetterie en ligne";
+  const lienEnLigne = event.ticketingUrl?.trim() || null;
+  // Billetterie, boutique, collecte… : chaque phrase qui parle du lien vient
+  // de la même table, pour que le bandeau, l'appel aux bénévoles et le rappel
+  // de fin désignent la même démarche avec les mêmes mots.
+  const usage = effectiveTicketingKind(lienEnLigne, event.ticketingKind);
+  const libelles = ticketingWording(usage, ticketingHostLabel(lienEnLigne));
+  const IconeLien = TICKETING_KIND_ICONS[usage];
   const aDesCreneaux = event.volunteerSlots.length > 0;
 
   return (
@@ -215,12 +230,12 @@ export default async function InscriptionPage({
             <div
               aria-hidden="true"
               className={`absolute bottom-8 right-8 h-3 w-20 -rotate-6 rounded-sm ${
-                billetterie ? "bg-brand-800" : "bg-sea-500"
+                lienEnLigne ? "bg-brand-800" : "bg-sea-500"
               }`}
             />
 
             {/* Le padding est porté ici, et non par l'aside : c'est ce qui
-                permet au bandeau de billetterie de le déborder en -mx-6. */}
+                permet au bandeau du lien en ligne de le déborder en -mx-6. */}
             <div className="relative p-6 sm:p-8">
               <span className="inline-flex items-center gap-2 rounded-lg bg-sea-200 px-3 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-brand-950">
                 {estReunion ? (
@@ -228,10 +243,10 @@ export default async function InscriptionPage({
                     <Users className="h-4 w-4" />
                     Réunion de l’association
                   </>
-                ) : billetterie ? (
+                ) : lienEnLigne ? (
                   <>
-                    <Ticket className="h-4 w-4" />
-                    {aDesCreneaux ? "Billetterie et bénévoles" : "Billetterie en ligne"}
+                    <IconeLien className="h-4 w-4" />
+                    {aDesCreneaux ? libelles.badgeAvecBenevoles : libelles.badge}
                   </>
                 ) : (
                   <>
@@ -275,39 +290,38 @@ export default async function InscriptionPage({
                 )}
               </div>
 
-              {/* Venir et aider sont deux démarches distinctes : elles sont
-                  séparées par le contenant — bande turquoise traversante d'un
-                  côté, carte blanche du formulaire de l'autre — et non par la
-                  couleur d'un bouton, qui ne survivrait ni au daltonisme ni au
-                  niveau de gris. La bande est ici, avant la description : sa
-                  position ne dépend donc pas de la longueur du texte saisi. */}
-              {billetterie && (
+              {/* Venir (ou commander, donner…) et aider sont deux démarches
+                  distinctes : elles sont séparées par le contenant — bande
+                  turquoise traversante d'un côté, carte blanche du formulaire
+                  de l'autre — et non par la couleur d'un bouton, qui ne
+                  survivrait ni au daltonisme ni au niveau de gris. La bande est
+                  ici, avant la description : sa position ne dépend donc pas de
+                  la longueur du texte saisi. */}
+              {lienEnLigne && (
                 <section
-                  aria-labelledby="billetterie-titre"
+                  aria-labelledby="lien-en-ligne-titre"
                   className="-mx-6 mt-6 border-y-2 border-sea-500 bg-sea-300 px-6 py-4 sm:-mx-8 sm:mt-7 sm:px-8 sm:py-5"
                 >
                   <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-sea-800">
-                    Venir à l’événement
+                    {libelles.surtitre}
                   </p>
                   <h2
-                    id="billetterie-titre"
+                    id="lien-en-ligne-titre"
                     className="mt-1.5 text-xl font-black tracking-[-0.03em] text-brand-950 sm:text-2xl"
                   >
-                    Je réserve ma place
+                    {libelles.titre}
                   </h2>
                   <p className="mt-2 text-sm font-semibold leading-6 text-brand-900">
-                    La réservation se fait sur {hote}, la plateforme utilisée par
-                    l’association. Vous y choisissez vos places et réglez en
-                    ligne s’il y a un tarif.
+                    {libelles.explication}
                   </p>
                   <a
-                    href={billetterie}
+                    href={lienEnLigne}
                     target="_blank"
                     rel="noopener noreferrer external"
                     className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-950 px-5 py-3 text-center text-sm font-extrabold text-white transition-colors hover:bg-brand-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-950 focus-visible:ring-offset-2 focus-visible:ring-offset-sea-300 sm:w-auto"
                   >
-                    <Ticket className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span>Réserver sur {hote}</span>
+                    <IconeLien className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{libelles.bouton}</span>
                     <ExternalLink
                       className="h-4 w-4 shrink-0 opacity-70"
                       aria-hidden="true"
@@ -315,12 +329,12 @@ export default async function InscriptionPage({
                     <span className="sr-only"> (ouvre un nouvel onglet)</span>
                   </a>
                   <p className="mt-3 text-xs font-medium leading-5 text-sea-900">
-                    Vous quittez le site de l’association. {hote} vous enverra
-                    votre confirmation : elle n’apparaîtra pas sur cette page.
+                    Vous quittez le site de l’association. {libelles.hote} vous
+                    enverra votre confirmation : elle n’apparaîtra pas sur cette
+                    page.
                   </p>
                   <p className="mt-2 text-xs font-semibold leading-5 text-brand-900">
-                    Réserver ne vous inscrit pas comme bénévole : ce sont deux
-                    démarches indépendantes.
+                    {libelles.independance}
                   </p>
                 </section>
               )}
@@ -329,14 +343,14 @@ export default async function InscriptionPage({
                 <FormattedText
                   text={event.publicDescription}
                   className={`text-sm font-medium leading-6 text-brand-100 ${
-                    billetterie
+                    lienEnLigne
                       ? "mt-6"
                       : "mt-7 border-t-2 border-brand-800 pt-6"
                   }`}
                 />
               )}
 
-              {/* Sans ce garde, un événement à billetterie seule afficherait
+              {/* Sans ce garde, un événement au seul lien en ligne afficherait
                   « 0 coup de main » à côté du bouton « Réserver » : le parent
                   lit « complet » et referme. */}
               {aDesCreneaux && !estReunion && (
@@ -414,12 +428,11 @@ export default async function InscriptionPage({
               Je donne un coup de main
             </h2>
             <p className="mb-6 mt-2 text-sm font-medium leading-6 text-slate-600">
-              {billetterie ? (
+              {lienEnLigne ? (
                 <>
                   Choisissez une mission et laissez vos coordonnées. Gratuit,
-                  sans compte, en moins d’une minute. Cela ne réserve pas votre
-                  place à l’événement — pour venir, c’est «&nbsp;Je réserve ma
-                  place&nbsp;».
+                  sans compte, en moins d’une minute.{" "}
+                  {libelles.depuisBenevolat}
                 </>
               ) : (
                 <>
@@ -430,11 +443,10 @@ export default async function InscriptionPage({
             </p>
             {event.volunteerSlots.length === 0 ? (
               <p className="rounded-xl bg-slate-100 px-4 py-4 text-sm font-medium leading-6 text-slate-600">
-                {billetterie ? (
+                {lienEnLigne ? (
                   <>
-                    Aucun créneau de bénévolat n’est ouvert pour l’instant.
-                    Votre réservation, elle, est déjà possible : c’est «&nbsp;Je
-                    réserve ma place&nbsp;».
+                    Aucun créneau de bénévolat n’est ouvert pour l’instant.{" "}
+                    {libelles.sansCreneau}
                   </>
                 ) : (
                   <>
@@ -453,8 +465,9 @@ export default async function InscriptionPage({
                 defaultName={currentUser?.name ?? ""}
                 defaultEmail={currentUser?.email ?? ""}
                 whatsappGroupUrl={association.whatsappGroupUrl}
-                ticketingUrl={billetterie}
-                ticketingHost={hote}
+                ticketingUrl={lienEnLigne}
+                ticketingKind={usage}
+                ticketingHost={libelles.hote}
               />
             )}
           </section>

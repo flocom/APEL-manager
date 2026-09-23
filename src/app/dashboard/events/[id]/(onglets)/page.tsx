@@ -17,6 +17,7 @@ import { EventAttachmentsManager } from "@/components/event-attachments-manager"
 import { OverviewLink, SectionHeading } from "@/components/event-detail";
 import { EventReuseActions } from "@/components/event-reuse-actions";
 import { FormattedText } from "@/components/formatted-text";
+import { TICKETING_KIND_ICONS } from "@/components/ticketing-kind-icon";
 import { buttonClasses, Card } from "@/components/ui";
 import { canManageEvents, requireUser } from "@/lib/auth/rbac";
 import {
@@ -25,6 +26,12 @@ import {
 } from "@/lib/data";
 import { toDatetimeLocal } from "@/lib/dates";
 import { listEventAttachments } from "@/lib/services/event-attachments";
+import {
+  detectTicketingKind,
+  effectiveTicketingKind,
+  TICKETING_GENERIC_TITLE,
+  ticketingWording,
+} from "@/lib/ticketing";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +98,20 @@ export default async function ApercuPage({
   const tasksToStart = event.tasks.filter(
     (task) => task.status !== "done" && task.dueAt <= new Date(),
   ).length;
+
+  // La carte porte le nom que voient les familles — « Boutique en ligne » —
+  // et dit d'où il vient : un organisateur qui lit « Billetterie » sous sa
+  // vente de sapins sait qu'il doit corriger l'usage dans le formulaire.
+  const usageLien = event.ticketingUrl
+    ? effectiveTicketingKind(event.ticketingUrl, event.ticketingKind)
+    : null;
+  const libellesLien = usageLien ? ticketingWording(usageLien) : null;
+  const IconeLien = usageLien ? TICKETING_KIND_ICONS[usageLien] : Ticket;
+  const origineUsage = event.ticketingKind
+    ? "usage choisi à la main."
+    : detectTicketingKind(event.ticketingUrl)
+      ? "usage reconnu d’après l’adresse HelloAsso."
+      : "usage par défaut, l’adresse ne disant pas à quoi elle sert.";
 
   return (
       <div className="space-y-5">
@@ -219,26 +240,32 @@ export default async function ApercuPage({
             les deux démarches. */}
         <div className="mt-5 border-t-2 border-slate-100 pt-5">
           <p className="flex items-center gap-2 text-sm font-bold text-slate-700">
-            <Ticket className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
-            Billetterie en ligne
+            <IconeLien className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            {libellesLien ? libellesLien.badge : TICKETING_GENERIC_TITLE}
           </p>
-          {event.ticketingUrl ? (
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-              <span className="break-all">{event.ticketingUrl}</span>
-              <a
-                href={event.ticketingUrl}
-                target="_blank"
-                rel="noopener noreferrer external"
-                className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-700 underline"
-              >
-                Vérifier
-                <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only"> (ouvre un nouvel onglet)</span>
-              </a>
-            </p>
+          {event.ticketingUrl && libellesLien ? (
+            <>
+              <p className="mt-1 text-sm text-slate-500">
+                Les familles voient «&nbsp;{libellesLien.titre}&nbsp;» —{" "}
+                {origineUsage}
+              </p>
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                <span className="break-all">{event.ticketingUrl}</span>
+                <a
+                  href={event.ticketingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer external"
+                  className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-700 underline"
+                >
+                  Vérifier
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only"> (ouvre un nouvel onglet)</span>
+                </a>
+              </p>
+            </>
           ) : (
             <p className="mt-2 text-sm text-slate-500">
-              Aucune : la page publique ne propose que les créneaux de
+              Aucun lien : la page publique ne propose que les créneaux de
               bénévoles.
             </p>
           )}

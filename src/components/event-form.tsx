@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock, PartyPopper, Ticket, Users } from "lucide-react";
+import { Globe, Link2, Lock, PartyPopper, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
@@ -9,7 +9,16 @@ import { Button, Input, Label, Select } from "@/components/ui";
 import { ApiError, api } from "@/lib/client";
 import { toDatetimeLocal } from "@/lib/dates";
 import type { Event } from "@/lib/db/schema";
-import { checkTicketingUrl, ticketingHostLabel } from "@/lib/ticketing";
+import {
+  checkTicketingUrl,
+  detectTicketingKind,
+  effectiveTicketingKind,
+  TICKETING_GENERIC_TITLE,
+  TICKETING_KINDS,
+  ticketingHostLabel,
+  ticketingWording,
+  type TicketingKind,
+} from "@/lib/ticketing";
 import { useMutationError } from "@/lib/use-mutation-error";
 
 export function EventForm({
@@ -38,10 +47,20 @@ export function EventForm({
   const estReunion = kind === "meeting";
   const [erreurBilletterie, setErreurBilletterie] = useState<string | null>(null);
   const verdictBilletterie = checkTicketingUrl(ticketingUrl);
-  // Sert à prévenir sans bloquer quand la billetterie n'est pas HelloAsso.
+  // Sert à prévenir sans bloquer quand le lien n'est pas HelloAsso.
   const hoteBilletterie = verdictBilletterie.ok
     ? ticketingHostLabel(verdictBilletterie.url)
     : null;
+  // "" : automatique. Le choix manuel n'existe que pour corriger la détection,
+  // et la détection se refait à chaque frappe : coller un autre lien suffit à
+  // changer les mots de la page publique, sans repasser par cette liste.
+  const [usageChoisi, setUsageChoisi] = useState<TicketingKind | "">(
+    event?.ticketingKind ?? "",
+  );
+  const usageDetecte = detectTicketingKind(ticketingUrl);
+  const titreVuParLesFamilles = ticketingWording(
+    effectiveTicketingKind(ticketingUrl, usageChoisi || null),
+  ).titre;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -65,6 +84,9 @@ export function EventForm({
       description,
       publicDescription,
       ticketingUrl: estReunion ? null : billetterie.url,
+      // Sans lien, pas d'usage : l'API le viderait de toute façon.
+      ticketingKind:
+        estReunion || !billetterie.url ? null : usageChoisi || null,
       location: form.get("location"),
       startAt: form.get("startAt"),
       endAt: endRaw ? endRaw : null,
@@ -266,21 +288,22 @@ export function EventForm({
       <FormSection
         number="3"
         hidden={estReunion}
-        title="Billetterie en ligne"
-        description="Si les familles doivent réserver ou payer leur place, collez ici le lien de votre billetterie. Sinon, laissez vide."
+        title={TICKETING_GENERIC_TITLE}
+        description="Si les familles doivent réserver, commander, donner ou payer en ligne, collez ici le lien de votre page HelloAsso ou d’une autre plateforme. Sinon, laissez vide."
       >
         <div>
           <div className="flex items-center gap-2">
-            <Ticket className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+            <Link2 className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
             <Label htmlFor="ticketingUrl" className="!mb-0">
-              Lien de réservation (HelloAsso ou autre)
+              Lien de votre page (HelloAsso ou autre)
             </Label>
           </div>
           <p className="mb-2 mt-1 text-xs leading-5 text-slate-500">
-            Ce lien sert aux familles qui veulent <strong>venir</strong> : il ne
-            remplace pas les créneaux de bénévoles, qui restent gérés ici.
-            Ouvrez votre billetterie dans le navigateur et copiez l’adresse
-            affichée dans la barre du haut.
+            Ce lien s’adresse aux familles qui veulent{" "}
+            <strong>venir, commander ou soutenir</strong> : il ne remplace pas
+            les créneaux de bénévoles, qui restent gérés ici. Ouvrez votre page
+            HelloAsso (billetterie, boutique…) dans le navigateur et copiez
+            l’adresse affichée dans la barre du haut.
           </p>
           <Input
             id="ticketingUrl"
@@ -302,7 +325,7 @@ export function EventForm({
             }}
             aria-invalid={erreurBilletterie ? true : undefined}
             aria-describedby="ticketingUrl-aide"
-            placeholder="https://www.helloasso.com/associations/…/evenements/…"
+            placeholder="https://www.helloasso.com/associations/…"
           />
           <p
             id="ticketingUrl-aide"
@@ -313,10 +336,48 @@ export function EventForm({
           >
             {erreurBilletterie ??
               (hoteBilletterie && hoteBilletterie !== "HelloAsso"
-                ? `Ce n’est pas un lien HelloAsso : les familles verront « sur ${hoteBilletterie} ». C’est accepté, vérifiez simplement que la page est bien celle de la réservation.`
+                ? `Ce n’est pas un lien HelloAsso : les familles verront « sur ${hoteBilletterie} ». C’est accepté, vérifiez simplement que c’est bien la page qu’elles doivent ouvrir.`
                 : "Facultatif. Sans lien, la page publique ne parle que des créneaux de bénévoles.")}
           </p>
         </div>
+        {/* Seulement une fois un lien saisi : sans lui, choisir un usage
+            n'aurait aucun effet visible. La valeur reste en mémoire si le
+            champ est vidé puis rempli à nouveau. */}
+        {ticketingUrl.trim() && (
+          <div>
+            <Label htmlFor="ticketingKind">Ce lien sert à</Label>
+            <Select
+              id="ticketingKind"
+              name="ticketingKind"
+              value={usageChoisi}
+              onChange={(e) =>
+                setUsageChoisi(e.target.value as TicketingKind | "")
+              }
+              aria-describedby="ticketingKind-aide"
+            >
+              <option value="">
+                {usageDetecte
+                  ? `Détecter automatiquement (${ticketingWording(usageDetecte).reconnu})`
+                  : "Détecter automatiquement"}
+              </option>
+              {TICKETING_KINDS.map((usage) => (
+                <option key={usage} value={usage}>
+                  {ticketingWording(usage).choix}
+                </option>
+              ))}
+            </Select>
+            <p
+              id="ticketingKind-aide"
+              aria-live="polite"
+              className="mt-2 text-xs leading-5 text-slate-500"
+            >
+              {aideSurUsage(usageChoisi || null, usageDetecte)}{" "}
+              <strong className="font-semibold text-slate-700">
+                Les familles verront «&nbsp;{titreVuParLesFamilles}&nbsp;».
+              </strong>
+            </p>
+          </div>
+        )}
       </FormSection>
 
       <FormSection
@@ -390,6 +451,29 @@ export function EventForm({
   );
 }
 
+/**
+ * Ce que le formulaire dit de l'usage du lien. L'organisateur voit la
+ * détection à l'œuvre sans ouvrir la page publique, et un choix manuel qui
+ * contredit l'adresse est signalé : c'est le plus souvent un reste d'un lien
+ * précédent.
+ */
+function aideSurUsage(
+  choix: TicketingKind | null,
+  detecte: TicketingKind | null,
+): string {
+  if (choix) {
+    return detecte && detecte !== choix
+      ? `Choisi à la main — l’adresse ressemble pourtant à une ${ticketingWording(detecte).reconnu} HelloAsso.`
+      : "Choisi à la main.";
+  }
+  if (detecte) {
+    return `Détecté d’après l’adresse : ${ticketingWording(detecte).reconnu} HelloAsso.`;
+  }
+  // Autre plateforme, page d'un organisme HelloAsso, adresse encore
+  // incomplète : dans tous les cas le lien garde le sens qu'il avait avant.
+  return "L’adresse ne dit pas à quoi sert le lien : il est présenté par défaut comme une billetterie. Choisissez son usage s’il sert à autre chose.";
+}
+
 function FormSection({
   number,
   title,
@@ -400,7 +484,7 @@ function FormSection({
   number: string;
   title: string;
   description: string;
-  /** Sections sans objet selon le type d'événement (billetterie d'une réunion). */
+  /** Sections sans objet selon le type d'événement (lien de paiement d'une réunion). */
   hidden?: boolean;
   children: ReactNode;
 }) {

@@ -31,6 +31,10 @@ export async function PATCH(req: Request, { params }: Params) {
     // usage que d'écraser en silence ce qu'un autre venait d'enregistrer.
     const version = requireVersion(body);
     const data = eventSchema.partial().parse(body);
+    // Retirer le lien retire aussi son usage : choisi pour l'ancienne adresse,
+    // il s'appliquerait sinon en silence au prochain lien collé.
+    const ticketingKind =
+      data.ticketingUrl === null ? null : data.ticketingKind;
 
     // SET dynamique (seuls les champs réellement fournis).
     const setFragments: SQL[] = [];
@@ -45,6 +49,8 @@ export async function PATCH(req: Request, { params }: Params) {
     // Déjà normalisée par le schéma : "" est devenu null, l'URL est absolue.
     if (data.ticketingUrl !== undefined)
       setFragments.push(sql`ticketing_url = ${data.ticketingUrl}`);
+    if (ticketingKind !== undefined)
+      setFragments.push(sql`ticketing_kind = ${ticketingKind}::ticketing_kind`);
     if (data.location !== undefined)
       setFragments.push(sql`location = ${emptyToNull(data.location)}`);
     if (data.startAt !== undefined)
@@ -85,6 +91,7 @@ export async function PATCH(req: Request, { params }: Params) {
           ? undefined
           : emptyToNull(data.publicDescription),
       ticketingUrl: data.ticketingUrl,
+      ticketingKind,
       location:
         data.location === undefined ? undefined : emptyToNull(data.location),
       startAt: data.startAt,

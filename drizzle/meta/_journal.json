@@ -232,6 +232,13 @@
       "when": 1790156643263,
       "tag": "0032_durcissement_authentification",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790167917486,
+      "tag": "0033_usage_du_lien_en_ligne",
+      "breakpoints": true
     }
   ]
 }

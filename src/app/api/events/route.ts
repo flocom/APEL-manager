@@ -21,6 +21,8 @@ export async function POST(req: Request) {
         description: emptyToNull(data.description),
         publicDescription: emptyToNull(data.publicDescription),
         ticketingUrl: data.ticketingUrl ?? null,
+        // Sans lien, un usage n'a pas d'objet : on ne le garde pas.
+        ticketingKind: data.ticketingUrl ? (data.ticketingKind ?? null) : null,
         location: emptyToNull(data.location),
         startAt: data.startAt,
         endAt: data.endAt ?? null,

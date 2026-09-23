@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import {
   checklistTemplates,
   events,
+  type Event,
   tasks,
   users,
   volunteerSignups,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/services/events";
 import { normalizeTemplateTasks } from "@/lib/templates";
 import { resolveLeadTime } from "@/lib/task-lead-time";
+import { effectiveTicketingKind, TICKETING_KINDS } from "@/lib/ticketing";
 import { generateShareToken, generateToken } from "@/lib/tokens";
 import { emptyToNull } from "@/lib/utils";
 import {
@@ -114,6 +116,38 @@ function compteMarque<T extends { id: string; name: string; email: string }>(
   return { ...reste, ...saisiePublique({ name, email }) };
 }
 
+const TICKETING_URL_DESCRIPTION =
+  "Lien de paiement en ligne présenté aux familles à côté de l’appel aux bénévoles : billetterie, boutique, collecte, adhésion ou paiement (HelloAsso le plus souvent). null ou \"\" le retire, et retire avec lui ticketingKind.";
+
+/**
+ * Les commentaires du schéma ne sortent pas du code : seul `.describe()`
+ * parvient à l'assistant qui appelle l'outil. Sans lui, il enverrait
+ * « billetterie » pour une vente de sapins, faute de savoir que le choix existe.
+ */
+const ticketingKindInput = z
+  .enum(TICKETING_KINDS)
+  .nullable()
+  .optional()
+  .describe(
+    "Ce que les familles font sur ticketingUrl, qui décide des mots de la page publique : billetterie (« Je réserve ma place »), boutique (« Je passe commande »), don (« Je fais un don »), adhesion (« J’adhère »), paiement (« Je règle en ligne »). null : automatique — déduit de l’adresse HelloAsso (/evenements/, /boutiques/, /collectes/ ou /formulaires/, /adhesions/, /paiements/), sinon billetterie. À ne renseigner que si la déduction se trompe. L’usage retenu se lit dans ticketingKindEffective.",
+  );
+
+/**
+ * Ajoute l'usage retenu du lien, celui que voient les familles. La colonne
+ * `ticketingKind` ne porte que le choix manuel : un assistant qui lirait `null`
+ * conclurait à tort qu'une boutique est affichée comme une billetterie.
+ */
+function withTicketingKind<T extends Pick<Event, "ticketingUrl" | "ticketingKind">>(
+  event: T,
+) {
+  return {
+    ...event,
+    ticketingKindEffective: event.ticketingUrl
+      ? effectiveTicketingKind(event.ticketingUrl, event.ticketingKind)
+      : null,
+  };
+}
+
 async function requireEvent(id: string) {
   const [event] = await db
     .select()
@@ -176,7 +210,7 @@ export function registerCoreTools(
     {
       title: "Lister les événements",
       description:
-        "Liste les événements avec leurs compteurs de tâches et créneaux bénévoles.",
+        "Liste les événements avec leurs compteurs de tâches et créneaux bénévoles. ticketingKindEffective dit comment le lien en ligne est présenté aux familles (billetterie, boutique, don, adhesion, paiement), null sans lien.",
       inputSchema: z.object({
         status: z.enum(["draft", "published", "archived"]).optional(),
         limit: z.number().int().min(1).max(200).default(50),
@@ -194,7 +228,10 @@ export function registerCoreTools(
           volunteerSlots: { columns: { id: true, capacity: true } },
         },
       });
-      return toolResult({ items, count: items.length });
+      return toolResult({
+        items: items.map(withTicketingKind),
+        count: items.length,
+      });
     },
   );
 
@@ -203,7 +240,7 @@ export function registerCoreTools(
     {
       title: "Lire un événement",
       description:
-        `Retourne un événement avec sa checklist, ses assignés, ses créneaux et inscriptions. ${AVIS_SAISIE_PUBLIQUE}`,
+        `Retourne un événement avec sa checklist, ses assignés, ses créneaux et inscriptions. ticketingKind est le choix manuel de l’usage du lien en ligne (null : automatique) ; ticketingKindEffective, l’usage présenté aux familles. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({ id: z.string().uuid() }),
       annotations: readOnlyTool,
     },
@@ -212,13 +249,13 @@ export function registerCoreTools(
       const event = await getEventWithDetails(id);
       if (!event) throw new Error("Événement introuvable.");
       return toolResult({
-        event: {
+        event: withTicketingKind({
           ...event,
           volunteerSlots: event.volunteerSlots.map((slot) => ({
             ...slot,
             signups: inscriptionsMarquees(slot.signups),
           })),
-        },
+        }),
       });
     },
   );
@@ -237,8 +274,8 @@ export function registerCoreTools(
         description: optionalNullableString,
         /** Affiché sur l'accueil public et sur la page d'inscription. */
         publicDescription: optionalNullableString,
-        /** Billetterie en ligne (HelloAsso…) : « je réserve ma place ». */
-        ticketingUrl: optionalNullableString,
+        ticketingUrl: optionalNullableString.describe(TICKETING_URL_DESCRIPTION),
+        ticketingKind: ticketingKindInput,
         location: optionalNullableString,
         startAt: localDateTime,
         endAt: localDateTime.nullable().optional(),
@@ -257,6 +294,8 @@ export function registerCoreTools(
           description: emptyToNull(data.description),
           publicDescription: emptyToNull(data.publicDescription),
           ticketingUrl: data.ticketingUrl ?? null,
+          // Sans lien, un usage n'a pas d'objet : on ne le garde pas.
+          ticketingKind: data.ticketingUrl ? (data.ticketingKind ?? null) : null,
           location: emptyToNull(data.location),
           startAt: data.startAt,
           endAt: data.endAt ?? null,
@@ -272,7 +311,7 @@ export function registerCoreTools(
         event.id,
         { status: event.status },
       );
-      return toolResult({ event }, "Événement créé.");
+      return toolResult({ event: withTicketingKind(event) }, "Événement créé.");
     },
   );
 
@@ -291,8 +330,8 @@ export function registerCoreTools(
         description: optionalNullableString,
         /** Affiché sur l'accueil public et sur la page d'inscription. */
         publicDescription: optionalNullableString,
-        /** Billetterie en ligne (HelloAsso…) : « je réserve ma place ». */
-        ticketingUrl: optionalNullableString,
+        ticketingUrl: optionalNullableString.describe(TICKETING_URL_DESCRIPTION),
+        ticketingKind: ticketingKindInput,
         location: optionalNullableString,
         startAt: localDateTime.optional(),
         endAt: localDateTime.nullable().optional(),
@@ -313,6 +352,10 @@ export function registerCoreTools(
         updates.publicDescription = emptyToNull(data.publicDescription);
       if (data.ticketingUrl !== undefined)
         updates.ticketingUrl = data.ticketingUrl;
+      // Retirer le lien retire aussi son usage, comme dans le formulaire.
+      if (data.ticketingUrl === null) updates.ticketingKind = null;
+      else if (data.ticketingKind !== undefined)
+        updates.ticketingKind = data.ticketingKind;
       if (data.location !== undefined)
         updates.location = emptyToNull(data.location);
       if (data.startAt !== undefined) updates.startAt = data.startAt;
@@ -340,7 +383,10 @@ export function registerCoreTools(
         id,
         { changedFields: Object.keys(data).filter((key) => key !== "version") },
       );
-      return toolResult({ event }, "Événement mis à jour.");
+      return toolResult(
+        { event: withTicketingKind(event) },
+        "Événement mis à jour.",
+      );
     },
   );
 

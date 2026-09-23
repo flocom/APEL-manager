@@ -8,7 +8,6 @@ import {
   MapPin,
   MessageCircle,
   MousePointerClick,
-  Ticket,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -16,9 +15,11 @@ import Link from "next/link";
 import { FormattedText } from "@/components/formatted-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { TICKETING_KIND_ICONS } from "@/components/ticketing-kind-icon";
 import { getUpcomingPublishedEvents } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import { effectiveTicketingKind, ticketingWording } from "@/lib/ticketing";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +238,17 @@ export default async function HomePage() {
                   // Proposer « se proposer » ou compter des coups de main sur
                   // une fête décommandée enverrait quelqu'un pour rien.
                   const annule = event.cancelledAt !== null;
+                  // Le badge dit ce que le lien propose — « Boutique » pour une
+                  // vente de sapins —, avec les mots de la fiche publique.
+                  const usageLien = event.ticketingUrl
+                    ? effectiveTicketingKind(
+                        event.ticketingUrl,
+                        event.ticketingKind,
+                      )
+                    : null;
+                  const IconeLien = usageLien
+                    ? TICKETING_KIND_ICONS[usageLien]
+                    : null;
 
                   return (
                     <Link
@@ -272,7 +284,11 @@ export default async function HomePage() {
                           }`}
                         />
                         <div className="flex flex-1 flex-col p-6">
-                          <div className="flex items-start justify-between gap-3">
+                          {/* flex-wrap : sur un téléphone, les badges passent
+                              sous le titre au lieu de déborder de la carte,
+                              qui les rognait — « 20 coups de m » à côté de
+                              « Paiement en ligne ». */}
+                          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                             <h3
                               className={`text-xl font-black leading-tight tracking-[-0.025em] ${
                                 annule
@@ -282,7 +298,7 @@ export default async function HomePage() {
                             >
                               {event.title}
                             </h3>
-                            <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                            <span className="flex flex-wrap items-center gap-1.5">
                               {/* Non cliquable : la carte entière est déjà un
                                   lien, une ancre imbriquée serait invalide — et
                                   personne ne doit partir payer depuis l'accueil
@@ -299,10 +315,10 @@ export default async function HomePage() {
                                   Réunion
                                 </span>
                               )}
-                              {!annule && event.ticketingUrl && (
+                              {!annule && usageLien && IconeLien && (
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-100 px-2.5 py-1.5 text-xs font-extrabold text-brand-900">
-                                  <Ticket className="h-3.5 w-3.5" />
-                                  Billetterie
+                                  <IconeLien className="h-3.5 w-3.5" />
+                                  {ticketingWording(usageLien).badgeCourt}
                                 </span>
                               )}
                               {!annule && remaining > 0 && (

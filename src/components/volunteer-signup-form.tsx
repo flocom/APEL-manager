@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Button, Input, Label, Select } from "@/components/ui";
 import { api } from "@/lib/client";
 import { celebrate } from "@/lib/confetti";
+import { ticketingWording, type TicketingKind } from "@/lib/ticketing";
 import { useRecaptcha } from "@/lib/use-recaptcha";
 
 export interface SignupSlotOption {
@@ -23,7 +24,8 @@ export function VolunteerSignupForm({
   recaptchaSiteKey = null,
   whatsappGroupUrl = null,
   ticketingUrl = null,
-  ticketingHost = "la billetterie en ligne",
+  ticketingKind = "billetterie",
+  ticketingHost = null,
 }: {
   token: string;
   slots: SignupSlotOption[];
@@ -33,14 +35,19 @@ export function VolunteerSignupForm({
   /** Annoncé après l'inscription : c'est là que passent les changements. */
   whatsappGroupUrl?: string | null;
   /**
-   * Billetterie de l'événement, s'il y en a une. Le rappel de fin est le point
-   * de bascule du malentendu : un parent qui vient de prendre un créneau croit
-   * son affaire réglée et ne découvrirait le contraire qu'à l'entrée.
+   * Lien en ligne de l'événement (billetterie, boutique…), s'il y en a un. Le
+   * rappel de fin est le point de bascule du malentendu : un parent qui vient
+   * de prendre un créneau croit son affaire réglée et ne découvrirait le
+   * contraire qu'à l'entrée.
    */
   ticketingUrl?: string | null;
-  ticketingHost?: string;
+  /** Usage retenu du lien : il décide des mots du rappel. */
+  ticketingKind?: TicketingKind;
+  ticketingHost?: string | null;
 }) {
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
+  // Mêmes mots que le bandeau de la fiche : le rappel reprend son bouton.
+  const libelles = ticketingWording(ticketingKind, ticketingHost);
   const available = slots.filter((s) => s.remaining > 0);
   const [done, setDone] = useState(false);
   // L'inscription est prise, mais sans e-mail de confirmation (plafond de
@@ -76,14 +83,14 @@ export function VolunteerSignupForm({
         )}
         {ticketingUrl && (
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Votre place à l’événement n’est pas réservée pour autant.{" "}
+            {libelles.rappel}{" "}
             <a
               href={ticketingUrl}
               target="_blank"
               rel="noopener noreferrer external"
               className="inline-flex min-h-11 items-center gap-1.5 font-bold text-brand-800 underline"
             >
-              Réserver ma place sur {ticketingHost}
+              {libelles.lienRappel}
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only"> (ouvre un nouvel onglet)</span>
             </a>
