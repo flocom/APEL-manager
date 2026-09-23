@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, HttpError, requireApiUser } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
+import { evenementValide } from "@/lib/services/events";
 import { meetingAttendanceSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export async function PUT(req: Request, { params }: Params) {
   try {
     const user = await requireApiUser();
     const { id } = await params;
+    evenementValide(id);
     const data = meetingAttendanceSchema.parse(await req.json());
 
     const [reunion] = await db
@@ -64,6 +66,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const user = await requireApiUser();
     const { id } = await params;
+    evenementValide(id);
     await db
       .delete(meetingAttendance)
       .where(

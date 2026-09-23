@@ -6,6 +6,8 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { messageSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -14,6 +16,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const sender = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const { subject, message } = messageSchema.parse(await req.json());
 
     const event = await getEventWithDetails(id);
@@ -47,6 +50,24 @@ export async function POST(req: Request, { params }: Params) {
       identity: await getNotificationIdentity(),
     });
     const sent = await sendBulkEmail(recipients, mail);
+
+    // Un message part au nom de l'association vers des parents qui ne sont
+    // pas de l'équipe : le journal dit qui l'a envoyé, quand, sous quel objet
+    // et à combien de personnes. Pas le corps du message ni les adresses — le
+    // journal ne se purge jamais, il n'a pas à devenir une copie des envois.
+    await recordAudit(
+      webAuditActor(sender.id, req),
+      "mail.broadcast_event",
+      "event",
+      id,
+      {
+        subject,
+        messageLength: message.length,
+        requested: recipients.length,
+        sent,
+        sansEmail,
+      },
+    );
 
     return NextResponse.json({ ok: true, sent, sansEmail });
   } catch (error) {

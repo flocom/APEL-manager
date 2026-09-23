@@ -1,7 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
+import {
+  handleApiError,
+  HttpError,
+  requireApiRole,
+  requireVersion,
+} from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
 import { getEventWithDetails } from "@/lib/data";
@@ -11,6 +16,7 @@ import { eventCancelledEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
 import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
+import { evenementValide } from "@/lib/services/events";
 import { eventCancelSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -40,9 +46,12 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
-    const { annule, raison, version } = eventCancelSchema.parse(
-      await req.json(),
-    );
+    evenementValide(id);
+    const body = await req.json();
+    // Le bouton envoie toujours la version affichée : annuler (et prévenir
+    // tous les inscrits) sur la foi d'un écran périmé ne doit pas passer.
+    const version = requireVersion(body);
+    const { annule, raison } = eventCancelSchema.parse(body);
 
     const event = await getEventWithDetails(id);
     if (!event) throw new HttpError(404, "Événement introuvable.");
@@ -59,13 +68,9 @@ export async function POST(req: Request, { params }: Params) {
       .update(events)
       .set({
         cancelledAt: annule ? maintenant : null,
-        version: event.version + 1,
+        version: version + 1,
       })
-      .where(
-        version === undefined
-          ? eq(events.id, id)
-          : and(eq(events.id, id), eq(events.version, version)),
-      )
+      .where(and(eq(events.id, id), eq(events.version, version)))
       .returning({ id: events.id });
     if (!maj) throw new HttpError(409, CONFLICT);
 

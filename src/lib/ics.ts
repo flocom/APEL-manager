@@ -14,12 +14,26 @@ function formatIcsDate(d: Date): string {
   return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
+/**
+ * Échappement d'une valeur TEXT (RFC 5545 §3.3.11).
+ *
+ * Tout saut de ligne devient la séquence littérale `\n`, qu'il s'écrive CRLF,
+ * LF ou CR seul. L'ancienne version ne connaissait que les deux premiers : un
+ * titre contenant un CR isolé (« Fête\rATTENDEE:mailto:… ») passait tel quel,
+ * et la plupart des agendas, qui coupent les lignes sur CR comme sur LF, y
+ * lisaient une propriété de plus — un invité, une alarme, une URL — glissée
+ * dans le fichier que l'équipe importe. Les autres caractères de contrôle,
+ * interdits dans une valeur TEXT, sont retirés : aucun n'a de sens dans un
+ * titre ou un lieu, et certains lecteurs les prennent eux aussi pour des fins
+ * de ligne.
+ */
 function escapeIcs(value: string): string {
   return value
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n");
+    .replace(/\r\n|\r|\n|\u2028|\u2029|\u0085/g, "\\n")
+    .replace(/(?!\t)\p{Cc}/gu, "");
 }
 
 /** Repli des lignes > 75 octets (RFC 5545 §3.1), sans couper un caractère UTF-8. */

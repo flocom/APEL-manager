@@ -77,6 +77,15 @@ export function MeetingAttendanceForm({
           Vous recevrez un e-mail de confirmation, avec un lien pour vous
           décommander si besoin. Venir sans avoir répondu reste possible.
         </p>
+        {/* Le même texte que ce soit une première réponse ou non : l'écran ne
+            dit pas si l'adresse avait déjà répondu, sans quoi il suffirait de
+            la saisir pour savoir qui vient. L'e-mail, lui, part à l'adresse
+            et dit ce qu'il en est. */}
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          Vous aviez déjà répondu avec cette adresse ? Votre réponse précédente
+          reste en place jusqu’à ce que vous confirmiez le changement depuis
+          l’e-mail : personne d’autre ne peut la modifier à votre place.
+        </p>
         {whatsappGroupUrl && (
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Les rappels et les changements de dernière minute passent par le{" "}

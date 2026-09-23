@@ -4,7 +4,7 @@ import { z } from "zod";
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { parseLocalDateTime } from "@/lib/dates";
 import { webAuditActor } from "@/lib/services/audit";
-import { duplicateEvent } from "@/lib/services/events";
+import { duplicateEvent, evenementValide } from "@/lib/services/events";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
     const { startAt, title } = schema.parse(await req.json());
 
     const result = await duplicateEvent(

@@ -57,6 +57,61 @@ export const countPendingAccounts = cache(async (): Promise<number> => {
   return Number(row?.count ?? 0);
 });
 
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Tient l'invariant « au moins un administrateur validé » autour d'un geste
+ * qui peut le rompre : changement de rôle, suppression, refus.
+ *
+ * Contrôler avant d'agir ne suffisait pas : deux administrateurs qui se
+ * rétrogradent l'un l'autre au même instant voient chacun « il reste
+ * l'autre », et l'association se retrouve sans personne pour valider un
+ * compte ni rendre un droit — il faut alors une intervention en base. Ici :
+ *
+ *  1. un verrou consultatif, pris dans la transaction, met en file tous les
+ *     gestes de ce type ;
+ *  2. l'auteur est relu sous ce verrou : un administrateur qu'on vient de
+ *     rétrograder ne finit pas une action lancée avant ;
+ *  3. le geste est fait, puis les administrateurs restants sont comptés dans
+ *     la même transaction — zéro, et tout est annulé.
+ *
+ * Le comptage vient APRÈS le geste, sur l'état qu'il laisse, plutôt que de
+ * prédire son effet : la règle tient quel que soit le chemin qui y mène.
+ */
+async function avecAuMoinsUnAdministrateur<T>(
+  actor: AuditActor,
+  geste: (tx: Transaction) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext('apel-manager:administrateurs'))`,
+    );
+
+    const [auteur] = await tx
+      .select({ role: users.role, approvedAt: users.approvedAt })
+      .from(users)
+      .where(eq(users.id, actor.userId))
+      .limit(1);
+    if (!auteur || auteur.role !== "admin" || !auteur.approvedAt) {
+      throw new HttpError(403, "Droits insuffisants pour cette action.");
+    }
+
+    const resultat = await geste(tx);
+
+    const [{ n }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.role, "admin"), isNotNull(users.approvedAt)));
+    if (Number(n) === 0) {
+      throw new HttpError(
+        409,
+        "L'association doit garder au moins un administrateur : nommez-en un autre avant.",
+      );
+    }
+    return resultat;
+  });
+}
+
 /**
  * Coupe les jetons MCP d'un compte.
  *
@@ -65,8 +120,11 @@ export const countPendingAccounts = cache(async (): Promise<number> => {
  * pas cette époque : sans cette révocation, un connecteur autorisé avant une
  * rétrogradation garderait la portée « écriture » accordée à l'ancien rôle.
  */
-async function revokeOAuthTokens(userId: string) {
-  await db
+async function revokeOAuthTokens(
+  userId: string,
+  client: Pick<typeof db, "update"> = db,
+) {
+  await client
     .update(oauthTokens)
     .set({ revokedAt: new Date() })
     .where(and(eq(oauthTokens.userId, userId), isNull(oauthTokens.revokedAt)));
@@ -121,34 +179,45 @@ export async function approveAccount(id: string, actor: AuditActor) {
  * propre confirmation.
  */
 export async function refuseAccount(id: string, actor: AuditActor) {
-  const [refused] = await db
-    .delete(users)
-    .where(and(eq(users.id, id), isNull(users.approvedAt)))
-    .returning({ id: users.id, name: users.name, email: users.email });
+  // Un compte en attente n'est jamais administrateur validé, donc un refus ne
+  // peut pas, aujourd'hui, retirer le dernier. Il passe quand même par la
+  // garde : c'est elle, et non ce raisonnement, qui tient l'invariant si la
+  // règle de validation change un jour.
+  return avecAuMoinsUnAdministrateur(actor, async (tx) => {
+    const [refused] = await tx
+      .delete(users)
+      .where(and(eq(users.id, id), isNull(users.approvedAt)))
+      .returning({ id: users.id, name: users.name, email: users.email });
 
-  if (!refused) {
-    const [existing] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1);
-    throw existing
-      ? new HttpError(
-          409,
-          "Ce compte a été validé entre-temps : il ne peut plus être refusé, seulement supprimé.",
-        )
-      : new HttpError(404, "Compte introuvable.");
-  }
+    if (!refused) {
+      const [existing] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      throw existing
+        ? new HttpError(
+            409,
+            "Ce compte a été validé entre-temps : il ne peut plus être refusé, seulement supprimé.",
+          )
+        : new HttpError(404, "Compte introuvable.");
+    }
 
-  // Au journal, une empreinte de l'adresse, ni l'adresse ni le nom. Le journal
-  // ne se purge jamais, et la personne refusée n'a aucun lien avec
-  // l'association : garder ses coordonnées pour toujours n'aurait pas de
-  // justification. L'empreinte suffit à voir qu'une même adresse revient —
-  // deux refus portent la même — sans permettre de la relire.
-  await recordAudit(actor, "user.refuse", "user", refused.id, {
-    emailHash: empreinteAdresse(refused.email),
+    // Au journal, une empreinte de l'adresse, ni l'adresse ni le nom. Le
+    // journal ne se purge jamais, et la personne refusée n'a aucun lien avec
+    // l'association : garder ses coordonnées pour toujours n'aurait pas de
+    // justification. L'empreinte suffit à voir qu'une même adresse revient —
+    // deux refus portent la même — sans permettre de la relire.
+    await recordAudit(
+      actor,
+      "user.refuse",
+      "user",
+      refused.id,
+      { emailHash: empreinteAdresse(refused.email) },
+      tx,
+    );
+    return refused;
   });
-  return refused;
 }
 
 /**
@@ -173,57 +242,67 @@ export async function changeUserRole(
     );
   }
 
-  const [existing] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      role: users.role,
-      approvedAt: users.approvedAt,
-    })
-    .from(users)
-    .where(eq(users.id, id))
-    .limit(1);
-  if (!existing) throw new HttpError(404, "Utilisateur introuvable.");
-  // Donner un rôle à un compte en attente le laisserait en attente : la
-  // validation est un geste distinct, qu'on ne doit pas croire avoir fait.
-  if (!existing.approvedAt) {
-    throw new HttpError(
-      409,
-      "Ce compte est en attente : validez-le avant de changer son rôle.",
+  return avecAuMoinsUnAdministrateur(actor, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        approvedAt: users.approvedAt,
+      })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    if (!existing) throw new HttpError(404, "Utilisateur introuvable.");
+    // Donner un rôle à un compte en attente le laisserait en attente : la
+    // validation est un geste distinct, qu'on ne doit pas croire avoir fait.
+    if (!existing.approvedAt) {
+      throw new HttpError(
+        409,
+        "Ce compte est en attente : validez-le avant de changer son rôle.",
+      );
+    }
+
+    const [updated] = await tx
+      .update(users)
+      .set({ role, sessionEpoch: sql`${users.sessionEpoch} + 1` })
+      .where(
+        and(
+          eq(users.id, id),
+          ne(users.role, role),
+          isNotNull(users.approvedAt),
+        ),
+      )
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      });
+    if (!updated) {
+      return {
+        user: {
+          id: existing.id,
+          name: existing.name,
+          email: existing.email,
+          role: existing.role,
+        },
+        changed: false,
+      };
+    }
+
+    await revokeOAuthTokens(id, tx);
+    await recordAudit(
+      actor,
+      "user.role_update",
+      "user",
+      id,
+      { from: existing.role, role },
+      tx,
     );
-  }
-
-  const [updated] = await db
-    .update(users)
-    .set({ role, sessionEpoch: sql`${users.sessionEpoch} + 1` })
-    .where(
-      and(eq(users.id, id), ne(users.role, role), isNotNull(users.approvedAt)),
-    )
-    .returning({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      role: users.role,
-    });
-  if (!updated) {
-    return {
-      user: {
-        id: existing.id,
-        name: existing.name,
-        email: existing.email,
-        role: existing.role,
-      },
-      changed: false,
-    };
-  }
-
-  await revokeOAuthTokens(id);
-  await recordAudit(actor, "user.role_update", "user", id, {
-    from: existing.role,
-    role,
+    return { user: updated, changed: true };
   });
-  return { user: updated, changed: true };
 }
 
 /**
@@ -234,11 +313,20 @@ export async function deleteUserAccount(id: string, actor: AuditActor) {
   if (id === actor.userId) {
     throw new HttpError(400, "Vous ne pouvez pas supprimer votre propre compte.");
   }
-  const [deleted] = await db
-    .delete(users)
-    .where(eq(users.id, id))
-    .returning({ id: users.id, email: users.email });
-  if (!deleted) throw new HttpError(404, "Utilisateur introuvable.");
-  await recordAudit(actor, "user.delete", "user", id);
-  return deleted;
+  return avecAuMoinsUnAdministrateur(actor, async (tx) => {
+    const [deleted] = await tx
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning({ id: users.id, email: users.email, role: users.role });
+    if (!deleted) throw new HttpError(404, "Utilisateur introuvable.");
+    await recordAudit(
+      actor,
+      "user.delete",
+      "user",
+      id,
+      { role: deleted.role },
+      tx,
+    );
+    return deleted;
+  });
 }

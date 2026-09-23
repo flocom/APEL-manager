@@ -28,6 +28,7 @@ import {
 
 import { getAssociationSettings } from "./association-settings";
 import { recordAudit, type AuditActor } from "./audit";
+import { collectReferencedUploadIds } from "./uploads-references";
 
 export async function listAssociationDocuments(limit = 200) {
   return db
@@ -306,22 +307,24 @@ export async function deleteArchivedAgMinutes(
   const uploadId = fileUrl
     ? storedUploadIdFromUrl(fileUrl, "document")
     : null;
-  if (uploadId && fileUrl) {
-    const [remainingReference] = await db
-      .select({ id: associationDocuments.id })
-      .from(associationDocuments)
-      .where(eq(associationDocuments.fileUrl, fileUrl))
-      .limit(1);
-    if (!remainingReference) {
-      try {
-        await removeUpload(uploadId);
-      } catch (error) {
-        // Le nettoyage quotidien supprimera ce fichier devenu orphelin.
-        console.error(
-          `[documents] impossible de supprimer la pièce jointe ${uploadId}:`,
-          redactError(error),
-        );
-      }
+  if (uploadId) {
+    // Le fichier n'est effacé que si PLUS RIEN ne le cite. Le contrôle ne
+    // regardait que les autres documents ; or un même fichier déposé sert
+    // aussi de pièce jointe d'événement, ou de justificatif d'écriture. La
+    // suppression d'un vieux PV emportait alors la pièce jointe d'un
+    // événement, qui menait ensuite à une page d'erreur. L'inventaire complet
+    // est celui du nettoyage quotidien : une colonne ajoutée demain y est
+    // comptée d'office. S'il échoue, on garde le fichier — un fichier inutile
+    // se rattrape, un fichier perdu non.
+    try {
+      const references = await collectReferencedUploadIds();
+      if (!references.has(uploadId)) await removeUpload(uploadId);
+    } catch (error) {
+      // Le nettoyage quotidien supprimera ce fichier s'il est bien orphelin.
+      console.error(
+        `[documents] pièce jointe ${uploadId} conservée, inventaire ou suppression impossible :`,
+        redactError(error),
+      );
     }
   }
 

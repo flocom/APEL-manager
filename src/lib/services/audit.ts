@@ -20,14 +20,26 @@ export function webAuditActor(
   };
 }
 
+/** `db`, ou la transaction en cours : `Pick` suffit, seul l'insert sert ici. */
+type AuditClient = Pick<typeof db, "insert">;
+
+/**
+ * Écrit une ligne au journal.
+ *
+ * `client` permet d'écrire la ligne DANS la transaction de l'action qu'elle
+ * décrit. Écrite après coup, elle pouvait manquer — la requête échoue entre
+ * les deux, le processus redémarre — et laisser une action sans trace, ce
+ * qu'un journal d'audit est justement là pour empêcher.
+ */
 export async function recordAudit(
   actor: AuditActor,
   action: string,
   entityType: string,
   entityId?: string | null,
   details: Record<string, unknown> = {},
+  client: AuditClient = db,
 ): Promise<void> {
-  await db.insert(auditLogs).values({
+  await client.insert(auditLogs).values({
     actorUserId: actor.userId,
     oauthClientId: actor.oauthClientId ?? null,
     action,

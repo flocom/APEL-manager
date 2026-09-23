@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { getEventWithDetails } from "@/lib/data";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,10 +15,11 @@ function csvCell(value: string): string {
   return `"${guarded.replace(/"/g, '""')}"`;
 }
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const event = await getEventWithDetails(id);
     if (!event) {
       return NextResponse.json({ error: "Événement introuvable." }, { status: 404 });
@@ -40,6 +43,16 @@ export async function GET(_req: Request, { params }: Params) {
     // BOM + séparateur ";" pour une ouverture correcte dans Excel (FR).
     const csv =
       "﻿" + rows.map((r) => r.map(csvCell).join(";")).join("\r\n");
+
+    // Le fichier emporte les coordonnées de parents hors de l'application :
+    // le journal garde qui l'a exporté, et combien de lignes il contenait.
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "volunteer_signup.export",
+      "event",
+      id,
+      { rows: rows.length - 1 },
+    );
 
     const slug = event.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
     return new NextResponse(csv, {

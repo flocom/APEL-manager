@@ -101,6 +101,7 @@ export function TaskManager({
   members,
   canManage,
   currentUserId,
+  eventClosed = false,
 }: {
   eventId: string;
   eventVersion: number;
@@ -109,6 +110,8 @@ export function TaskManager({
   members: MemberOption[];
   canManage: boolean;
   currentUserId: string;
+  /** Événement annulé ou archivé : un membre ne s'y joint plus à une tâche. */
+  eventClosed?: boolean;
 }) {
   const router = useRouter();
   const onError = useMutationError();
@@ -702,19 +705,29 @@ export function TaskManager({
                       status={task.status}
                       disabled={!canManage && !isAssignee}
                     />
-                    <button
-                      type="button"
-                      onClick={() => toggleSelf(task.id)}
-                      className={cn(
-                        "inline-flex items-center gap-1 text-xs font-medium",
-                        isAssignee
-                          ? "text-slate-500 hover:text-red-600"
-                          : "text-brand-600 hover:text-brand-700",
-                      )}
-                    >
-                      <Hand className="h-3 w-3" />
-                      {isAssignee ? "Me retirer" : "Je m'en charge"}
-                    </button>
+                    {/* Mêmes règles que le serveur, pour ne pas offrir un
+                        bouton qui ne mènerait qu'à un refus : un membre ne se
+                        retire pas d'une tâche terminée — son nom reste sur ce
+                        qui a été fait — et ne se joint ni à une tâche finie ni
+                        à celle d'un événement annulé ou archivé. */}
+                    {(canManage ||
+                      (isAssignee
+                        ? task.status !== "done"
+                        : task.status !== "done" && !eventClosed)) && (
+                      <button
+                        type="button"
+                        onClick={() => toggleSelf(task.id)}
+                        className={cn(
+                          "inline-flex items-center gap-1 text-xs font-medium",
+                          isAssignee
+                            ? "text-slate-500 hover:text-red-600"
+                            : "text-brand-600 hover:text-brand-700",
+                        )}
+                      >
+                        <Hand className="h-3 w-3" />
+                        {isAssignee ? "Me retirer" : "Je m'en charge"}
+                      </button>
+                    )}
                     {canManage && (
                       <div className="relative">
                         <button

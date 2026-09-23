@@ -18,6 +18,7 @@ import {
   PAYMENT_METHODS_DIRECTS,
   type PaymentMethod,
 } from "@/lib/labels";
+import { centimesDepuisSql, MONTANT_MAX_CENTIMES } from "@/lib/money";
 
 import { recordAudit, type AuditActor } from "./audit";
 
@@ -90,6 +91,30 @@ export function etatDe(ligne: LigneRapprochement): EtatRapprochement {
   return ligne.comptabiliseCents === ligne.duCents ? "rapprochee" : "ecart";
 }
 
+/** `db`, ou la transaction en cours : seule la lecture sert ici. */
+type Lecteur = Pick<typeof db, "select">;
+
+/**
+ * Met en file les écritures qui rattachent des cotisations.
+ *
+ * Le rattrapage calcule ce qui manque aux comptes, puis l'écrit : deux
+ * rattrapages lancés ensemble — un double clic, deux trésoriers, un onglet
+ * rechargé — calculaient chacun le même manque et l'écrivaient chacun, et la
+ * même cotisation entrait deux fois en recette. Le verrou consultatif, pris
+ * dans la transaction et relâché à sa fin, fait passer le second après le
+ * premier : il recalcule alors sur des comptes où le manque est comblé, et
+ * n'écrit rien.
+ *
+ * L'affectation manuelle d'une écriture prend le même verrou, pour la même
+ * raison : un rattrapage qui tourne pendant qu'on pointe à la main ne doit pas
+ * compter deux fois la même famille.
+ */
+async function verrouillerCotisations(tx: Pick<typeof db, "execute">) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext('apel-manager:cotisations'))`,
+  );
+}
+
 /** Les années scolaires présentes chez les adhérents, la plus récente d'abord. */
 export async function anneesScolaires(): Promise<string[]> {
   const lignes = await db
@@ -106,8 +131,11 @@ export async function anneesScolaires(): Promise<string[]> {
  * pour toutes les années, chaque fiche portant son propre état comptable, et
  * ne peut donc pas se limiter à l'une d'elles.
  */
-export async function rapprochement(schoolYear: string | null) {
-  const membres = await db
+export async function rapprochement(
+  schoolYear: string | null,
+  lecteur: Lecteur = db,
+) {
+  const membres = await lecteur
     .select({
       id: associationMembers.id,
       firstName: associationMembers.firstName,
@@ -128,7 +156,7 @@ export async function rapprochement(schoolYear: string | null) {
 
   if (membres.length === 0) return [] as LigneRapprochement[];
 
-  const parts = await db
+  const parts = await lecteur
     .select({
       memberId: membershipPayments.memberId,
       amountCents: membershipPayments.amountCents,
@@ -271,6 +299,7 @@ export async function affecterCotisations(
   }
 
   await db.transaction(async (tx) => {
+    await verrouillerCotisations(tx);
     await tx
       .delete(membershipPayments)
       .where(eq(membershipPayments.entryId, entryId));
@@ -298,8 +327,11 @@ export async function affecterCotisations(
 }
 
 /** Les adhésions réglées sur leur fiche mais absentes des comptes. */
-export async function cotisationsARattraper(schoolYear: string) {
-  return (await rapprochement(schoolYear)).filter(
+export async function cotisationsARattraper(
+  schoolYear: string,
+  lecteur: Lecteur = db,
+) {
+  return (await rapprochement(schoolYear, lecteur)).filter(
     (ligne) => etatDe(ligne) === "manquante" && ligne.duCents > 0,
   );
 }
@@ -344,22 +376,31 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
     );
   }
 
-  const candidates = await cotisationsARattraper(data.schoolYear);
-  const retenus =
-    data.memberIds === undefined
-      ? candidates
-      : candidates.filter((c) => data.memberIds!.includes(c.memberId));
+  const { creees, retenus, total } = await db.transaction(async (tx) => {
+    // Le manque se calcule APRÈS le verrou, dans la transaction : calculé
+    // avant, il resterait celui qu'un rattrapage concurrent vient de combler.
+    await verrouillerCotisations(tx);
+    const candidates = await cotisationsARattraper(data.schoolYear, tx);
+    const retenus =
+      data.memberIds === undefined
+        ? candidates
+        : candidates.filter((c) => data.memberIds!.includes(c.memberId));
 
-  if (retenus.length === 0) {
-    throw new HttpError(
-      400,
-      "Aucune adhésion à rattraper : tout ce qui est réglé est déjà dans les comptes.",
-    );
-  }
+    if (retenus.length === 0) {
+      throw new HttpError(
+        400,
+        "Aucune adhésion à rattraper : tout ce qui est réglé est déjà dans les comptes.",
+      );
+    }
 
-  const total = retenus.reduce((t, l) => t + l.duCents, 0);
+    const total = retenus.reduce((t, l) => t + l.duCents, 0);
+    if (data.mode === "groupee" && total > MONTANT_MAX_CENTIMES) {
+      throw new HttpError(
+        400,
+        "Le lot dépasse le plafond d'une écriture (1 000 000 €) : faites une écriture par adhérent, ou rattrapez en plusieurs fois.",
+      );
+    }
 
-  const creees = await db.transaction(async (tx) => {
     const ecritures: { id: string; amountCents: number }[] = [];
 
     if (data.mode === "groupee") {
@@ -420,7 +461,7 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
       }
     }
 
-    return ecritures;
+    return { creees: ecritures, retenus, total };
   });
 
   await recordAudit(
@@ -447,7 +488,9 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
 export async function totalComptabilise(schoolYear: string) {
   const [ligne] = await db
     .select({
-      total: sql<number>`coalesce(sum(${membershipPayments.amountCents}), 0)::int`,
+      // `bigint` : une somme d'entiers 32 bits déborde bien avant qu'on s'en
+      // doute (voir `centimesDepuisSql`).
+      total: sql<string>`coalesce(sum(${membershipPayments.amountCents}), 0)::bigint`,
     })
     .from(membershipPayments)
     .innerJoin(
@@ -465,5 +508,5 @@ export async function totalComptabilise(schoolYear: string) {
         isNotNull(accountingEntries.id),
       ),
     );
-  return Number(ligne?.total ?? 0);
+  return centimesDepuisSql(ligne?.total);
 }

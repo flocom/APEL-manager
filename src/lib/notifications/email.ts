@@ -1,7 +1,10 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
-import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
+import {
+  getOutboundMailRuntimeConfig,
+  type OutboundMailRuntimeConfig,
+} from "@/lib/services/mail-settings";
 import { estRelaisLocal } from "@/lib/smtp-relay";
 
 interface EmailParams {
@@ -16,6 +19,14 @@ interface EmailParams {
   replyTo?: string;
   /** Autorise uniquement les écrans de test à vérifier un transport désactivé. */
   allowDisabled?: boolean;
+  /**
+   * Transport déjà lu (`getOutboundMailRuntimeConfig`) ; `null` : aucun.
+   * Fourni, l'envoi ne lit plus rien en base. C'est ce qui permet d'envoyer
+   * depuis une transaction ouverte : la lecture des réglages passerait sinon
+   * par une autre connexion du pool, et sur Vercel le pool n'en a qu'une, que
+   * la transaction occupe — l'envoi attendrait sans fin.
+   */
+  transport?: OutboundMailRuntimeConfig | null;
 }
 
 /** Envoie un e-mail via le transport SMTP ou Resend configuré. */
@@ -26,8 +37,12 @@ export async function sendEmail({
   text,
   replyTo,
   allowDisabled = false,
+  transport,
 }: EmailParams): Promise<boolean> {
-  const config = await getOutboundMailRuntimeConfig(allowDisabled);
+  const config =
+    transport !== undefined
+      ? transport
+      : await getOutboundMailRuntimeConfig(allowDisabled);
   if (!config) {
     console.warn(
       `[email] fournisseur désactivé ou clé absente — e-mail non envoyé : "${subject}"`,

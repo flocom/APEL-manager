@@ -9,6 +9,8 @@ import {
 } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
+import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,8 +21,9 @@ const schema = z.object({
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    await requireApiRole("manager");
+    const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
     const { orderedIds, version } = schema.parse(await req.json());
 
     /*
@@ -111,6 +114,15 @@ export async function POST(req: Request, { params }: Params) {
     if (Number(row.updated ?? 0) !== orderedIds.length) {
       throw new HttpError(500, "La réorganisation est incomplète.");
     }
+
+    // Comme l'outil MCP `reorder_event_tasks`.
+    await recordAudit(
+      webAuditActor(user.id, req),
+      "task.reorder",
+      "event",
+      eventId,
+      { count: orderedIds.length },
+    );
 
     return NextResponse.json({ ok: true, version: Number(row.version) });
   } catch (error) {

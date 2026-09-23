@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/ui";
 import { requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
+import { centimesDepuisSql } from "@/lib/money";
 import {
   accountingCategories,
   accountingEntries,
@@ -72,11 +73,13 @@ export default async function AdherentsPage() {
           occurredAt: accountingEntries.occurredAt,
           amountCents: accountingEntries.amountCents,
           status: accountingEntries.status,
-          affecteCents: sql<number>`coalesce((
+          // `bigint`, comme toutes les sommes de montants : un `::int` sur une
+          // somme déborde dès que le total franchit 21 millions d'euros.
+          affecteCents: sql<string>`coalesce((
             select sum(${membershipPayments.amountCents})
             from ${membershipPayments}
             where ${membershipPayments.entryId} = ${accountingEntries.id}
-          ), 0)::int`,
+          ), 0)::bigint`,
         })
         .from(accountingEntries)
         .where(eq(accountingEntries.type, "income"))
@@ -128,7 +131,7 @@ export default async function AdherentsPage() {
     occurredAt: e.occurredAt.toISOString(),
     amountCents: e.amountCents,
     status: e.status,
-    affecteCents: Number(e.affecteCents),
+    affecteCents: centimesDepuisSql(e.affecteCents),
   }));
 
   return (

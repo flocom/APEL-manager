@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleApiError, requireApiRole } from "@/lib/auth/guards";
+import {
+  handleApiError,
+  requireApiRole,
+  requireVersion,
+} from "@/lib/auth/guards";
 import { webAuditActor } from "@/lib/services/audit";
-import { saveEventAsTemplate } from "@/lib/services/events";
+import { evenementValide, saveEventAsTemplate } from "@/lib/services/events";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +24,13 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
-    const { templateId, name, version } = schema.parse(await req.json());
+    evenementValide(eventId);
+    const body = await req.json();
+    const { templateId, name, version } = schema.parse(body);
+    // Remplacer un modèle en écrase le contenu : l'écran envoie toujours la
+    // version du modèle visé, et l'écriture ne passe plus sans elle. Créer un
+    // nouveau modèle, en revanche, n'écrase rien.
+    if (templateId) requireVersion(body);
 
     const result = await saveEventAsTemplate(
       { eventId, templateId, name, expectedVersion: version },
