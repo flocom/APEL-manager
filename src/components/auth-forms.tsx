@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button, buttonClasses, Input, Label } from "@/components/ui";
 import { DEFAULT_NEXT_PATH, withNextPath } from "@/lib/auth/return-path";
@@ -37,6 +37,12 @@ export function LoginForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Les liens « Mot de passe oublié » et « Créer un compte » emportent aussi
+  // l'ancre : sans elle, un détour par l'un d'eux ramenait en haut de la page
+  // plutôt que sur la tâche visée. Lue après le montage seulement, puisque le
+  // serveur, qui rend le premier affichage, ne la connaît pas.
+  const [destination, setDestination] = useState(next);
+  useEffect(() => setDestination(withHash(next)), [next]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,7 +76,7 @@ export function LoginForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
           <Label htmlFor="password" className="mb-0">
             Mot de passe
           </Label>
-          <Link href={withNextPath("/forgot", next)} className="text-xs font-medium text-brand-600 hover:underline">
+          <Link href={withNextPath("/forgot", destination)} className="text-xs font-medium text-brand-600 hover:underline">
             Mot de passe oublié ?
           </Link>
         </div>
@@ -87,7 +93,7 @@ export function LoginForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
       </Button>
       <p className="text-center text-sm text-slate-500">
         Pas encore de compte ?{" "}
-        <Link href={withNextPath("/register", next)} className="font-medium text-brand-600 hover:underline">
+        <Link href={withNextPath("/register", destination)} className="font-medium text-brand-600 hover:underline">
           Créer un compte
         </Link>
       </p>
@@ -188,7 +194,7 @@ export function RegisterForm({
         </Link>
         <p className="text-center text-sm">
           <Link
-            href="/forgot"
+            href={withNextPath("/forgot", next)}
             className="inline-flex min-h-11 items-center font-semibold text-brand-700 underline-offset-2 hover:underline"
           >
             Mot de passe oublié ?
