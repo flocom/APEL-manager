@@ -6,7 +6,7 @@ Cette configuration exécute toute l'infrastructure nécessaire à APEL Manager 
 - PostgreSQL 16 avec stockage persistant ;
 - les migrations Drizzle automatiques ;
 - le scheduler quotidien des notifications ;
-- Mailpit pour capturer et contrôler les e-mails en local ;
+- Mailpit, facultatif, pour capturer les e-mails lors des essais locaux ;
 - Caddy comme reverse proxy HTTP/HTTPS ;
 - un volume privé pour les pièces jointes.
 
@@ -20,8 +20,14 @@ docker compose ps
 ```
 
 L'application est disponible sur
-[http://localhost:3000](http://localhost:3000) et l'interface Mailpit sur
-[http://localhost:8025](http://localhost:8025).
+[http://localhost:3000](http://localhost:3000).
+
+Pour des essais sans envoyer de vrais e-mails, démarrez aussi la boîte de
+capture Mailpit, puis ouvrez [http://localhost:8025](http://localhost:8025) :
+
+```bash
+docker compose --profile mailpit up --build -d
+```
 
 Au premier démarrage, le conteneur :
 
@@ -41,7 +47,7 @@ puis restent en attente jusqu'à leur validation par un administrateur.
 | `app` | Application Next.js sur le port interne 3000 |
 | `db` | PostgreSQL 16, non exposé sur l'hôte |
 | `scheduler` | Appelle le cron de notifications chaque jour à 07:00 UTC |
-| `mailpit` | Serveur SMTP local et boîte de contrôle sur le port 8025 |
+| `mailpit` | Facultatif (profil `mailpit`) : serveur SMTP d'essai et boîte de contrôle sur `127.0.0.1:8025` |
 | `caddy` | Point d'entrée HTTP/HTTPS et terminaison TLS |
 
 Commandes de diagnostic :
@@ -164,14 +170,108 @@ choisissez :
 - **Resend** : clé API, expéditeur, adresse de réponse et domaine ;
 - **SMTP** : hôte, port, TLS, identifiant, mot de passe et expéditeur.
 
-Pour un test local entièrement contenu dans Docker, choisissez SMTP avec l'hôte
-`mailpit`, le port `1025`, TLS désactivé et aucun identifiant. Les messages
-apparaissent sur [http://localhost:8025](http://localhost:8025) sans être remis
-sur Internet.
-
 Les secrets saisis dans Configuration sont chiffrés avec
-`SETTINGS_ENCRYPTION_KEY`. L'interface Mailpit peut être masquée en production
-en retirant son mapping `ports` ou en le limitant à l'adresse `127.0.0.1`.
+`SETTINGS_ENCRYPTION_KEY`. Deux règles protègent le mot de passe SMTP :
+
+- **il ne suit pas un changement de serveur.** Modifier le fournisseur, l'hôte,
+  le port ou l'identifiant sans saisir de nouveau mot de passe efface celui qui
+  était enregistré — depuis l'écran comme depuis le connecteur MCP. Sans cette
+  règle, quiconque pouvait modifier les réglages sans connaître le mot de passe
+  n'avait qu'à désigner son propre serveur et demander un e-mail de test pour
+  le recevoir ;
+- **il ne circule jamais en clair.** Hors relais local, la connexion doit être
+  chiffrée : TLS dès la connexion (souvent port 465) ou STARTTLS (souvent
+  port 587), certificat vérifié. Un serveur qui ne propose pas STARTTLS est
+  refusé. Seuls échappent à cette exigence `localhost`, les adresses
+  `127.x.x.x` et `::1`, `host.docker.internal` et les noms sans point d'un
+  service du réseau Compose, comme `mailpit`.
+
+#### Mailpit, pour les essais seulement
+
+Mailpit capture les messages sans jamais les distribuer, et tout ce qui y
+arrive se lit dans son interface : liens de réinitialisation de mot de passe et
+de confirmation de compte compris. Il ne démarre donc que sur demande, avec le
+profil `mailpit` :
+
+```bash
+docker compose --profile mailpit up -d
+# ou, durablement, dans .env, en gardant les profils déjà listés :
+# COMPOSE_PROFILES="mailpit", ou "autoupdate,mailpit" si autoupdate y figurait
+```
+
+Choisissez ensuite SMTP avec l'hôte `mailpit`, le port `1025`, TLS désactivé et
+aucun identifiant. Les messages apparaissent sur
+[http://localhost:8025](http://localhost:8025) sans être remis sur Internet.
+
+Cette interface n'écoute que sur `127.0.0.1` de la machine hôte. Depuis un
+autre poste, passez par un tunnel SSH plutôt que de la publier :
+
+```bash
+ssh -L 8025:127.0.0.1:8025 utilisateur@serveur
+```
+
+Pour exiger en plus un mot de passe, renseignez
+`MAILPIT_UI_AUTH="utilisateur:mot-de-passe"` dans `.env`. N'utilisez jamais
+Mailpit comme relais d'une instance ouverte aux familles : les messages ne
+partiraient pas, et chacun resterait lisible dans la boîte.
+
+#### Installation antérieure : l'ancien conteneur Mailpit
+
+Jusqu'à cette version, Mailpit démarrait avec toute installation et publiait
+son interface sur toutes les adresses du serveur (`0.0.0.0:8025`). Le passage
+sous profil ne l'arrête pas : Compose ignore complètement un service dont le
+profil est inactif, et `docker compose up -d`, même avec `--remove-orphans`,
+laisse l'ancien conteneur tourner, toujours publié. L'application recréée
+reste sur le même réseau, où le nom `mailpit` désigne encore ce conteneur :
+une instance qui y relayait son courrier continue donc d'envoyer sans erreur,
+et chaque lien de réinitialisation reste lisible par quiconque atteint le
+port 8025. L'`updater` n'y change rien : il remplace les images de `app` et
+`scheduler`, jamais `compose.yaml` ni les autres conteneurs. Une instance qui
+n'a pas refait de `git pull` fait encore tourner l'ancien `compose.yaml`,
+donc l'ancien Mailpit.
+
+Sur toute installation antérieure, après le `git pull` :
+
+1. Vérifiez si l'ancienne interface est encore exposée :
+
+   ```bash
+   docker ps --filter name=mailpit --format '{{.Names}} {{.Ports}}'
+   ```
+
+   Aucune ligne : rien à faire. Des ports qui commencent par `0.0.0.0:`
+   (souvent suivis de `[::]:`), par exemple `0.0.0.0:8025->8025/tcp` :
+   l'interface est ouverte à tout le réseau, passez à l'étape 2 ou 3.
+   `127.0.0.1:8025->8025/tcp` : le conteneur a déjà été recréé.
+
+2. **Mailpit ne sert pas** (le cas de toute instance ouverte aux familles).
+   Ouvrez d'abord **Configuration → Serveur d'envoi** : si l'hôte SMTP est
+   `mailpit`, aucun message n'a jamais atteint les familles. Choisissez Resend
+   ou un vrai relais SMTP et envoyez un e-mail de test avant d'aller plus loin,
+   sans quoi chaque envoi échouera une fois le conteneur retiré
+   (« getaddrinfo ENOTFOUND mailpit »). Arrêtez et supprimez ensuite le
+   conteneur ; `--profile mailpit` rend le service visible à Compose le temps
+   de la commande :
+
+   ```bash
+   docker compose --profile mailpit rm -sf mailpit
+   ```
+
+   Le volume `mailpit_data` conserve les messages capturés, adresses des
+   destinataires comprises. Supprimez-le aussi : `docker volume ls --filter
+   name=mailpit_data` donne son nom exact, préfixé par celui du projet, puis
+   `docker volume rm <nom>`.
+
+3. **Mailpit sert aux essais.** Ajoutez `mailpit` à `COMPOSE_PROFILES` dans
+   `.env`, sans retirer les profils déjà présents (par exemple
+   `COMPOSE_PROFILES="autoupdate,mailpit"`), puis recréez le conteneur avec le
+   nouveau fichier :
+
+   ```bash
+   docker compose --profile mailpit up -d mailpit
+   ```
+
+   Relancez la commande de l'étape 1 : elle doit maintenant afficher
+   `127.0.0.1:8025->8025/tcp`, et plus aucun `0.0.0.0:`.
 
 ### Pièces jointes
 
@@ -236,10 +336,12 @@ https://apel.example.org/api/mcp
 
 Chaque évolution de `main` déclenche la publication d'une image sur GHCR
 (`ghcr.io/flocom/apel-manager:latest`), via le workflow
-[`docker-publish.yml`](../.github/workflows/docker-publish.yml). Trois façons de
-la récupérer, de la plus automatique à la plus manuelle.
+[`docker-publish.yml`](../.github/workflows/docker-publish.yml). Chaque image
+publiée est signée sans clé (Sigstore) par ce workflow : on peut donc vérifier,
+avant de l'installer, qu'elle sort bien de ce dépôt (voir plus bas). Quatre
+façons de la récupérer, de la plus automatique à la plus contrôlée.
 
-### Automatique (recommandé en production)
+### Automatique
 
 Le service `updater` surveille l'image publiée et remplace `app` et `scheduler`
 dès qu'une nouvelle version paraît. Il est inactif tant qu'il n'est pas demandé
@@ -290,10 +392,102 @@ contrôler :
   version d'API que les moteurs récents refusent
   (« client version 1.25 is too old »).
 
+Cette commande n'arrête pas un service que le nouveau fichier place sous un
+profil inactif : son ancien conteneur continue de tourner tel quel. C'est le
+cas de Mailpit ; si l'installation précède son passage sous profil, suivez
+« Installation antérieure » dans la partie Courrier.
+
 > L'`updater` a besoin d'accéder à `/var/run/docker.sock`, ce qui équivaut à un
 > accès root sur l'hôte. À réserver à une machine dont les accès sont
 > maîtrisés. Pour vous en passer, laissez `COMPOSE_PROFILES` vide et utilisez
-> l'une des deux méthodes ci-dessous.
+> l'une des méthodes ci-dessous.
+
+#### Ce que l'on accepte avec la mise à jour automatique
+
+Le confort est réel : un correctif de sécurité publié le matin tourne sur
+toutes les instances dans l'heure, sans que personne n'ait à s'en occuper. En
+contrepartie, l'instance installe **tout** ce qui paraît sous l'étiquette
+`latest`, sans le vérifier :
+
+- Watchtower ne contrôle pas les signatures. Quiconque parviendrait à publier
+  une image sur `ghcr.io/flocom/apel-manager` — compte d'un mainteneur ou
+  workflow compromis — la verrait installée partout dans l'heure, avec accès à
+  la base, aux pièces jointes et aux secrets de chiffrement ;
+- une version défectueuse part elle aussi partout, avant qu'on ait pu la
+  retenir ;
+- l'`updater` lui-même dispose du socket Docker, donc des droits root sur
+  l'hôte.
+
+Pour une instance qui conserve des données sensibles et dispose de quelqu'un
+pour suivre les publications, préférez une version figée et vérifiée (section
+suivante) : chaque mise à jour devient une décision, prise après contrôle de la
+signature.
+
+### Figée sur une version vérifiée
+
+Une étiquette est un pointeur que le registre permet de déplacer : `latest`
+change à chaque publication, et même `sha-2ab04da`, qu'aucune publication
+normale ne réécrit, pourrait l'être par qui obtiendrait le droit de publier.
+L'**empreinte** d'une image (`sha256:…`) désigne au contraire un contenu précis
+et ne change jamais. Figer l'instance sur une empreinte, c'est garantir qu'elle
+exécute exactement ce qui a été vérifié.
+
+1. Relever l'empreinte de la version à installer, par exemple celle de
+   `latest` (ligne `Digest:` en tête de la réponse) :
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/flocom/apel-manager:latest
+   ```
+
+2. Vérifier sa signature avec [cosign](https://docs.sigstore.dev/cosign/system_config/installation/),
+   **en version 3.0 ou plus récente**. Le workflow signe avec cosign 3, qui
+   range la signature à côté de l'image sous le format « bundle » de Sigstore ;
+   une version 2 la cherche ailleurs (étiquette `sha256-….sig`), ne la trouve
+   pas et échoue sur une image pourtant correctement signée. Contrôler d'abord
+   la version installée — celle des dépôts de certaines distributions est une
+   2.x :
+
+   ```bash
+   cosign version
+   ```
+
+   Avec cosign 2.6, ajouter `--new-bundle-format=true` à la commande
+   ci-dessous ; avant 2.6, mettre cosign à jour. La vérification échoue si
+   l'image n'a pas été signée par le workflow de publication de ce dépôt,
+   depuis `main` ou une étiquette `v*` :
+
+   ```bash
+   cosign verify ghcr.io/flocom/apel-manager@sha256:<empreinte> \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+     --certificate-identity-regexp '^https://github\.com/flocom/APEL-manager/\.github/workflows/docker-publish\.yml@refs/(heads/main|tags/v.+)$'
+   ```
+
+   Un échec avec un cosign à jour signifie que l'image ne vient pas de ce
+   workflow : ne pas l'installer.
+
+   Une instance qui suit un fork remplace `flocom/APEL-manager` par le dépôt de
+   ce fork, dans `docker buildx imagetools` et `cosign verify` comme dans
+   `.env`.
+
+3. Figer l'image dans `.env`, garder l'indicateur de version attentif aux
+   nouvelles publications, et désactiver l'`updater` — Watchtower ne remplace
+   jamais une image désignée par son empreinte :
+
+   ```env
+   APEL_IMAGE="ghcr.io/flocom/apel-manager@sha256:<empreinte>"
+   UPDATE_IMAGE="ghcr.io/flocom/apel-manager:latest"
+   COMPOSE_PROFILES=""
+   ```
+
+   ```bash
+   docker compose up -d
+   ```
+
+**Configuration → Version et mises à jour** signale ensuite chaque nouvelle
+publication. Pour l'installer, reprendre ces trois étapes avec la nouvelle
+empreinte. Les images tierces de `compose.yaml` (PostgreSQL, Caddy, Mailpit,
+Watchtower) se figent de la même façon, en remplaçant leur étiquette par
+`image@sha256:…`.
 
 ### Manuelle depuis l'image publiée
 
@@ -303,6 +497,9 @@ docker compose up -d
 docker image prune
 ```
 
+`docker compose pull` installe ce que désigne l'étiquette à cet instant : pour
+vérifier d'abord, suivez la méthode précédente.
+
 ### Manuelle depuis les sources
 
 ```bash
@@ -310,6 +507,10 @@ git pull
 docker compose up --build -d
 docker image prune
 ```
+
+Sur une installation antérieure au passage de Mailpit sous profil, ces
+commandes laissent l'ancien conteneur Mailpit publié sur toutes les adresses :
+voir « Installation antérieure » dans la partie Courrier.
 
 ### Vérifier ce qui tourne
 
@@ -347,9 +548,11 @@ déduite de la configuration.
 
 ### Revenir à la version précédente
 
-Chaque publication pousse, à côté de `latest`, une étiquette immuable
-`sha-xxxxxxx` reprenant les sept premiers caractères de la révision. C'est la
-porte de sortie quand une version ne démarre pas.
+Chaque publication pousse, à côté de `latest`, une étiquette `sha-xxxxxxx`
+reprenant les sept premiers caractères de la révision, que les publications
+suivantes ne déplacent pas. C'est la porte de sortie quand une version ne
+démarre pas ; pour une garantie absolue, désignez plutôt l'empreinte, comme
+expliqué dans « Figée sur une version vérifiée ».
 
 L'application écrit dans le volume `app_config` la révision du dernier
 démarrage réussi. Pour la lire, même application arrêtée :

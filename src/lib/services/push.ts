@@ -1,13 +1,14 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import webpush from "web-push";
 
 import { HttpError } from "@/lib/auth/guards";
 import { getBaseUrl } from "@/lib/base-url";
 import { db } from "@/lib/db";
+import { endpointPushAutorise } from "@/lib/push-endpoints";
 import {
   associationSettings,
   pushDeliveries,
@@ -33,6 +34,47 @@ import { decryptSecret, encryptSecret } from "./settings-secrets";
  */
 
 const SETTINGS_ID = "default";
+
+/**
+ * Délai d'un envoi. Sans lui, un service de notification qui ne répondait pas
+ * tenait indéfiniment ouverte la requête de l'administrateur.
+ */
+const DELAI_ENVOI_MS = 10_000;
+/** Assez pour qu'une diffusion à toute l'équipe parte en quelques secondes. */
+const ENVOIS_SIMULTANES = 10;
+/**
+ * Appareils conservés par membre. Chaque abonnement est une adresse que le
+ * serveur appelle à chaque diffusion, avec jusqu'à DELAI_ENVOI_MS d'attente :
+ * sans plafond, un membre qui en déclarait des centaines, toutes muettes,
+ * faisait durer d'autant chaque envoi de l'administrateur. Dix suffisent aux
+ * téléphones, tablettes et ordinateurs d'une famille.
+ */
+const APPAREILS_PAR_MEMBRE = 10;
+
+/**
+ * L'option `timeout` de web-push est un délai d'inactivité de la socket : elle
+ * finit par fermer une connexion muette, mais seulement après une vingtaine de
+ * secondes mesurées, et jamais si le serveur distille un octet de temps en
+ * temps. L'échéance ferme se pose donc ici ; la bibliothèque garde la sienne
+ * pour libérer la socket ensuite.
+ */
+function avecEcheance<T>(promesse: Promise<T>, ms: number): Promise<T> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  const echeance = new Promise<never>((_, rejeter) => {
+    minuteur = setTimeout(
+      () =>
+        rejeter(
+          new Error(
+            `Le service de notification n’a pas répondu en ${ms / 1000} s`,
+          ),
+        ),
+      ms,
+    );
+  });
+  return Promise.race([promesse, echeance]).finally(() =>
+    clearTimeout(minuteur),
+  );
+}
 
 export interface VapidKeys {
   publicKey: string;
@@ -118,28 +160,154 @@ export async function getPushPublicKey(): Promise<string | null> {
   return keys?.publicKey ?? null;
 }
 
-export async function saveSubscription({
-  userId,
-  endpoint,
-  p256dh,
-  auth,
-  deviceLabel,
-}: {
-  userId: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  deviceLabel?: string | null;
-}) {
-  // Un même appareil peut se réabonner : l'endpoint fait foi, et change de
-  // propriétaire si deux membres partagent le navigateur.
-  await db
+/**
+ * Les clés d'un abonnement sont engendrées par le navigateur et ne circulent
+ * qu'entre lui et ce serveur. Les présenter à l'identique prouve qu'on écrit
+ * depuis ce navigateur-là, ce que l'endpoint seul ne prouve pas : il peut
+ * traîner dans un journal, une capture, un rapport d'erreur.
+ */
+function memesCles(
+  a: { p256dh: string; auth: string },
+  b: { p256dh: string; auth: string },
+) {
+  const gauche = Buffer.from(`${a.p256dh}\n${a.auth}`);
+  const droite = Buffer.from(`${b.p256dh}\n${b.auth}`);
+  return gauche.length === droite.length && timingSafeEqual(gauche, droite);
+}
+
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Enregistre un appareil sans que son titulaire dépasse le plafond. Au-delà,
+ * c'est le plus ancien qui part — dernier envoi réussi, à défaut inscription,
+ * le plus lointain — plutôt que le nouveau qui est refusé : le membre n'a
+ * aucun écran pour retirer un vieil appareil, et un abonnement abandonné
+ * (téléphone changé, navigateur réinstallé) ne disparaît qu'au premier envoi
+ * qui échoue. Refuser laisserait sans notification celui qui vient de changer
+ * de téléphone.
+ *
+ * Renvoie `null` si l'endpoint a été enregistré entre-temps par une autre
+ * demande.
+ */
+async function insererAvecPlafond(
+  tx: Transaction,
+  valeurs: typeof pushSubscriptions.$inferInsert,
+): Promise<string | null> {
+  // Verrou sur le compte : deux abonnements simultanés du même membre
+  // compteraient chacun sans voir l'autre et dépasseraient le plafond à deux.
+  await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, valeurs.userId))
+    .for("no key update");
+  const [ligne] = await tx
     .insert(pushSubscriptions)
-    .values({ userId, endpoint, p256dh, auth, deviceLabel: deviceLabel ?? null })
-    .onConflictDoUpdate({
-      target: pushSubscriptions.endpoint,
-      set: { userId, p256dh, auth, deviceLabel: deviceLabel ?? null },
-    });
+    .values(valeurs)
+    .onConflictDoNothing({ target: pushSubscriptions.endpoint })
+    .returning({ id: pushSubscriptions.id });
+  if (!ligne) return null;
+  const excedent = await tx
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(
+      and(
+        eq(pushSubscriptions.userId, valeurs.userId),
+        ne(pushSubscriptions.id, ligne.id),
+      ),
+    )
+    .orderBy(
+      desc(
+        sql`coalesce(${pushSubscriptions.lastSuccessAt}, ${pushSubscriptions.createdAt})`,
+      ),
+      desc(pushSubscriptions.createdAt),
+    )
+    .offset(APPAREILS_PAR_MEMBRE - 1);
+  if (excedent.length > 0) {
+    await tx.delete(pushSubscriptions).where(
+      inArray(
+        pushSubscriptions.id,
+        excedent.map((e) => e.id),
+      ),
+    );
+  }
+  return ligne.id;
+}
+
+export async function saveSubscription(
+  {
+    userId,
+    endpoint,
+    p256dh,
+    auth,
+    deviceLabel,
+  }: {
+    userId: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    deviceLabel?: string | null;
+  },
+  actor: AuditActor,
+) {
+  const valeurs = { userId, endpoint, p256dh, auth, deviceLabel: deviceLabel ?? null };
+  const lire = async () =>
+    (
+      await db
+        .select()
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.endpoint, endpoint))
+        .limit(1)
+    ).at(0);
+
+  let existant = await lire();
+  if (!existant) {
+    const insere = await db.transaction((tx) => insererAvecPlafond(tx, valeurs));
+    if (insere) return;
+    // Deux demandes simultanées pour le même appareil : l'autre a gagné, on
+    // reprend avec la ligne qu'elle vient d'écrire.
+    existant = await lire();
+    if (!existant) return;
+  }
+
+  // Un même appareil peut se réabonner : ses clés ont pu changer, l'endpoint
+  // reste le sien.
+  if (existant.userId === userId) {
+    await db
+      .update(pushSubscriptions)
+      .set({ p256dh, auth, deviceLabel: deviceLabel ?? null })
+      .where(eq(pushSubscriptions.id, existant.id));
+    return;
+  }
+
+  // L'endpoint appartient à un autre membre. Le réattribuer sur la seule foi
+  // de l'endpoint permettait de détourner ses notifications : il ne les
+  // recevait plus, sans rien voir. On n'accepte le transfert que de qui prouve
+  // tenir le même navigateur — deux membres d'une famille sur un ordinateur
+  // partagé, le cas pour lequel ce transfert existe.
+  const ancien = existant;
+  if (!memesCles(ancien, { p256dh, auth })) {
+    throw new HttpError(
+      409,
+      "Cet appareil est déjà enregistré pour un autre compte. Désactivez puis réactivez les notifications dans ce navigateur.",
+    );
+  }
+
+  // Supprimer puis recréer plutôt que modifier : l'historique des envois de
+  // l'ancien titulaire ne doit pas se rattacher à l'appareil du nouveau.
+  const nouveauId = await db.transaction(async (tx) => {
+    await tx
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.id, ancien.id));
+    return insererAvecPlafond(tx, valeurs);
+  });
+  if (!nouveauId) return;
+  // Sans le nom d'appareil : c'est un texte libre du membre, et le journal
+  // est relu par l'assistant des administrateurs (list_audit_logs). Les
+  // identifiants suffisent à retrouver de quoi il s'agit.
+  await recordAudit(actor, "push.subscription_transfer", "push_subscription", nouveauId, {
+    fromUserId: ancien.userId,
+    toUserId: userId,
+  });
 }
 
 export async function removeSubscription(endpoint: string, userId: string) {
@@ -251,45 +419,86 @@ export async function sendPushNotification(
   let failures = 0;
   const perimes: string[] = [];
 
-  await Promise.all(
-    envois.map(async ({ subscription, deliveryId, ackToken }) => {
-      const charge = JSON.stringify({
-        title,
-        body,
-        url: absolue(url || "/"),
-        icon: icone,
-        ack: ackToken,
-      });
-      try {
-        await webpush.sendNotification(
+  const envoyer = async ({
+    subscription,
+    deliveryId,
+    ackToken,
+  }: (typeof envois)[number]) => {
+    const charge = JSON.stringify({
+      title,
+      body,
+      url: absolue(url || "/"),
+      icon: icone,
+      ack: ackToken,
+    });
+    try {
+      // Un abonnement enregistré avant le contrôle des adresses peut viser
+      // n'importe quelle machine : on ne l'appelle pas, on l'écarte comme un
+      // abonnement révoqué.
+      if (!endpointPushAutorise(subscription.endpoint)) {
+        throw Object.assign(
+          new Error(
+            "Adresse d’abonnement hors des services de notification reconnus",
+          ),
+          { statusCode: 410 },
+        );
+      }
+      await avecEcheance(
+        webpush.sendNotification(
           {
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
           charge,
-        );
-        await db
-          .update(pushDeliveries)
-          .set({ status: "sent", sentAt: new Date() })
-          .where(eq(pushDeliveries.id, deliveryId));
-        await db
-          .update(pushSubscriptions)
-          .set({ lastSuccessAt: new Date() })
-          .where(eq(pushSubscriptions.id, subscription.id));
+          { timeout: DELAI_ENVOI_MS },
+        ),
+        DELAI_ENVOI_MS,
+      );
+      await db
+        .update(pushDeliveries)
+        .set({ status: "sent", sentAt: new Date() })
+        .where(eq(pushDeliveries.id, deliveryId));
+      await db
+        .update(pushSubscriptions)
+        .set({ lastSuccessAt: new Date() })
+        .where(eq(pushSubscriptions.id, subscription.id));
+    } catch (error) {
+      failures += 1;
+      const statut = (error as { statusCode?: number }).statusCode;
+      const raison =
+        error instanceof Error ? error.message.slice(0, 300) : "erreur inconnue";
+      // 404 et 410 signifient que le navigateur a révoqué l'abonnement :
+      // le garder ne ferait qu'échouer à chaque envoi.
+      if (statut === 404 || statut === 410) perimes.push(subscription.id);
+      await db
+        .update(pushDeliveries)
+        .set({ status: "failed", error: raison })
+        .where(eq(pushDeliveries.id, deliveryId));
+    }
+  };
+
+  // Dix envois à la fois, chacun borné par son échéance. Chaque file reprend
+  // l'appareil suivant dès qu'elle est libre : un service de notification
+  // muet n'immobilise que la sienne, le temps du délai, au lieu de retenir
+  // toute une vague. Une erreur imprévue sur un appareil est consignée et
+  // n'arrête pas la file.
+  let prochain = 0;
+  const file = async () => {
+    while (prochain < envois.length) {
+      const envoi = envois[prochain];
+      prochain += 1;
+      try {
+        await envoyer(envoi);
       } catch (error) {
-        failures += 1;
-        const statut = (error as { statusCode?: number }).statusCode;
-        const raison =
-          error instanceof Error ? error.message.slice(0, 300) : "erreur inconnue";
-        await db
-          .update(pushDeliveries)
-          .set({ status: "failed", error: raison })
-          .where(eq(pushDeliveries.id, deliveryId));
-        // 404 et 410 signifient que le navigateur a révoqué l'abonnement :
-        // le garder ne ferait qu'échouer à chaque envoi.
-        if (statut === 404 || statut === 410) perimes.push(subscription.id);
+        console.error("[push] envoi non journalisé :", error);
       }
-    }),
+    }
+  };
+  await Promise.allSettled(
+    Array.from(
+      { length: Math.min(ENVOIS_SIMULTANES, envois.length) },
+      file,
+    ),
   );
 
   if (perimes.length > 0) {

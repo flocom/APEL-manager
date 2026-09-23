@@ -113,6 +113,18 @@ La clé Resend et le mot de passe SMTP sont chiffrés côté serveur avant leur
 stockage. L'interface ne les réaffiche jamais en clair. Ne jamais les inscrire
 dans Git, les journaux ou une capture d'écran.
 
+Le mot de passe SMTP ne vaut que pour le serveur pour lequel il a été saisi :
+changer le fournisseur, l'hôte, le port ou l'identifiant sans le saisir de
+nouveau l'efface, depuis l'interface comme depuis le connecteur MCP. Et il ne
+circule jamais en clair : hors relais local (`localhost`, conteneur Docker),
+le serveur doit accepter TLS dès la connexion (port 465) ou STARTTLS (port
+587), avec un certificat valide ; un relais qui ne le propose pas est refusé.
+
+Un déploiement Docker, plutôt que Vercel, installe l'image publiée par ce
+dépôt : [`DOCKER.md`](DOCKER.md) décrit comment figer une version par son
+empreinte et vérifier sa signature, et ce que l'on accepte en laissant la mise
+à jour automatique installer chaque nouvelle image.
+
 ### Passage ultérieur au nom de domaine
 
 En phase de test, Resend permet l'utilisation de son expéditeur de démonstration.

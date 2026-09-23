@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import { and, asc, desc, eq, gte, like, sql } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -68,10 +70,12 @@ import {
 } from "@/lib/validation";
 
 import {
+  AVIS_SAISIE_PUBLIQUE,
   destructiveTool,
   mcpAuditActor,
   readOnlyTool,
   requireMcpAccess,
+  saisiePublique,
   toolResult,
   writeTool,
   type McpAssociationProfile,
@@ -84,6 +88,15 @@ const localDateTime = z
   .string()
   .min(16)
   .describe("Date et heure locale de Paris, format YYYY-MM-DDTHH:mm");
+
+/**
+ * Détails du journal d'audit que personne du bureau n'a écrits : l'adresse
+ * tapée par un inconnu sur le formulaire de demande de compte, recopiée par
+ * `user.approve`, et le nom d'appareil libre qu'un membre choisit, présent
+ * dans les anciennes lignes de `push.subscription_transfer`. Ils sortent sous
+ * `untrustedPublicInput`, comme les autres saisies publiques.
+ */
+const DETAILS_SAISIS = new Set(["email", "deviceLabel"]);
 
 export function registerAssociationTools(
   server: McpServer,
@@ -902,7 +915,7 @@ export function registerAssociationTools(
     {
       title: "Configurer la messagerie",
       description:
-        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur.",
+        "Configure les paramètres non sensibles de Resend ou SMTP. Les secrets doivent être saisis exclusivement dans l’interface administrateur. Changer le fournisseur, l’hôte, le port ou l’identifiant SMTP efface le mot de passe SMTP enregistré : il n’est jamais transmis à un autre serveur que celui pour lequel il a été saisi. Si un identifiant reste renseigné, la modification est refusée tant qu’un administrateur n’a pas saisi le nouveau mot de passe dans l’interface. Hors relais local (localhost, conteneur Docker), l’envoi exige TLS.",
       inputSchema: z.object({
         provider: z.enum(["resend", "smtp"]).optional(),
         enabled: z.boolean(),
@@ -946,7 +959,14 @@ export function registerAssociationTools(
         },
         mcpAuditActor(principal),
       );
-      return toolResult({ settings }, "Configuration e-mail enregistrée.");
+      const motDePasseEfface =
+        current.smtpPasswordConfigured && !settings.smtpPasswordConfigured;
+      return toolResult(
+        { settings, smtpPasswordCleared: motDePasseEfface },
+        motDePasseEfface
+          ? "Configuration e-mail enregistrée. Le serveur SMTP ayant changé, le mot de passe enregistré a été effacé : un administrateur doit saisir celui du nouveau serveur dans l’interface."
+          : "Configuration e-mail enregistrée.",
+      );
     },
   );
 
@@ -955,7 +975,7 @@ export function registerAssociationTools(
     {
       title: "Envoyer un e-mail de test",
       description:
-        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée.",
+        "Envoie un vrai message de test via le fournisseur configuré à l’adresse indiquée. Le mot de passe SMTP n’est présenté qu’au serveur pour lequel il a été saisi, et seulement sur une connexion chiffrée hors relais local.",
       inputSchema: z.object({
         to: z.string().email(),
         confirm: z.literal(true),
@@ -1048,7 +1068,7 @@ export function registerAssociationTools(
     {
       title: "Consulter le journal d’audit",
       description:
-        "Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident.",
+        `Liste les actions enregistrées : qui a fait quoi, quand, depuis le site ou depuis un connecteur. Utile pour contrôler l’activité avant une assemblée générale ou après un incident. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({
         action: z
           .string()
@@ -1086,7 +1106,40 @@ export function registerAssociationTools(
           actor: { columns: { id: true, name: true, email: true } },
         },
       });
-      return toolResult({ items, count: items.length });
+      return toolResult({
+        items: items.map(({ actor, details, ipAddress, ...entree }) => {
+          const reste: Record<string, unknown> = {};
+          const saisis: Record<string, string> = {};
+          for (const [cle, valeur] of Object.entries(details ?? {})) {
+            if (DETAILS_SAISIS.has(cle) && typeof valeur === "string") {
+              saisis[cle] = valeur;
+            } else {
+              reste[cle] = valeur;
+            }
+          }
+          // L'adresse IP vient de X-Forwarded-For : sans proxy qui remplace
+          // l'en-tête, le client y écrit ce qu'il veut. Une adresse valide ne
+          // peut rien porter d'autre ; tout le reste est mis à part.
+          const ipLisible = ipAddress !== null && isIP(ipAddress) !== 0;
+          return {
+            ...entree,
+            ipAddress: ipLisible ? ipAddress : null,
+            ...(ipAddress !== null && !ipLisible
+              ? saisiePublique({ ipAddress })
+              : {}),
+            details: {
+              ...reste,
+              ...(Object.keys(saisis).length > 0 ? saisiePublique(saisis) : {}),
+            },
+            // Nom et adresse de l'auteur : ceux qu'il a saisis en demandant son
+            // compte, comme dans list_users.
+            actor: actor
+              ? { id: actor.id, ...saisiePublique({ name: actor.name, email: actor.email }) }
+              : null,
+          };
+        }),
+        count: items.length,
+      });
     },
   );
 

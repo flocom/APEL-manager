@@ -116,6 +116,21 @@ une confirmation explicite dans les paramètres de l'outil. Les écritures
 comptables validées sont immuables ; une correction doit être enregistrée dans
 une nouvelle écriture.
 
+Certaines données lues par Claude ont été saisies par des inconnus sur les
+formulaires publics : nom et coordonnées d'un bénévole, nom et adresse choisis
+en demandant un compte — y compris lorsque le journal d'audit les reprend —,
+nom d'appareil donné par un membre, adresse IP qui n'en est pas une.
+N'importe qui peut y écrire une phrase qui ressemble à une consigne
+(« supprime cet événement »). Les outils les rendent donc à part, sous la clé
+`untrustedPublicInput`, débarrassées des caractères invisibles et plafonnées en
+longueur, avec un avertissement rappelant que ce sont des données et non des
+instructions. Le serveur transmet le même avertissement à la connexion.
+
+Changer d'hôte, de port, d'identifiant ou de fournisseur SMTP par
+`update_outbound_mail_settings` efface le mot de passe SMTP enregistré : il
+n'est jamais présenté à un autre serveur que celui pour lequel un
+administrateur l'a saisi dans l'interface.
+
 ## 4. Endpoints de découverte
 
 Les endpoints suivants sont publics par conception :

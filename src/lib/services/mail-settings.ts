@@ -128,6 +128,32 @@ function formatSender(
   return fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 }
 
+/**
+ * Le serveur et le compte auxquels un mot de passe SMTP est remis. L'hôte se
+ * compare sans casse, comme le fait le DNS ; le reste à l'identique.
+ */
+function memeCibleSmtp(
+  avant: {
+    provider: "resend" | "smtp";
+    smtpHost: string | null;
+    smtpPort: number | null;
+    smtpUsername: string | null;
+  },
+  apres: {
+    provider: "resend" | "smtp";
+    host: string | null;
+    port: number | null;
+    username: string | null;
+  },
+) {
+  return (
+    avant.provider === apres.provider &&
+    (avant.smtpHost ?? "").toLowerCase() === (apres.host ?? "").toLowerCase() &&
+    (avant.smtpPort ?? null) === (apres.port ?? null) &&
+    (avant.smtpUsername ?? null) === (apres.username ?? null)
+  );
+}
+
 export async function getOutboundMailSettings() {
   const settings = (
     await db
@@ -283,21 +309,52 @@ export async function saveOutboundMailSettings(
     keyLastFour = legacyApiKey.slice(-4);
   }
 
+  const fromEmail = emptyToNull(data.fromEmail);
+  const smtpHost = emptyToNull(data.smtpHost);
+  const smtpUsername = emptyToNull(data.smtpUsername);
+  const cible = {
+    provider: data.provider,
+    host: smtpHost,
+    port: smtpPort,
+    username: smtpUsername,
+  };
+
+  // Un mot de passe SMTP ne vaut que pour le serveur et le compte pour
+  // lesquels il a été saisi. Le conserver quand l'un d'eux change permettait à
+  // qui modifie les réglages sans le connaître — un connecteur MCP, une session
+  // volée — de viser son propre serveur puis de déclencher un e-mail de test :
+  // le mot de passe lui était remis à la connexion. Sans nouveau mot de passe,
+  // changer de fournisseur, d'hôte, de port ou d'identifiant l'efface donc.
   let encryptedSmtpPassword = current?.encryptedSmtpPassword ?? null;
+  let smtpPasswordReset = false;
   if (data.clearSmtpPassword) {
     encryptedSmtpPassword = null;
   } else if (smtpPassword) {
     encryptedSmtpPassword = encryptSecret(smtpPassword);
-  } else if (!current) {
+  } else if (current) {
+    if (encryptedSmtpPassword && !memeCibleSmtp(current, cible)) {
+      encryptedSmtpPassword = null;
+      smtpPasswordReset = true;
+    }
+  } else {
+    // Même règle pour l'ancienne configuration par variables d'environnement :
+    // son mot de passe n'est repris que pour le serveur qu'elle désignait.
     const legacySmtp = getSmtpEnvironment();
-    if (legacySmtp?.password) {
+    if (
+      legacySmtp?.password &&
+      memeCibleSmtp(
+        {
+          provider: "smtp",
+          smtpHost: legacySmtp.host,
+          smtpPort: legacySmtp.port,
+          smtpUsername: legacySmtp.username,
+        },
+        cible,
+      )
+    ) {
       encryptedSmtpPassword = encryptSecret(legacySmtp.password);
     }
   }
-
-  const fromEmail = emptyToNull(data.fromEmail);
-  const smtpHost = emptyToNull(data.smtpHost);
-  const smtpUsername = emptyToNull(data.smtpUsername);
 
   if (data.enabled && !fromEmail) {
     throw new HttpError(
@@ -325,6 +382,12 @@ export async function saveOutboundMailSettings(
     data.provider === "smtp" &&
     Boolean(smtpUsername) !== Boolean(encryptedSmtpPassword)
   ) {
+    if (smtpPasswordReset) {
+      throw new HttpError(
+        400,
+        "Le serveur, le port ou l’identifiant SMTP a changé : le mot de passe enregistré ne lui sera pas transmis. Saisissez le mot de passe de ce compte dans Configuration, ou retirez l’identifiant si le relais n’en demande pas.",
+      );
+    }
     throw new HttpError(
       400,
       "L’identifiant et le mot de passe SMTP doivent être renseignés ensemble.",
@@ -366,6 +429,9 @@ export async function saveOutboundMailSettings(
     apiKeyCleared: data.clearApiKey,
     smtpPasswordChanged: Boolean(smtpPassword),
     smtpPasswordCleared: data.clearSmtpPassword,
+    smtpPasswordClearedOnTargetChange: smtpPasswordReset,
+    smtpHost: saved.smtpHost,
+    smtpPort: saved.smtpPort,
   });
   return getOutboundMailStatus();
 }

@@ -63,7 +63,7 @@ docker compose up --build -d
 | Service | Adresse locale |
 |---|---|
 | Application | [http://localhost:3000](http://localhost:3000) |
-| Boîte e-mail Mailpit | [http://localhost:8025](http://localhost:8025) |
+| Boîte e-mail Mailpit (profil `mailpit`) | [http://localhost:8025](http://localhost:8025) |
 | État de santé | [http://localhost:3000/api/health](http://localhost:3000/api/health) |
 
 Au premier lancement, les secrets internes sont générés, PostgreSQL est
@@ -103,7 +103,7 @@ e-mails gardent leur en-tête habituel.
 | `app` | Application Next.js 15 et migrations Drizzle |
 | `db` | PostgreSQL 16 avec stockage persistant |
 | `scheduler` | Rappels quotidiens et nettoyage des imports abandonnés |
-| `mailpit` | Serveur SMTP local et boîte de contrôle |
+| `mailpit` | Facultatif : serveur SMTP d’essai et boîte de contrôle, sur la machine hôte seulement |
 | `caddy` | Reverse proxy HTTP/HTTPS et certificats TLS automatiques |
 
 Des volumes dédiés conservent la base, les pièces jointes, les secrets générés,
@@ -124,8 +124,25 @@ docker compose up --build -d
 Caddy peut obtenir automatiquement un certificat TLS dès qu’un domaine public
 pointe vers le serveur. Le choix de **Resend** ou d’un relais **SMTP**, ses
 identifiants et l’expéditeur se règlent exclusivement dans **Tableau de bord →
-Configuration**. Mailpit reste inclus pour les essais locaux ; sélectionnez
-SMTP avec l’hôte `mailpit` et le port `1025`.
+Configuration**. Mailpit reste disponible pour les essais locaux : démarrez-le
+avec `docker compose --profile mailpit up -d`, puis sélectionnez SMTP avec
+l’hôte `mailpit` et le port `1025`. Il capture les messages sans les distribuer
+et affiche leur contenu, liens de réinitialisation de mot de passe compris :
+jamais en production. Hors relais local, l’envoi SMTP exige une connexion
+chiffrée.
+
+**Installation antérieure :** Mailpit démarrait autrefois d’office, avec une
+interface ouverte à tout le réseau sur le port 8025. Ni `git pull` ni
+`docker compose up -d` n’arrêtent cet ancien conteneur, et l’application
+continue d’y relayer son courrier si elle était réglée ainsi. Vérifiez-le avec
+`docker ps --filter name=mailpit --format '{{.Names}} {{.Ports}}'` : la
+démarche pour le retirer ou le republier sur la seule machine hôte figure dans
+[`docs/DOCKER.md`](docs/DOCKER.md), partie Courrier, sous « Installation
+antérieure ».
+
+Les images publiées sont signées : `docs/DOCKER.md` explique comment figer une
+version par son empreinte et vérifier sa signature plutôt que d’installer
+automatiquement chaque nouvelle image.
 
 Le `.env` ne contient que ce dont l’application a besoin avant de pouvoir lire
 la base : URL publique, accès PostgreSQL, secrets de sessions/chiffrement,
