@@ -95,9 +95,11 @@ const localDateTime = z
  * tapée par un inconnu sur le formulaire de demande de compte, recopiée par
  * `user.approve`, et le nom d'appareil libre qu'un membre choisit, présent
  * dans les anciennes lignes de `push.subscription_transfer`. Ils sortent sous
- * `untrustedPublicInput`, comme les autres saisies publiques.
+ * `untrustedPublicInput`, comme les autres saisies publiques. Le nom aussi :
+ * `user.delete` garde le nom et l'adresse du compte supprimé, choisis par la
+ * personne en demandant son compte.
  */
-const DETAILS_SAISIS = new Set(["email", "deviceLabel"]);
+const DETAILS_SAISIS = new Set(["email", "name", "deviceLabel"]);
 
 export function registerAssociationTools(
   server: McpServer,
@@ -1003,14 +1005,24 @@ export function registerAssociationTools(
         throw new Error("Aucun adhérent actif avec une adresse e-mail.");
       }
       // Même plafond que l'écrit à toute l'équipe : c'est une diffusion à tous.
-      await assertBroadcastAllowed(principal.userId, { type: "equipe" });
+      const rendreQuota = await assertBroadcastAllowed(principal.userId, {
+        type: "equipe",
+      });
       const mail = broadcastEmail({
         subject,
         message,
         senderName: principal.name,
         identity: await getNotificationIdentity(),
       });
-      const sent = await sendBulkEmail(recipients, mail);
+      // Quota réservé avant l'envoi, rendu si le message n'a atteint
+      // personne : un transport en panne ne doit pas faire refuser le
+      // renvoi, une fois réparé, au motif de messages jamais reçus.
+      let sent = 0;
+      try {
+        sent = await sendBulkEmail(recipients, mail);
+      } finally {
+        if (sent === 0) await rendreQuota();
+      }
       await recordAudit(
         mcpAuditActor(principal),
         "mail.broadcast_adherents",

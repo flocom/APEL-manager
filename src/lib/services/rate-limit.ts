@@ -107,6 +107,12 @@ export const PLAFONDS = {
    * l'inscription ou la réponse est prise, seul l'e-mail ne part plus.
    */
   confirmationAdresseJour: { bucket: "confirmation:adresse", limit: 8, windowSeconds: JOUR },
+  /**
+   * Demandes de compte pour une même boîte aux lettres (voir `emailKey`) :
+   * « parent+1@… », « p.a.r.e.n.t@gmail.com » comptent ensemble. Refus muet,
+   * comme le contrôle par adresse exacte qu'il complète.
+   */
+  demandeCompteBoiteJour: { bucket: "demande-compte:boite", limit: 3, windowSeconds: JOUR },
 
   /**
    * Enregistrements de clients OAuth (RFC 7591), ouverts à tous. Le total
@@ -457,10 +463,7 @@ export type BroadcastKind =
   | { type: "equipe" }
   | { type: "appareil" };
 
-export async function assertBroadcastAllowed(
-  userId: string,
-  kind: BroadcastKind,
-): Promise<void> {
+function reglesDiffusion(userId: string, kind: BroadcastKind) {
   const parCompte: RateLimitRule =
     kind.type === "appareil"
       ? PLAFONDS.notificationAppareil
@@ -474,16 +477,21 @@ export async function assertBroadcastAllowed(
   if (kind.type === "annulation") {
     entrees.push([PLAFONDS.annulationEvenement, kind.eventId]);
   }
+  return { parCompte, entrees };
+}
 
-  const verdicts = await Promise.all(
-    entrees.map(([rule, key]) => hitRateLimit(rule, key)),
-  );
-  const [compte, evenement] = verdicts;
+/** Le refus à opposer, ou `null` si la diffusion passe. */
+function refusDiffusion(
+  kind: BroadcastKind,
+  parCompte: RateLimitRule,
+  compte: RateLimitVerdict,
+  evenement: RateLimitVerdict | undefined,
+): HttpError | null {
   const delai = (v: Extract<RateLimitVerdict, { ok: false }>) =>
     delaiLisible(v.retryAfterSeconds);
 
   if (evenement && !evenement.ok) {
-    throw rateLimitError(
+    return rateLimitError(
       evenement,
       kind.type === "annulation"
         ? `Les inscrits ont déjà été prévenus ${PLAFONDS.annulationEvenement.limit} fois aujourd’hui d’une annulation de cet événement. Rien n’a été modifié : réessayez ${delai(evenement)}.`
@@ -491,7 +499,7 @@ export async function assertBroadcastAllowed(
     );
   }
   if (!compte.ok) {
-    throw rateLimitError(
+    return rateLimitError(
       compte,
       kind.type === "appareil"
         ? `Vous avez déjà envoyé ${parCompte.limit} notifications aujourd’hui : réessayez ${delai(compte)}.`
@@ -500,4 +508,87 @@ export async function assertBroadcastAllowed(
           : `Vous avez déjà fait partir ${parCompte.limit} diffusions aujourd’hui : réessayez ${delai(compte)}. Cette limite protège la réputation d’envoi de l’association.`,
     );
   }
+  return null;
+}
+
+/**
+ * Réserve une diffusion : la compte, et refuse si le plafond est atteint.
+ * Rend de quoi la décompter, à appeler quand l'envoi n'a finalement touché
+ * personne (transport en panne, aucun destinataire) : une tentative qui n'a
+ * prévenu personne ne doit pas entamer le quota, sinon l'envoi suivant, le
+ * vrai, serait refusé au motif de messages que personne n'a reçus.
+ *
+ * Réserver avant d'envoyer plutôt que compter après : deux envois lancés au
+ * même instant ne peuvent pas passer tous les deux sous le plafond.
+ * Un refus n'est pas compté non plus : insister n'envoie rien.
+ */
+export async function assertBroadcastAllowed(
+  userId: string,
+  kind: BroadcastKind,
+): Promise<() => Promise<void>> {
+  const instant = Date.now();
+  const { parCompte, entrees } = reglesDiffusion(userId, kind);
+  const [compte, evenement] = await Promise.all(
+    entrees.map(([rule, key]) => hitRateLimit(rule, key, instant)),
+  );
+  const rendre = () => releaseRateLimits(entrees, instant);
+  const refus = refusDiffusion(kind, parCompte, compte, evenement);
+  if (refus) {
+    await rendre();
+    throw refus;
+  }
+  return rendre;
+}
+
+/**
+ * Lit un compteur sans l'avancer : dit si un appel de plus passerait.
+ * Pour les gestes dont on ne sait pas encore, au moment du contrôle, s'ils
+ * aboutiront (voir `checkBroadcastAllowed`).
+ */
+export async function peekRateLimit(
+  rule: RateLimitRule,
+  key: string | null | undefined,
+  now = Date.now(),
+): Promise<RateLimitVerdict> {
+  if (!key) return { ok: true, count: 0 };
+  const { debut, fin } = fenetre(rule, now);
+  const [ligne] = await db
+    .select({ count: rateLimits.count })
+    .from(rateLimits)
+    .where(
+      and(
+        eq(rateLimits.bucket, rule.bucket),
+        eq(rateLimits.key, empreinte(rule.bucket, key)),
+        eq(rateLimits.windowStart, debut),
+      ),
+    )
+    .limit(1);
+  return verdict(Number(ligne?.count ?? 0) + 1, fin, rule.limit);
+}
+
+/**
+ * Vérifie qu'une diffusion passerait, sans la compter : l'appelant la compte
+ * ensuite avec `recordBroadcast`, une fois sûr qu'elle a prévenu quelqu'un.
+ * Réservé aux gestes déjà protégés des doublons simultanés par ailleurs —
+ * l'annulation, dont le contrôle de version ne laisse passer qu'une requête.
+ */
+export async function checkBroadcastAllowed(
+  userId: string,
+  kind: BroadcastKind,
+): Promise<void> {
+  const { parCompte, entrees } = reglesDiffusion(userId, kind);
+  const [compte, evenement] = await Promise.all(
+    entrees.map(([rule, key]) => peekRateLimit(rule, key)),
+  );
+  const refus = refusDiffusion(kind, parCompte, compte, evenement);
+  if (refus) throw refus;
+}
+
+/** Compte une diffusion partie (voir `checkBroadcastAllowed`). */
+export async function recordBroadcast(
+  userId: string,
+  kind: BroadcastKind,
+): Promise<void> {
+  const { entrees } = reglesDiffusion(userId, kind);
+  await hitRateLimits(entrees);
 }

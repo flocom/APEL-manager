@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { clientIpAddress } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import { events, meetingAttendance } from "@/lib/db/schema";
+import { redactError } from "@/lib/errors";
 import { getRecaptchaRuntimeConfig } from "@/lib/services/association-settings";
 import {
   avertirLeBureauPresence as avertirLeBureau,
@@ -44,6 +45,23 @@ const schemaPublic = publicMeetingAttendanceSchema.extend({
   // Pot de miel anti-robot : champ caché qui doit rester vide.
   website: z.string().optional(),
 });
+
+/**
+ * Les e-mails partent après la réponse, tous : la réponse arrive ainsi au même
+ * moment qu'il y ait une confirmation, une demande de confirmation de
+ * changement, un avis au bureau ou rien du tout. Chronométrer la page ne dit
+ * donc pas si une adresse avait déjà répondu. Un échec d'envoi n'a de toute
+ * façon rien à dire au parent : sa réponse est enregistrée.
+ */
+function envoyerApres(tache: () => Promise<unknown>) {
+  after(async () => {
+    try {
+      await tache();
+    } catch (erreur) {
+      console.error("[presences] envoi non effectué", redactError(erreur));
+    }
+  });
+}
 
 export async function POST(req: Request) {
   try {
@@ -132,13 +150,15 @@ export async function POST(req: Request) {
           target: [meetingAttendance.eventId, meetingAttendance.userId],
           set: { status: data.status, updatedAt: new Date() },
         });
-      await avertirLeBureau({
-        nom: currentUser.name,
-        email: currentUser.email,
-        phone,
-        statut: data.status,
-        reunion,
-      });
+      envoyerApres(() =>
+        avertirLeBureau({
+          nom: currentUser.name,
+          email: currentUser.email,
+          phone,
+          statut: data.status,
+          reunion,
+        }),
+      );
       return NextResponse.json({ ok: true });
     }
 
@@ -175,12 +195,14 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (existant) {
-        await demanderConfirmationDuChangement({
-          existant,
-          reunion,
-          email,
-          propose: { status: data.status, name: data.name, phone },
-        });
+        envoyerApres(() =>
+          demanderConfirmationDuChangement({
+            existant,
+            reunion,
+            email,
+            propose: { status: data.status, name: data.name, phone },
+          }),
+        );
         return NextResponse.json({ ok: true });
       }
     }
@@ -202,21 +224,23 @@ export async function POST(req: Request) {
       throw e;
     }
 
-    if (email) {
-      await envoyerConfirmation({
-        email,
+    envoyerApres(async () => {
+      if (email) {
+        await envoyerConfirmation({
+          email,
+          nom: data.name,
+          statut: data.status,
+          reunion,
+          cancelToken,
+        });
+      }
+      await avertirLeBureau({
         nom: data.name,
+        email,
+        phone,
         statut: data.status,
         reunion,
-        cancelToken,
       });
-    }
-    await avertirLeBureau({
-      nom: data.name,
-      email,
-      phone,
-      statut: data.status,
-      reunion,
     });
 
     return NextResponse.json({ ok: true });

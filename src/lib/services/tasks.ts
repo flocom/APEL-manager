@@ -89,6 +89,32 @@ async function responsables(client: Client, taskId: string) {
  * ferait échouer l'écriture sur une erreur de base illisible, après que la
  * tâche a été créée.
  */
+/**
+ * Pour un membre qui n'organise pas : les tâches d'un événement annulé ou
+ * archivé ne bougent plus. Se joindre y était déjà refusé ; changer
+ * l'avancement ou se retirer ne l'était pas, et un membre pouvait ainsi
+ * rouvrir ou vider après coup le bilan d'une fête passée ou décommandée.
+ */
+async function exigerEvenementOuvert(client: Client, eventId: string) {
+  const [event] = await client
+    .select({ cancelledAt: events.cancelledAt, status: events.status })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+  if (event?.cancelledAt) {
+    throw new HttpError(
+      409,
+      "Cet événement est annulé : ses tâches sont arrêtées.",
+    );
+  }
+  if (event?.status === "archived") {
+    throw new HttpError(
+      409,
+      "Cet événement est archivé : ses tâches ne se modifient plus.",
+    );
+  }
+}
+
 async function responsablesValides(client: Client, ids: string[]) {
   const choisis = [...new Set(ids)].sort();
   if (choisis.length === 0) return choisis;
@@ -213,6 +239,7 @@ export async function toggleSelfAssignment(
           "Cette tâche est terminée : votre nom reste sur ce qui a été fait. Un organisateur peut modifier les responsables si besoin.",
         );
       }
+      if (!organisateur) await exigerEvenementOuvert(tx, task.eventId);
       await tx
         .delete(taskAssignees)
         .where(
@@ -229,23 +256,7 @@ export async function toggleSelfAssignment(
             "Cette tâche est déjà terminée : il n'y a plus à s'en charger.",
           );
         }
-        const [event] = await tx
-          .select({ cancelledAt: events.cancelledAt, status: events.status })
-          .from(events)
-          .where(eq(events.id, task.eventId))
-          .limit(1);
-        if (event?.cancelledAt) {
-          throw new HttpError(
-            409,
-            "Cet événement est annulé : ses tâches sont arrêtées.",
-          );
-        }
-        if (event?.status === "archived") {
-          throw new HttpError(
-            409,
-            "Cet événement est archivé : ses tâches ne se reprennent plus.",
-          );
-        }
+        await exigerEvenementOuvert(tx, task.eventId);
       }
       await tx
         .insert(taskAssignees)
@@ -321,6 +332,18 @@ export async function updateTask(
           403,
           "Vous ne pouvez modifier que l'avancement de la tâche.",
         );
+      }
+      if (data.status !== undefined && data.status !== current.status) {
+        await exigerEvenementOuvert(tx, current.eventId);
+        // Une tâche terminée ne se rouvre que par un organisateur : sinon un
+        // membre pouvait défaire ce qu'un autre avait fait et déclaré fini,
+        // et la tâche retournait dans les rappels de tout le monde.
+        if (current.status === "done") {
+          throw new HttpError(
+            409,
+            "Cette tâche est terminée : seul un organisateur peut la rouvrir.",
+          );
+        }
       }
     }
     if (data.version !== undefined && data.version !== current.version) {

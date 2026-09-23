@@ -227,7 +227,7 @@ export async function POST(req: Request) {
         });
         if (!parti) {
           console.warn(
-            `[signup] avis au bureau non remis à ${destinataire} pour l'inscription de ${data.name}.`,
+            `[signup] avis au bureau non remis (créneau ${slot.id}).`,
           );
         }
       } catch (erreur) {

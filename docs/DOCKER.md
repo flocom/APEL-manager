@@ -186,6 +186,16 @@ Les secrets saisis dans Configuration sont chiffrés avec
   `127.x.x.x` et `::1`, `host.docker.internal` et les noms sans point d'un
   service du réseau Compose, comme `mailpit`.
 
+> **Relais SMTP sur la machine hôte.** Le service `app` déclare
+> `host.docker.internal` (`extra_hosts: host-gateway`), y compris sous Linux
+> où Docker ne le définit pas de lui-même : un Postfix installé sur l'hôte se
+> joint donc avec l'hôte `host.docker.internal`, **sans TLS** puisqu'il compte
+> comme relais local. Sous Linux, ce nom désigne l'adresse de la machine sur
+> le pont Docker (souvent `172.17.0.1`) : le relais doit y écouter et
+> n'accepter que ce réseau (`mynetworks` de Postfix), sans quoi n'importe quel
+> conteneur de la machine pourrait s'en servir pour envoyer au nom de
+> l'association.
+
 #### Mailpit, pour les essais seulement
 
 Mailpit capture les messages sans jamais les distribuer, et tout ce qui y

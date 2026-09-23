@@ -44,7 +44,7 @@ export async function POST(req: Request, { params }: Params) {
         });
         if (!parti) {
           console.warn(
-            `[validation] avis de validation non remis à ${approved.email}.`,
+            `[validation] avis de validation non remis (compte ${approved.id}).`,
           );
         }
       } catch (erreur) {

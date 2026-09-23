@@ -15,7 +15,10 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { eventCancelledEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
-import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
+import {
+  checkBroadcastAllowed,
+  recordBroadcast,
+} from "@/lib/services/rate-limit";
 import { evenementValide } from "@/lib/services/events";
 import { eventCancelSchema } from "@/lib/validation";
 
@@ -58,9 +61,15 @@ export async function POST(req: Request, { params }: Params) {
 
     // Chaque annulation fait repartir le message vers tous les inscrits : la
     // basculer dix fois leur en enverrait dix. Contrôlé avant tout
-    // changement, pour que le refus laisse l'événement tel quel.
+    // changement, pour que le refus laisse l'événement tel quel — mais sans
+    // compter : une annulation refusée pour conflit de version, ou qui ne
+    // prévient personne (aucun inscrit, transport en panne), n'a rien envoyé
+    // et ne doit pas faire refuser la suivante au motif de messages que
+    // personne n'a reçus. Le compte se fait plus bas, une fois le message
+    // parti. Deux annulations simultanées ne passent pas toutes les deux :
+    // le contrôle de version n'en laisse aboutir qu'une.
     if (annule) {
-      await assertBroadcastAllowed(user.id, { type: "annulation", eventId: id });
+      await checkBroadcastAllowed(user.id, { type: "annulation", eventId: id });
     }
 
     const maintenant = new Date();
@@ -116,9 +125,12 @@ export async function POST(req: Request, { params }: Params) {
           identity: await getNotificationIdentity(),
         }),
       );
+      if (sent > 0) {
+        await recordBroadcast(user.id, { type: "annulation", eventId: id });
+      }
       if (sent < destinataires.length) {
         console.warn(
-          `[annulation] ${destinataires.length - sent} message(s) d'annulation non remis pour « ${event.title} ».`,
+          `[annulation] ${destinataires.length - sent} message(s) d'annulation non remis (événement ${id}).`,
         );
       }
     }

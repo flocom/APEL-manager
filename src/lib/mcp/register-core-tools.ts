@@ -985,8 +985,12 @@ export function registerCoreTools(
     "update_user_role",
     {
       title: "Modifier le rôle d’un utilisateur",
+      // Le compte rendu reprend le nom et l'adresse du compte, choisis par la
+      // personne sur la page publique d'inscription : même marquage et même
+      // avis que `list_users`, sans quoi un nom rédigé comme une consigne
+      // arrivait au modèle sans rien pour le signaler.
       description:
-        "Change le niveau d’accès d’un compte : membre, organisateur ou administrateur.",
+        `Change le niveau d’accès d’un compte : membre, organisateur ou administrateur. Le nom et l’adresse du compte rendus en retour sont ceux saisis sur la page publique d’inscription. ${AVIS_SAISIE_PUBLIQUE}`,
       inputSchema: z.object({
         id: z.string().uuid(),
         role: z.enum(["member", "manager", "admin"]),
@@ -1003,7 +1007,7 @@ export function registerCoreTools(
         mcpAuditActor(principal),
       );
       return toolResult(
-        { user },
+        { user: compteMarque(user) },
         changed ? "Rôle mis à jour." : "Le compte avait déjà ce rôle.",
       );
     },
@@ -1278,7 +1282,7 @@ export function registerCoreTools(
       }
       // Mêmes plafonds que depuis l'écran : le serveur MCP n'est pas une
       // porte de derrière pour relancer un envoi à l'infini.
-      await assertBroadcastAllowed(principal.userId, {
+      const rendreQuota = await assertBroadcastAllowed(principal.userId, {
         type: "evenement",
         eventId,
       });
@@ -1289,7 +1293,15 @@ export function registerCoreTools(
         senderName: principal.name,
         identity: await getNotificationIdentity(),
       });
-      const sent = await sendBulkEmail(recipients, mail);
+      // Quota réservé avant l'envoi, rendu si le message n'a atteint
+      // personne : un transport en panne ne doit pas faire refuser le
+      // renvoi, une fois réparé, au motif de messages jamais reçus.
+      let sent = 0;
+      try {
+        sent = await sendBulkEmail(recipients, mail);
+      } finally {
+        if (sent === 0) await rendreQuota();
+      }
 
       await recordAudit(
         mcpAuditActor(principal),
@@ -1343,7 +1355,9 @@ export function registerCoreTools(
       if (recipients.length === 0) {
         throw new Error("Aucun membre à contacter.");
       }
-      await assertBroadcastAllowed(principal.userId, { type: "equipe" });
+      const rendreQuota = await assertBroadcastAllowed(principal.userId, {
+        type: "equipe",
+      });
 
       const mail = broadcastEmail({
         subject,
@@ -1351,7 +1365,15 @@ export function registerCoreTools(
         senderName: principal.name,
         identity: await getNotificationIdentity(),
       });
-      const sent = await sendBulkEmail(recipients, mail);
+      // Quota réservé avant l'envoi, rendu si le message n'a atteint
+      // personne : un transport en panne ne doit pas faire refuser le
+      // renvoi, une fois réparé, au motif de messages jamais reçus.
+      let sent = 0;
+      try {
+        sent = await sendBulkEmail(recipients, mail);
+      } finally {
+        if (sent === 0) await rendreQuota();
+      }
 
       await recordAudit(
         mcpAuditActor(principal),

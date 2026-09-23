@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
+import { redactError } from "@/lib/errors";
 import {
   getOutboundMailRuntimeConfig,
   type OutboundMailRuntimeConfig,
@@ -44,8 +45,10 @@ export async function sendEmail({
       ? transport
       : await getOutboundMailRuntimeConfig(allowDisabled);
   if (!config) {
+    // Ni l'objet ni le destinataire au journal : l'objet d'une diffusion est
+    // saisi librement et cite souvent un enfant, une famille, un événement.
     console.warn(
-      `[email] fournisseur désactivé ou clé absente — e-mail non envoyé : "${subject}"`,
+      "[email] fournisseur désactivé ou clé absente — e-mail non envoyé.",
     );
     return false;
   }
@@ -90,16 +93,21 @@ export async function sendEmail({
     });
 
     if (error) {
+      // Le message de Resend cite volontiers l'adresse refusée : il passe par
+      // `redactError`, qui masque les adresses, comme les erreurs SMTP.
       console.error(
-        `[email] échec Resend (${error.statusCode ?? "sans statut"}, ${error.name}) : ${error.message}`,
+        `[email] échec Resend (${error.statusCode ?? "sans statut"}, ${error.name}) : ${redactError(error.message)}`,
       );
       return false;
     }
     return true;
   } catch (error) {
-    const reason =
-      error instanceof Error ? error.message : "erreur réseau inconnue";
-    console.error(`[email] échec du transport ${config.provider} : ${reason}`);
+    // Le refus d'un serveur SMTP recopie l'adresse du destinataire
+    // (« 550 <…@…> recipient rejected ») : jamais le message brut au journal.
+    console.error(
+      `[email] échec du transport ${config.provider} :`,
+      redactError(error),
+    );
     return false;
   }
 }

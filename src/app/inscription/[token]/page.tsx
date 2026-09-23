@@ -20,6 +20,7 @@ import {
   VolunteerSignupForm,
   type SignupSlotOption,
 } from "@/components/volunteer-signup-form";
+import { isApproved } from "@/lib/auth/roles";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getEventByShareToken } from "@/lib/data";
 import { formatDateTime } from "@/lib/dates";
@@ -378,6 +379,9 @@ export default async function InscriptionPage({
                 defaultName={currentUser?.name ?? ""}
                 defaultEmail={currentUser?.email ?? ""}
                 whatsappGroupUrl={association.whatsappGroupUrl}
+                // Même critère que la route : un compte en attente répond
+                // comme un invité, et reçoit donc l'e-mail de confirmation.
+                connecte={isApproved(currentUser)}
               />
 
               <div className="mt-6 border-t-2 border-slate-100 pt-5">

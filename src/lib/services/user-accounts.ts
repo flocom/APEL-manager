@@ -317,14 +317,25 @@ export async function deleteUserAccount(id: string, actor: AuditActor) {
     const [deleted] = await tx
       .delete(users)
       .where(eq(users.id, id))
-      .returning({ id: users.id, email: users.email, role: users.role });
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      });
     if (!deleted) throw new HttpError(404, "Utilisateur introuvable.");
+    // Qui était ce compte : une fois supprimé, plus rien d'autre ne le dit.
+    // Les lignes du journal où il agissait n'ont plus que son identifiant
+    // (`acteurId`, voir `recordAudit`) ; celle-ci le rattache à un nom, une
+    // adresse et un rôle. Un compte de l'équipe, pas une famille : c'est la
+    // trace de qui a eu accès aux données, que le bureau doit pouvoir
+    // retrouver.
     await recordAudit(
       actor,
       "user.delete",
       "user",
       id,
-      { role: deleted.role },
+      { role: deleted.role, name: deleted.name, email: deleted.email },
       tx,
     );
     return deleted;

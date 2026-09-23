@@ -47,6 +47,10 @@ export async function recordAudit(
     entityId: entityId ?? null,
     source: actor.source,
     ipAddress: actor.ipAddress ?? null,
-    details,
+    // L'auteur est aussi recopié dans le détail : `actor_user_id` passe à
+    // NULL quand son compte est supprimé (clé étrangère), et la ligne ne
+    // disait plus qui avait agi. L'identifiant reste, lui, et se rapproche
+    // de la ligne « user.delete » qui décrit le compte supprimé.
+    details: { ...details, acteurId: actor.userId },
   });
 }

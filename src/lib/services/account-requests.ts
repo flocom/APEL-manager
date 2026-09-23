@@ -29,6 +29,7 @@ import { generateToken, hashToken } from "@/lib/tokens";
 import { getAssociationSettings } from "./association-settings";
 import type { OutboundMailRuntimeConfig } from "./mail-settings";
 import { countPendingAccounts } from "./user-accounts";
+import { emailKey, hitRateLimit, PLAFONDS } from "./rate-limit";
 
 /**
  * Les demandes de compte, de l'envoi du formulaire à la confirmation de
@@ -231,12 +232,21 @@ export async function submitAccountRequest({
       .limit(1),
   ]);
 
+  // Le compte par adresse exacte ne voyait pas « parent+1@… », « parent+2@… »
+  // ni les points d'une adresse Gmail : autant d'adresses différentes pour la
+  // même boîte, qui recevait donc autant de messages. Le limiteur partagé
+  // compte la boîte elle-même (adresse normalisée par `emailKey`).
+  const parBoite = await hitRateLimit(
+    PLAFONDS.demandeCompteBoiteJour,
+    emailKey(email),
+  );
+
   // L'adresse n'est pas écrite au journal : rien ne dit qu'elle appartient à
   // qui l'a saisie.
-  if (Number(parAdresse.n) >= MAX_PAR_ADRESSE_PAR_JOUR) {
+  if (Number(parAdresse.n) >= MAX_PAR_ADRESSE_PAR_JOUR || !parBoite.ok) {
     await noterRefus("plafond_adresse");
     console.warn(
-      `[inscription] demande sans suite : ${parAdresse.n} demandes pour cette adresse en 24 h.`,
+      `[inscription] demande sans suite : plafond de ${MAX_PAR_ADRESSE_PAR_JOUR} demandes par adresse en 24 h atteint.`,
     );
     return;
   }
@@ -506,7 +516,7 @@ export async function notifyBureauOfPendingAccount(compte: {
     });
     if (!parti) {
       console.warn(
-        `[inscription] avis au bureau non remis à ${destinataire}.`,
+        "[inscription] avis au bureau non remis à l’adresse de contact.",
       );
     }
   } catch (erreur) {

@@ -76,6 +76,13 @@ const COURANTS = new Set([
   "moto", "maison", "jardin", "internet", "ordinateur", "google",
   "facebook", "gmail", "hotmail", "free", "sfr", "bouygues",
   "iphone", "samsung", "apple", "windows", "linux",
+  // Le haut des listes internationales, que les attaques essaient d'abord
+  "hello", "helloworld", "hellokitty", "summer", "winter", "spring",
+  "autumn", "love", "loveyou", "loveme", "lovely", "iloveu", "computer",
+  "killer", "hunter", "ranger", "buster", "flower", "pepper", "ginger",
+  "cheese", "silver", "matrix", "mustang", "harley", "jesus", "joshua",
+  "maggie", "yankees", "biteme", "fuckyou", "michelle", "jordan",
+  "qazwsx", "zaqxsw", "amitie", "bisous", "calin", "doudounette",
 ]);
 
 /**
@@ -121,6 +128,20 @@ const SUITES = [
   "&é\"'(-è_çà)=",
 ];
 
+/**
+ * Les chiffres tapés avec Maj sur un clavier QWERTY : « !@#$%^&*() » est
+ * « 1234567890 » pour le doigt qui le tape, et les listes d'attaque le savent.
+ */
+const CHIFFRES_DECALES: Record<string, string> = {
+  "!": "1", "@": "2", "#": "3", $: "4", "%": "5",
+  "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+};
+
+/** Ramène les chiffres « décalés » (voir `CHIFFRES_DECALES`) aux chiffres. */
+function redecaler(valeur: string): string {
+  return valeur.replace(/[!@#$%^&*()]/g, (signe) => CHIFFRES_DECALES[signe]);
+}
+
 /** Minuscules, sans accents. */
 function simplifier(valeur: string): string {
   return valeur
@@ -151,6 +172,29 @@ function estDansUneSuite(valeur: string): boolean {
     const inverse = [...suite].reverse().join("");
     return suite.includes(valeur) || inverse.includes(valeur);
   });
+}
+
+/**
+ * Presque une suite : « 1234567891 », « 12345678900 », « x123456789 » — une
+ * suite du clavier ou de l'alphabet à un ou deux signes près. Ce sont les
+ * variantes qu'on tape quand « 1234567890 » est refusé, et les listes
+ * d'attaque les essaient juste après. Le plus long passage suivi d'une suite
+ * doit couvrir tout le mot de passe sauf deux signes au plus.
+ */
+function presqueUneSuite(valeur: string): boolean {
+  // Au-delà, ce n'est plus « presque » la plus longue des suites.
+  if (valeur.length > 40) return false;
+  let plusLong = 0;
+  for (let debut = 0; debut < valeur.length - plusLong; debut++) {
+    // Tout passage d'une suite est lui-même dans la suite : on peut étendre
+    // tant que ça tient, sans revenir en arrière.
+    let fin = debut + plusLong + 1;
+    while (fin <= valeur.length && estDansUneSuite(valeur.slice(debut, fin))) {
+      plusLong = fin - debut;
+      fin++;
+    }
+  }
+  return plusLong >= 6 && plusLong >= valeur.length - 2;
 }
 
 /**
@@ -242,10 +286,21 @@ export function passwordProblem(
   if (motif && motif[0].length >= simple.length - 3) {
     return "Ce mot de passe répète un même motif. Choisissez-en un moins prévisible — une phrase de quelques mots, par exemple.";
   }
-  if (estDansUneSuite(simple)) {
+  // Les chiffres tapés avec Maj (« !@#$%^&*() ») valent les chiffres pour
+  // les contrôles de suites : sinon « !@#$%^&*() » passait, alors que c'est
+  // « 1234567890 » pour les doigts comme pour les listes d'attaque.
+  const decale = redecaler(simple);
+  if (
+    estDansUneSuite(simple) ||
+    estDansUneSuite(decale) ||
+    presqueUneSuite(simple) ||
+    presqueUneSuite(decale)
+  ) {
     return "Ce mot de passe suit une suite du clavier ou de l’alphabet. Choisissez-en un moins prévisible — une phrase de quelques mots, par exemple.";
   }
-  if (COURANTS_EXACTS.has(simple)) return courant;
+  if (COURANTS_EXACTS.has(simple) || COURANTS_EXACTS.has(decale)) {
+    return courant;
+  }
 
   // Le cœur : ce qui reste une fois ôtés les chiffres et symboles de début
   // et de fin (« Azerty2026! » → « azerty »), puis les substitutions l33t
@@ -274,10 +329,12 @@ export function passwordProblem(
   // Rien que des morceaux prévisibles mis bout à bout : « qwer1234qwer »,
   // « abcd1234efgh », « soleil-soleil-2026 » n'ont chacun que des suites du
   // clavier, des mots courants ou des redites d'un morceau précédent.
-  if (queDesMorceauxPrevisibles(simple)) return courant;
+  if (queDesMorceauxPrevisibles(simple) || queDesMorceauxPrevisibles(decale)) {
+    return courant;
+  }
   // Un cœur de deux lettres noyé dans des chiffres : « ab12345678 ».
-  if (coeurSansSeparateurs.length < 3 && /\d{6,}/.test(simple)) {
-    const chiffres = simple.replace(/\D/g, "");
+  if (coeurSansSeparateurs.length < 3 && /\d{6,}/.test(decale)) {
+    const chiffres = decale.replace(/\D/g, "");
     if (estDansUneSuite(chiffres) || new Set(chiffres).size <= 2) {
       return courant;
     }

@@ -118,6 +118,12 @@ services:
       - uploads_data:/app/data/uploads
     expose:
       - "3000"
+    # Sous Linux, `host.docker.internal` n'existe pas d'office (seul Docker
+    # Desktop le définit) : cette ligne le fait pointer vers la machine hôte,
+    # pour joindre un relais SMTP (Postfix…) qui y tourne. Voir docs/DOCKER.md,
+    # section Courrier.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

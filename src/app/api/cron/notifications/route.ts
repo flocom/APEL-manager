@@ -139,28 +139,39 @@ export async function GET(req: Request) {
     }
   }
 
-  // 2) Récupérer en UNE requête les notifications déjà envoyées (anti-doublon).
-  const taskIds = [...new Set(dueTasks.map((t) => t.id))];
-  const existing = taskIds.length
+  // 2) Réserver chaque rappel AVANT de l'envoyer : la ligne du journal est
+  //    posée d'abord, et seuls partent ceux que cette insertion a réellement
+  //    créés. Lire le journal puis écrire après l'envoi laissait deux passages
+  //    simultanés du cron (planificateur relancé, appel manuel pendant le
+  //    passage planifié) lire tous deux « pas encore envoyé » et relancer deux
+  //    fois la même personne. L'index unique (tâche, membre, type) tranche :
+  //    une seule insertion gagne.
+  const reserves = candidates.length
     ? await db
-        .select({
+        .insert(notificationsLog)
+        .values(
+          candidates.map((c) => ({
+            taskId: c.task.id,
+            userId: c.user.id,
+            kind: c.kind,
+          })),
+        )
+        .onConflictDoNothing()
+        .returning({
           taskId: notificationsLog.taskId,
           userId: notificationsLog.userId,
           kind: notificationsLog.kind,
         })
-        .from(notificationsLog)
-        .where(inArray(notificationsLog.taskId, taskIds))
     : [];
-  const alreadySent = new Set(
-    existing.map((e) => `${e.taskId}:${e.userId}:${e.kind}`),
+  const reservesCles = new Set(
+    reserves.map((r) => `${r.taskId}:${r.userId}:${r.kind}`),
   );
-
-  const todo = candidates.filter(
-    (c) => !alreadySent.has(`${c.task.id}:${c.user.id}:${c.kind}`),
+  const todo = candidates.filter((c) =>
+    reservesCles.has(`${c.task.id}:${c.user.id}:${c.kind}`),
   );
   const skipped = candidates.length - todo.length;
 
-  // 3) Envoyer tous les rappels en parallèle.
+  // 3) Envoyer tous les rappels réservés en parallèle.
   const results = await Promise.all(
     todo.map(async (c) => {
       const ok = await notifyTaskDue({
@@ -181,21 +192,21 @@ export async function GET(req: Request) {
     }),
   );
 
-  // 4) Journaliser en un seul insert ceux qui ont réussi (les échecs seront
-  //    réessayés au prochain passage).
-  const succeeded = results.filter((r) => r.ok).map((r) => r.c);
-  if (succeeded.length > 0) {
+  // 4) Rendre la réservation des échecs : ils seront réessayés au prochain
+  //    passage, comme avant.
+  const echecs = results.filter((r) => !r.ok).map((r) => r.c);
+  for (const c of echecs) {
     await db
-      .insert(notificationsLog)
-      .values(
-        succeeded.map((c) => ({
-          taskId: c.task.id,
-          userId: c.user.id,
-          kind: c.kind,
-        })),
-      )
-      .onConflictDoNothing();
+      .delete(notificationsLog)
+      .where(
+        and(
+          eq(notificationsLog.taskId, c.task.id),
+          eq(notificationsLog.userId, c.user.id),
+          eq(notificationsLog.kind, c.kind),
+        ),
+      );
   }
+  const succeeded = results.filter((r) => r.ok).map((r) => r.c);
 
   // --- Rappels aux bénévoles : événement publié dans la fenêtre configurée,
   //     e-mail fourni, pas encore rappelé. -------------------------------------
@@ -230,10 +241,29 @@ export async function GET(req: Request) {
   const eligibleSignups = dansLaFenetre.filter((s) => !!s.email);
   const volunteersSansEmail = dansLaFenetre.length - eligibleSignups.length;
 
-  // Envois en parallèle puis un seul UPDATE groupé (au lieu de N en série).
-  const remindedIds = (
-    await Promise.all(
-      eligibleSignups.map(async (s) => {
+  // Réserver avant d'envoyer, comme pour les tâches : le témoin `reminded_at`
+  // est posé d'abord, et seules partent les inscriptions que CE passage a
+  // réservées. Deux passages simultanés du cron lisaient sinon tous deux
+  // « pas encore rappelé » et envoyaient chacun le rappel.
+  const idsEligibles = eligibleSignups.map((s) => s.id);
+  const reservees = idsEligibles.length
+    ? await db
+        .update(volunteerSignups)
+        .set({ remindedAt: new Date() })
+        .where(
+          and(
+            inArray(volunteerSignups.id, idsEligibles),
+            isNull(volunteerSignups.remindedAt),
+          ),
+        )
+        .returning({ id: volunteerSignups.id })
+    : [];
+  const idsReserves = new Set(reservees.map((r) => r.id));
+
+  const envois = await Promise.all(
+    eligibleSignups
+      .filter((s) => idsReserves.has(s.id))
+      .map(async (s) => {
         const ev = s.slot.event;
         const mail = volunteerReminderEmail({
           name: s.name,
@@ -247,16 +277,17 @@ export async function GET(req: Request) {
           identity: notificationIdentity,
         });
         const ok = await sendEmail({ to: s.email as string, ...mail });
-        return ok ? s.id : null;
+        return { id: s.id, ok };
       }),
-    )
-  ).filter((id): id is string => id !== null);
-
-  if (remindedIds.length > 0) {
+  );
+  const remindedIds = envois.filter((e) => e.ok).map((e) => e.id);
+  // Un envoi manqué rend sa réservation : le passage suivant le réessaiera.
+  const nonRemis = envois.filter((e) => !e.ok).map((e) => e.id);
+  if (nonRemis.length > 0) {
     await db
       .update(volunteerSignups)
-      .set({ remindedAt: new Date() })
-      .where(inArray(volunteerSignups.id, remindedIds));
+      .set({ remindedAt: null })
+      .where(inArray(volunteerSignups.id, nonRemis));
   }
   const volunteerReminders = remindedIds.length;
   if (volunteersSansEmail > 0) {
@@ -648,7 +679,7 @@ async function envoyerRecapitulatif(
       // Ni témoin, ni fenêtre avancée : le passage suivant — même le jour
       // même — reprendra ces inscriptions plutôt que de les perdre.
       console.warn(
-        `[cron] récapitulatif non remis à ${destinataire} : ${chiffres.nouvelles} nouvelle(s) reportée(s), ${chiffres.tachesEnRetard} tâche(s) en retard, ${chiffres.comptesEnAttente} compte(s) en attente et ${chiffres.demandesDeCompteIgnorees} demande(s) de compte ignorée(s) non signalé(s).`,
+        `[cron] récapitulatif non remis à l’adresse de contact : ${chiffres.nouvelles} nouvelle(s) reportée(s), ${chiffres.tachesEnRetard} tâche(s) en retard, ${chiffres.comptesEnAttente} compte(s) en attente et ${chiffres.demandesDeCompteIgnorees} demande(s) de compte ignorée(s) non signalé(s).`,
       );
       return chiffres;
     }

@@ -80,6 +80,14 @@ export function refusEndpointPush(endpoint: string): RefusEndpoint | null {
   const hote = url.hostname;
   if (isIP(hote.replace(/^\[|\]$/g, "")) !== 0) return "adresse-ip-interdite";
   if (url.href !== endpoint) return "forme-non-canonique";
+  // Un fragment (« #… », même vide) ou un « ? » sans rien derrière survivent à
+  // `new URL` tels quels, donc au contrôle précédent, mais aucun service de
+  // notification n'en produit, et les deux analyseurs ne les traitent pas de
+  // la même façon (le fragment ne part jamais dans la requête). Une écriture
+  // de plus où ils pourraient diverger : refusée.
+  if (endpoint.includes("#") || (endpoint.includes("?") && url.search === "")) {
+    return "forme-non-canonique";
+  }
   if (!HOTE_SIMPLE.test(hote)) return "service-inconnu";
   // Seconde garde, indépendante de la précédente : l'hôte et le port que
   // l'envoi utilisera réellement sont ceux de `url.parse`, l'analyseur de

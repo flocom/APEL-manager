@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
@@ -20,6 +21,12 @@ export async function DELETE(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    // Un identifiant mal formé n'est pas une inscription : sans ce contrôle,
+    // PostgreSQL refusait la comparaison avec la colonne uuid et la route
+    // répondait 500, comme pour une vraie panne.
+    if (!z.string().uuid().safeParse(id).success) {
+      throw new HttpError(404, "Inscription introuvable.");
+    }
     const [deleted] = await db
       .delete(volunteerSignups)
       .where(eq(volunteerSignups.id, id))

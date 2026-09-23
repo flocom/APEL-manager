@@ -41,7 +41,10 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    await assertBroadcastAllowed(sender.id, { type: "evenement", eventId: id });
+    const rendreQuota = await assertBroadcastAllowed(sender.id, {
+      type: "evenement",
+      eventId: id,
+    });
 
     const mail = broadcastEmail({
       subject,
@@ -49,7 +52,15 @@ export async function POST(req: Request, { params }: Params) {
       senderName: sender.name,
       identity: await getNotificationIdentity(),
     });
-    const sent = await sendBulkEmail(recipients, mail);
+    // Quota réservé avant l'envoi, rendu si le message n'a atteint
+    // personne : un transport en panne ne doit pas faire refuser le
+    // renvoi, une fois réparé, au motif de messages jamais reçus.
+    let sent = 0;
+    try {
+      sent = await sendBulkEmail(recipients, mail);
+    } finally {
+      if (sent === 0) await rendreQuota();
+    }
 
     // Un message part au nom de l'association vers des parents qui ne sont
     // pas de l'équipe : le journal dit qui l'a envoyé, quand, sous quel objet
