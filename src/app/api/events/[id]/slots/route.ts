@@ -5,6 +5,7 @@ import { handleApiError, HttpError, requireApiRole } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { events, volunteerSlots } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { emptyToNull } from "@/lib/utils";
 import { slotSchema } from "@/lib/validation";
 
@@ -14,6 +15,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
 
     const [event] = await db
       .select({ id: events.id })

@@ -7,7 +7,7 @@ import {
   requireVersion,
 } from "@/lib/auth/guards";
 import { webAuditActor } from "@/lib/services/audit";
-import { saveEventAsTemplate } from "@/lib/services/events";
+import { evenementValide, saveEventAsTemplate } from "@/lib/services/events";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
     const body = await req.json();
     const { templateId, name, version } = schema.parse(body);
     // Remplacer un modèle en écrase le contenu : l'écran envoie toujours la

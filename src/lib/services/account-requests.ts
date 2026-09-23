@@ -26,6 +26,7 @@ import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { generateToken, hashToken } from "@/lib/tokens";
 
 import { getAssociationSettings } from "./association-settings";
+import type { OutboundMailRuntimeConfig } from "./mail-settings";
 import { countPendingAccounts } from "./user-accounts";
 
 /**
@@ -505,6 +506,14 @@ export async function notifyBureauOfPendingAccount(compte: {
   }
 }
 
+/** Le rappel prêt à partir : ce qu'il dira, et à qui. */
+export type PendingAccountsReminder = {
+  comptesEnAttente: number;
+  destinataires: string[];
+  /** `null` : personne n'attend, ou personne à prévenir. */
+  mail: ReturnType<typeof pendingAccountsReminderEmail> | null;
+};
+
 /**
  * Le rappel quotidien des comptes en attente de validation, quel que soit le
  * mode d'avis choisi.
@@ -521,15 +530,15 @@ export async function notifyBureauOfPendingAccount(compte: {
  * les administrateurs, chacun dans sa boîte : ce sont eux, et eux seuls, qui
  * peuvent valider — et sans ce repli, une association sans adresse de contact
  * n'apprendrait jamais qu'un compte attend.
+ *
+ * En deux temps — préparer, qui lit la base, puis envoyer, qui n'y touche
+ * plus — parce que le cron envoie sous le verrou d'une transaction, où une
+ * lecture par `db` attendrait sans fin la seule connexion du pool sur Vercel.
  */
-export async function remindBureauOfPendingAccounts(): Promise<{
-  comptesEnAttente: number;
-  envoye: boolean;
-  destinataires: number;
-}> {
+export async function preparePendingAccountsReminder(): Promise<PendingAccountsReminder> {
   const enAttente = await countPendingAccounts();
   if (enAttente === 0) {
-    return { comptesEnAttente: 0, envoye: false, destinataires: 0 };
+    return { comptesEnAttente: 0, destinataires: [], mail: null };
   }
 
   const [association, baseUrl] = await Promise.all([
@@ -546,7 +555,7 @@ export async function remindBureauOfPendingAccounts(): Promise<{
           .where(and(eq(users.role, "admin"), isNotNull(users.approvedAt)))
       ).map((u) => u.email);
   if (destinataires.length === 0) {
-    return { comptesEnAttente: enAttente, envoye: false, destinataires: 0 };
+    return { comptesEnAttente: enAttente, destinataires: [], mail: null };
   }
 
   const mail = pendingAccountsReminderEmail({
@@ -555,10 +564,30 @@ export async function remindBureauOfPendingAccounts(): Promise<{
     reviewUrl: `${baseUrl}/dashboard/members`,
     identity: await getNotificationIdentity(association),
   });
+  return { comptesEnAttente: enAttente, destinataires, mail };
+}
+
+/** Envoie le rappel préparé, par le transport lu d'avance : sans base. */
+export async function remindBureauOfPendingAccounts(
+  rappel: PendingAccountsReminder,
+  transport: OutboundMailRuntimeConfig | null,
+): Promise<{
+  comptesEnAttente: number;
+  envoye: boolean;
+  destinataires: number;
+}> {
+  const { mail, destinataires } = rappel;
+  if (!mail || destinataires.length === 0) {
+    return {
+      comptesEnAttente: rappel.comptesEnAttente,
+      envoye: false,
+      destinataires: 0,
+    };
+  }
   // Un message par administrateur, jamais un seul à plusieurs : chacun n'a pas
   // à lire l'adresse personnelle des autres.
   const partis = await Promise.all(
-    destinataires.map((to) => sendEmail({ to, ...mail })),
+    destinataires.map((to) => sendEmail({ to, ...mail, transport })),
   );
   const remis = partis.filter(Boolean).length;
   if (remis < destinataires.length) {
@@ -567,7 +596,7 @@ export async function remindBureauOfPendingAccounts(): Promise<{
     );
   }
   return {
-    comptesEnAttente: enAttente,
+    comptesEnAttente: rappel.comptesEnAttente,
     envoye: remis > 0,
     destinataires: remis,
   };

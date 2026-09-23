@@ -10,6 +10,7 @@ import {
 import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,6 +23,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
     const { orderedIds, version } = schema.parse(await req.json());
 
     /*

@@ -15,6 +15,7 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { eventCancelledEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { eventCancelSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -44,6 +45,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const body = await req.json();
     // Le bouton envoie toujours la version affichée : annuler (et prévenir
     // tous les inscrits) sur la foi d'un écran périmé ne doit pas passer.

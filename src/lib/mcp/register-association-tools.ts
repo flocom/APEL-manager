@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, like } from "drizzle-orm";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -6,7 +6,6 @@ import { db } from "@/lib/db";
 import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
 import {
   accountingCategories,
-  accountingEntries,
   associationMembers,
   auditLogs,
 } from "@/lib/db/schema";
@@ -23,6 +22,7 @@ import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
   createAccountingEntry,
   createFinancialAccount,
+  deleteAccountingCategory,
   deleteDraftAccountingEntry,
   getAccountingSummary,
   listAccountingEntries,
@@ -564,26 +564,9 @@ export function registerAssociationTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(accountingEntries)
-        .where(eq(accountingEntries.categoryId, id));
-      if (Number(count) > 0) {
-        throw new Error(
-          `Cette catégorie est utilisée par ${count} écriture(s). Désactivez-la au lieu de la supprimer.`,
-        );
-      }
-      const [deleted] = await db
-        .delete(accountingCategories)
-        .where(eq(accountingCategories.id, id))
-        .returning({ id: accountingCategories.id });
-      if (!deleted) throw new Error("Catégorie comptable introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "accounting.category_delete",
-        "accounting_category",
-        id,
-      );
+      // Le service compte les écritures sous le verrou de la catégorie : une
+      // écriture validée au même moment ne peut plus s'en trouver détachée.
+      await deleteAccountingCategory(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );

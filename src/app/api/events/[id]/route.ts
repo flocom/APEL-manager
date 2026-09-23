@@ -11,7 +11,7 @@ import { toSqlTimestamp } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { events } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
-import { deleteEvent } from "@/lib/services/events";
+import { deleteEvent, evenementValide } from "@/lib/services/events";
 import { emptyToNull } from "@/lib/utils";
 import { eventSchema } from "@/lib/validation";
 
@@ -24,6 +24,7 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const body = await req.json();
     // Le formulaire d'édition envoie toujours la version qu'il a chargée. Le
     // chemin sans version, gardé « pour compatibilité », n'avait plus d'autre

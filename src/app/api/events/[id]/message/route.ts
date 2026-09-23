@@ -6,6 +6,7 @@ import { sendBulkEmail, uniqueRecipients } from "@/lib/notifications/email";
 import { broadcastEmail } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { messageSchema } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
@@ -14,6 +15,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const sender = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const { subject, message } = messageSchema.parse(await req.json());
 
     const event = await getEventWithDetails(id);

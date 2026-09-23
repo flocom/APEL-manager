@@ -487,6 +487,62 @@ export async function updateAccountingCategory(
   });
 }
 
+/**
+ * Supprime une catégorie comptable qu'aucune écriture n'utilise.
+ *
+ * Le comptage se fait APRÈS le verrou exclusif sur la catégorie, pas avant.
+ * Une écriture enregistrée au même moment verrouille la catégorie en partage
+ * (voir `validateReferences`) : soit elle passe d'abord, et le comptage la
+ * voit ; soit elle arrive ensuite, et ne trouve plus la catégorie. Compté hors
+ * verrou, le contrôle laissait passer une écriture validée entre les deux, et
+ * la clé étrangère (`on delete set null`) la détachait de sa catégorie : c'était
+ * modifier, sans le dire, une écriture immuable.
+ *
+ * Tous statuts confondus : un brouillon rangé sous cette catégorie perdrait
+ * lui aussi son classement. Une catégorie qui a servi se désactive.
+ */
+export async function deleteAccountingCategory(
+  id: string,
+  actor: AuditActor,
+) {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({
+        id: accountingCategories.id,
+        name: accountingCategories.name,
+        type: accountingCategories.type,
+      })
+      .from(accountingCategories)
+      .where(eq(accountingCategories.id, id))
+      .for("update");
+    if (!current) throw new HttpError(404, "Catégorie comptable introuvable.");
+
+    const [{ n }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(accountingEntries)
+      .where(eq(accountingEntries.categoryId, id));
+    if (Number(n) > 0) {
+      throw new HttpError(
+        409,
+        `Cette catégorie est utilisée par ${n} écriture${Number(n) > 1 ? "s" : ""} : désactivez-la au lieu de la supprimer, l’historique reste ainsi classé.`,
+      );
+    }
+
+    await tx
+      .delete(accountingCategories)
+      .where(eq(accountingCategories.id, id));
+    await recordAudit(
+      actor,
+      "accounting.category_delete",
+      "accounting_category",
+      id,
+      { name: current.name, type: current.type },
+      tx,
+    );
+    return current;
+  });
+}
+
 export async function deleteDraftAccountingEntry(
   id: string,
   actor: AuditActor,

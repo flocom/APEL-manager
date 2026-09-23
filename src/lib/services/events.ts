@@ -21,6 +21,21 @@ import { emptyToNull } from "@/lib/utils";
 import { recordAudit, type AuditActor } from "./audit";
 
 /**
+ * Refuse d'emblée un identifiant d'événement mal formé.
+ *
+ * Passé tel quel à Postgres, « abc » fait échouer la requête sur une erreur de
+ * syntaxe (`22P02`), que les routes rendent en « erreur serveur » (500) : un
+ * lien tronqué ou un script maladroit passait pour une panne, et remplissait
+ * les journaux du serveur. Appelée en tête de chaque route `/api/events/[id]`,
+ * elle répond ce qui est vrai : cet événement n'existe pas.
+ */
+export function evenementValide(eventId: string): void {
+  if (!z.string().uuid().safeParse(eventId).success) {
+    throw new HttpError(404, "Événement introuvable.");
+  }
+}
+
+/**
  * Enregistre la check-list d'un événement comme modèle réutilisable.
  *
  * Deux usages, une seule opération : créer un modèle à partir d'un événement
@@ -296,11 +311,7 @@ export async function duplicateEvent(
  * tout ce qui a été validé avant la suppression.
  */
 export async function deleteEvent(eventId: string, actor: AuditActor) {
-  // Un identifiant mal formé ferait échouer Postgres sur une erreur de
-  // syntaxe, rendue en « erreur serveur » au lieu de « introuvable ».
-  if (!z.string().uuid().safeParse(eventId).success) {
-    throw new HttpError(404, "Événement introuvable.");
-  }
+  evenementValide(eventId);
   return db.transaction(async (tx) => {
     const [evenement] = await tx
       .select({ id: events.id, title: events.title, status: events.status })

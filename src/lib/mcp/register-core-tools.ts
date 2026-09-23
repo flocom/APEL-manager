@@ -13,7 +13,6 @@ import { db } from "@/lib/db";
 import {
   checklistTemplates,
   events,
-  taskAssignees,
   tasks,
   users,
   volunteerSignups,
@@ -52,8 +51,12 @@ import {
   templateSchema,
 } from "@/lib/validation";
 import { recordAudit } from "@/lib/services/audit";
-import { deleteTask, updateTask } from "@/lib/services/tasks";
-import { insertSignupWithinCapacity } from "@/lib/services/volunteer-signups";
+import { createTask, deleteTask, updateTask } from "@/lib/services/tasks";
+import {
+  deleteVolunteerSlot,
+  insertSignupWithinCapacity,
+  updateVolunteerSlot,
+} from "@/lib/services/volunteer-signups";
 import {
   changeUserRole,
   deleteUserAccount,
@@ -338,41 +341,12 @@ export function registerCoreTools(
     },
     async ({ eventId, ...input }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const event = await requireEvent(eventId);
-      const data = taskSchema.parse(input);
-      const duration = resolveLeadTime(data);
-      if (duration.leadTimeDays > 365) {
-        throw new Error("La durée ne peut pas dépasser un an.");
-      }
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(tasks)
-        .where(eq(tasks.eventId, eventId));
-      const [task] = await db
-        .insert(tasks)
-        .values({
-          eventId,
-          title: data.title,
-          description: emptyToNull(data.description),
-          ...duration,
-          dueAt: computeDueAt(event.startAt, duration.leadTimeDays),
-          position: Number(count),
-        })
-        .returning();
-      if (data.assigneeIds?.length) {
-        await db
-          .insert(taskAssignees)
-          .values(
-            data.assigneeIds.map((userId) => ({ taskId: task.id, userId })),
-          )
-          .onConflictDoNothing();
-      }
-      await recordAudit(
+      // Le service de l'écran : une seule transaction, des responsables
+      // validés seulement, la ligne au journal avec la tâche.
+      const task = await createTask(
+        eventId,
+        taskSchema.parse(input),
         mcpAuditActor(principal),
-        "task.create",
-        "task",
-        task.id,
-        { eventId },
       );
       return toolResult({ task }, "Tâche créée.");
     },
@@ -492,25 +466,12 @@ export function registerCoreTools(
     },
     async ({ id, ...input }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const data = slotSchema.partial().parse(input);
-      const updates: Partial<typeof volunteerSlots.$inferInsert> = {};
-      if (data.title !== undefined) updates.title = data.title;
-      if (data.description !== undefined)
-        updates.description = emptyToNull(data.description);
-      if (data.capacity !== undefined) updates.capacity = data.capacity;
-      if (data.startAt !== undefined) updates.startAt = data.startAt ?? null;
-      if (data.endAt !== undefined) updates.endAt = data.endAt ?? null;
-      const [slot] = await db
-        .update(volunteerSlots)
-        .set(updates)
-        .where(eq(volunteerSlots.id, id))
-        .returning();
-      if (!slot) throw new Error("Créneau bénévole introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "volunteer_slot.update",
-        "volunteer_slot",
+      // Le service de l'écran : verrou du créneau, capacité jamais sous le
+      // nombre d'inscrits, fin après le début, capacité avant/après au journal.
+      const slot = await updateVolunteerSlot(
         id,
+        input,
+        mcpAuditActor(principal),
       );
       return toolResult({ slot }, "Créneau bénévole mis à jour.");
     },
@@ -530,17 +491,8 @@ export function registerCoreTools(
     },
     async ({ id }) => {
       requireMcpAccess(principal, "mcp:write", "manager");
-      const [deleted] = await db
-        .delete(volunteerSlots)
-        .where(eq(volunteerSlots.id, id))
-        .returning({ id: volunteerSlots.id });
-      if (!deleted) throw new Error("Créneau bénévole introuvable.");
-      await recordAudit(
-        mcpAuditActor(principal),
-        "volunteer_slot.delete",
-        "volunteer_slot",
-        id,
-      );
+      // Même service que l'écran : le journal compte les inscriptions perdues.
+      await deleteVolunteerSlot(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
     },
   );

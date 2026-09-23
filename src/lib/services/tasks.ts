@@ -16,9 +16,10 @@ import {
 } from "@/lib/db/schema";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 import { emptyToNull } from "@/lib/utils";
-import type { taskUpdateSchema } from "@/lib/validation";
+import type { TaskInput, taskUpdateSchema } from "@/lib/validation";
 
 import { recordAudit, type AuditActor } from "./audit";
+import { evenementValide } from "./events";
 
 /**
  * Qui peut faire quoi sur une tâche, et la trace que chaque geste laisse.
@@ -38,9 +39,10 @@ import { recordAudit, type AuditActor } from "./audit";
  *    fait. Un organisateur peut toujours corriger les responsables ;
  *  — les organisateurs gardent la main sur tout.
  *
- * Chaque geste — se joindre, se retirer, changer l'avancement, modifier,
- * supprimer — s'écrit au journal avec l'avant et l'après, dans la transaction
- * du geste lui-même : une tâche ne change plus sans laisser de trace.
+ * Chaque geste — créer, se joindre, se retirer, changer l'avancement,
+ * modifier, supprimer — s'écrit au journal avec l'avant et l'après, dans la
+ * transaction du geste lui-même : une tâche ne change plus sans laisser de
+ * trace.
  *
  * Les outils MCP passent par les mêmes fonctions. Ils exigent de toute façon le
  * rôle d'organisateur, et un jeton de membre n'a que la portée « lecture ».
@@ -78,6 +80,93 @@ async function responsables(client: Client, taskId: string) {
     .where(eq(taskAssignees.taskId, taskId))
     .orderBy(asc(taskAssignees.userId));
   return lignes.map((l) => l.userId);
+}
+
+/**
+ * Les responsables choisis, dédoublonnés et triés — et seulement des comptes
+ * validés. Un compte en attente ne voit rien : lui confier une tâche la
+ * donnerait à quelqu'un qui ne peut même pas l'ouvrir. Un identifiant inconnu
+ * ferait échouer l'écriture sur une erreur de base illisible, après que la
+ * tâche a été créée.
+ */
+async function responsablesValides(client: Client, ids: string[]) {
+  const choisis = [...new Set(ids)].sort();
+  if (choisis.length === 0) return choisis;
+  const connus = await client
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, choisis), isNotNull(users.approvedAt)));
+  if (connus.length !== choisis.length) {
+    throw new HttpError(
+      400,
+      "Un des membres choisis est introuvable ou en attente de validation.",
+    );
+  }
+  return choisis;
+}
+
+/**
+ * Ajoute une tâche en fin de check-list. Partagée par l'écran et l'outil MCP :
+ * tous deux inséraient la tâche, puis ses responsables, sans transaction ni
+ * contrôle. Un compte en attente se retrouvait responsable ; un identifiant
+ * inconnu faisait échouer la seconde insertion après la première, et laissait
+ * une tâche créée sans aucune ligne au journal.
+ */
+export async function createTask(
+  eventId: string,
+  data: TaskInput,
+  actor: AuditActor,
+) {
+  evenementValide(eventId);
+  const duration = resolveLeadTime(data);
+  if (duration.leadTimeDays > 365) {
+    throw new HttpError(400, "La durée ne peut pas dépasser un an.");
+  }
+
+  return db.transaction(async (tx) => {
+    const [event] = await tx
+      .select({ startAt: events.startAt })
+      .from(events)
+      .where(eq(events.id, eventId))
+      .limit(1);
+    if (!event) throw new HttpError(404, "Événement introuvable.");
+
+    const choisis = await responsablesValides(tx, data.assigneeIds ?? []);
+
+    // Nouvelle tâche ajoutée en fin de check-list.
+    const [{ n }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(eq(tasks.eventId, eventId));
+
+    const [task] = await tx
+      .insert(tasks)
+      .values({
+        eventId,
+        title: data.title,
+        description: emptyToNull(data.description),
+        ...duration,
+        dueAt: computeDueAt(event.startAt, duration.leadTimeDays),
+        position: Number(n),
+      })
+      .returning();
+
+    if (choisis.length > 0) {
+      await tx
+        .insert(taskAssignees)
+        .values(choisis.map((userId) => ({ taskId: task.id, userId })));
+    }
+
+    await recordAudit(
+      actor,
+      "task.create",
+      "task",
+      task.id,
+      { eventId, title: task.title, assignees: choisis },
+      tx,
+    );
+    return task;
+  });
 }
 
 /**
@@ -164,6 +253,17 @@ export async function toggleSelfAssignment(
         .onConflictDoNothing();
     }
 
+    // Les responsables font partie du contenu que la version protège (voir
+    // `touchesTaskContent`) : le formulaire d'édition renvoie toujours toute
+    // la liste. Sans cette version qui avance, un organisateur qui avait
+    // ouvert l'édition avant qu'un parent se joigne enregistrait l'ancienne
+    // liste, et retirait ce parent sans que personne le sache. Il reçoit
+    // désormais « modifiée entre-temps », et recharge.
+    await tx
+      .update(tasks)
+      .set({ version: sql`${tasks.version} + 1` })
+      .where(eq(tasks.id, taskId));
+
     const apres = dejaResponsable
       ? avant.filter((id) => id !== editor.id)
       : [...avant, editor.id].sort();
@@ -227,16 +327,26 @@ export async function updateTask(
       throw new HttpError(409, CONFLIT);
     }
 
+    // Seul ce qui change réellement est écrit, et dit au journal. Le
+    // formulaire d'édition renvoie tous ses champs : les compter tous faisait
+    // de chaque enregistrement « titre, description, délai modifiés », sans
+    // rien apprendre, et d'un enregistrement à l'identique une nouvelle
+    // version qui périmait pour rien le formulaire d'un autre organisateur.
     const updates: Partial<typeof tasks.$inferInsert> = {};
     const champs: string[] = [];
-    if (data.title !== undefined) {
+    const titreChange = data.title !== undefined && data.title !== current.title;
+    if (titreChange) {
       updates.title = data.title;
       champs.push("title");
     }
-    if (data.description !== undefined) {
+    if (
+      data.description !== undefined &&
+      emptyToNull(data.description) !== current.description
+    ) {
       updates.description = emptyToNull(data.description);
       champs.push("description");
     }
+    let delai: { from: number; to: number } | undefined;
     if (
       data.leadTimeDays !== undefined ||
       data.leadTimeValue !== undefined ||
@@ -250,18 +360,27 @@ export async function updateTask(
       if (duration.leadTimeDays > 365) {
         throw new HttpError(400, "La durée ne peut pas dépasser un an.");
       }
-      updates.leadTimeDays = duration.leadTimeDays;
-      updates.leadTimeValue = duration.leadTimeValue;
-      updates.leadTimeUnit = duration.leadTimeUnit;
-      const [event] = await tx
-        .select({ startAt: events.startAt })
-        .from(events)
-        .where(eq(events.id, current.eventId))
-        .limit(1);
-      if (event) {
-        updates.dueAt = computeDueAt(event.startAt, duration.leadTimeDays);
+      if (
+        duration.leadTimeDays !== current.leadTimeDays ||
+        duration.leadTimeValue !== current.leadTimeValue ||
+        duration.leadTimeUnit !== current.leadTimeUnit
+      ) {
+        updates.leadTimeDays = duration.leadTimeDays;
+        updates.leadTimeValue = duration.leadTimeValue;
+        updates.leadTimeUnit = duration.leadTimeUnit;
+        const [event] = await tx
+          .select({ startAt: events.startAt })
+          .from(events)
+          .where(eq(events.id, current.eventId))
+          .limit(1);
+        if (event) {
+          updates.dueAt = computeDueAt(event.startAt, duration.leadTimeDays);
+        }
+        champs.push("leadTime");
+        if (duration.leadTimeDays !== current.leadTimeDays) {
+          delai = { from: current.leadTimeDays, to: duration.leadTimeDays };
+        }
       }
-      champs.push("leadTime");
     }
     // Remettre le même avancement ne change rien, et ne doit pas réécrire la
     // date d'achèvement : « terminée le 3 » deviendrait « terminée le 10 ».
@@ -272,46 +391,31 @@ export async function updateTask(
       updates.completedAt = data.status === "done" ? new Date() : null;
     }
 
-    // Les responsables : seulement des comptes validés. Un compte en attente ne
-    // voit rien, lui confier une tâche la donnerait à quelqu'un qui ne peut
-    // même pas l'ouvrir ; un identifiant inconnu ferait échouer l'écriture
-    // sur une erreur de base illisible.
-    let apres = avant;
-    if (organisateur && data.assigneeIds !== undefined) {
-      apres = [...new Set(data.assigneeIds)].sort();
-      if (apres.length > 0) {
-        const connus = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(and(inArray(users.id, apres), isNotNull(users.approvedAt)));
-        if (connus.length !== apres.length) {
-          throw new HttpError(
-            400,
-            "Un des membres choisis est introuvable ou en attente de validation.",
-          );
-        }
-      }
-    }
+    // Les responsables : seulement des comptes validés (voir
+    // `responsablesValides`).
+    const apres =
+      organisateur && data.assigneeIds !== undefined
+        ? await responsablesValides(tx, data.assigneeIds)
+        : avant;
     const responsablesChangent =
       apres.length !== avant.length || apres.some((id, i) => id !== avant[i]);
+    const contenuChange = champs.length > 0 || responsablesChangent;
 
-    // La version avance à chaque édition du contenu, pas à un simple
+    // Rien ne change : ni écriture, ni version, ni ligne au journal.
+    if (!statutChange && !contenuChange) return current;
+
+    // La version avance à chaque changement du contenu, pas à un simple
     // changement d'avancement : ce sont des champs distincts, et un formulaire
     // d'édition ouvert n'a pas à devenir périmé parce qu'une tâche a été
     // cochée.
-    const [task] =
-      Object.keys(updates).length > 0 || contenu || data.version !== undefined
-        ? await tx
-            .update(tasks)
-            .set({
-              ...updates,
-              ...(contenu || data.version !== undefined
-                ? { version: sql`${tasks.version} + 1` }
-                : {}),
-            })
-            .where(eq(tasks.id, taskId))
-            .returning()
-        : [current];
+    const [task] = await tx
+      .update(tasks)
+      .set({
+        ...updates,
+        ...(contenuChange ? { version: sql`${tasks.version} + 1` } : {}),
+      })
+      .where(eq(tasks.id, taskId))
+      .returning();
 
     if (responsablesChangent) {
       await tx.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
@@ -322,14 +426,10 @@ export async function updateTask(
       }
     }
 
-    if (!statutChange && champs.length === 0 && !responsablesChangent) {
-      return task;
-    }
-
     const avancement = statutChange
       ? { from: current.status, to: data.status }
       : undefined;
-    if (champs.length === 0 && !responsablesChangent) {
+    if (!contenuChange) {
       await recordAudit(
         actor,
         "task.status_change",
@@ -351,6 +451,10 @@ export async function updateTask(
             ...(statutChange ? ["status"] : []),
             ...(responsablesChangent ? ["assignees"] : []),
           ],
+          ...(titreChange
+            ? { title: { from: current.title, to: data.title } }
+            : {}),
+          ...(delai ? { leadTimeDays: delai } : {}),
           ...(avancement ? { status: avancement } : {}),
           ...(responsablesChangent
             ? { assigneesBefore: avant, assigneesAfter: apres }

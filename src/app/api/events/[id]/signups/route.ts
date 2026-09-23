@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
 import { getEventWithDetails } from "@/lib/data";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -18,6 +19,7 @@ export async function GET(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id } = await params;
+    evenementValide(id);
     const event = await getEventWithDetails(id);
     if (!event) {
       return NextResponse.json({ error: "Événement introuvable." }, { status: 404 });

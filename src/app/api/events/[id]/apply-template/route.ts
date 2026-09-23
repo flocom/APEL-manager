@@ -7,6 +7,7 @@ import { computeDueAt } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { checklistTemplates, events, tasks } from "@/lib/db/schema";
 import { recordAudit, webAuditActor } from "@/lib/services/audit";
+import { evenementValide } from "@/lib/services/events";
 import { resolveLeadTime } from "@/lib/task-lead-time";
 
 type Params = { params: Promise<{ id: string }> };
@@ -17,6 +18,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const user = await requireApiRole("manager");
     const { id: eventId } = await params;
+    evenementValide(eventId);
     const { templateId } = schema.parse(await req.json());
 
     // Les trois lectures sont indépendantes → en parallèle (1 RTT au lieu de 3).
