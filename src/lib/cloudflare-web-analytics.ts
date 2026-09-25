@@ -4,9 +4,9 @@
  *
  * Derrière Cloudflare, les statistiques de visite viennent d'un script que
  * Cloudflare ajoute lui-même au HTML de chaque page. Il cesse de le faire dès
- * que la page porte « Cache-Control: no-transform » — ce que le Caddyfile pose
- * sur toutes les pages pour qu'aucune ne soit plus réécrite (docker/Caddyfile,
- * docs/DEPLOIEMENT.md, « Derrière Cloudflare »). Pour garder ces statistiques,
+ * que la page porte « Cache-Control: no-transform » — ce que l'application
+ * (middleware) et le Caddyfile posent sur toutes les pages pour qu'aucune ne
+ * soit plus réécrite (docs/DEPLOIEMENT.md, « Derrière Cloudflare »). Pour garder ces statistiques,
  * on renseigne le jeton du site dans CLOUDFLARE_WEB_ANALYTICS_TOKEN : la page
  * charge alors le script elle-même (layout racine), et la CSP laisse partir
  * ses mesures (middleware).

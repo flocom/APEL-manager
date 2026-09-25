@@ -17,6 +17,8 @@ import {
  *    nonce tiré pour elle (`politiqueDeContenu`).
  * 3. Les pages de l'espace de gestion reçoivent l'adresse demandée, pour que
  *    la garde sache où revenir après la connexion.
+ * 4. Derrière Cloudflare, les pages sont marquées `no-transform`, pour qu'il
+ *    ne les réécrive pas (`pageIntacte`).
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -42,6 +44,9 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy", csp);
+  if (pageIntacte(request)) {
+    response.headers.set("Cache-Control", CACHE_CONTROL_PAGE_INTACTE);
+  }
   return response;
 }
 
@@ -263,6 +268,69 @@ function cheminDemande(request: NextRequest): string {
   params.delete("_rsc");
   const query = params.toString();
   return query ? `${pathname}?${query}` : pathname;
+}
+
+// ---------------------------------------------------------------------------
+// 4. Pages intactes derrière Cloudflare
+// ---------------------------------------------------------------------------
+
+/**
+ * L'« Email Address Obfuscation » de Cloudflare réécrit chaque adresse du HTML
+ * en « [email protected] » et ajoute un script, `email-decode.min.js`, que la
+ * CSP bloque (il n'a pas le nonce). React retrouve les adresses en clair dans
+ * ses données, rejette la page (erreur #418) et la reconstruit dans le
+ * navigateur : la page reste inerte le temps de cette reconstruction.
+ * `Cache-Control: no-transform` interdit à Cloudflare de toucher à la page.
+ *
+ * Le nouveau Caddyfile pose déjà cette directive, mais l'`updater` ne met pas
+ * le Caddyfile à jour : les installations existantes gardent l'ancien. On la
+ * pose donc ici aussi, seulement quand la requête est passée par Cloudflare
+ * (il ajoute `CF-Ray`, `CF-Connecting-IP` et `CDN-Loop: cloudflare`, que
+ * Caddy transmet) et seulement sur les pages (HTML et flux RSC des
+ * navigations) : ni les API, ni les fichiers.
+ *
+ * Le prix, avec l'ancien Caddyfile : ces pages partent sans compression —
+ * Caddy, Next et Cloudflare ne compressent pas une réponse `no-transform` —
+ * mais intactes. Une page plus lourde plutôt qu'une page cassée. Le nouveau
+ * Caddyfile retire la directive en arrivant (`header_down`), compresse, puis
+ * la remet : la compression revient, et la directive reste. Une installation
+ * sans Cloudflare n'en voit rien.
+ *
+ * La valeur est celle que Next donne à ses pages dynamiques (toutes le sont,
+ * le layout racine l'étant), plus `no-transform`. Posée par le middleware,
+ * Next la garde au lieu d'écrire la sienne.
+ */
+const CACHE_CONTROL_PAGE_INTACTE =
+  "private, no-cache, no-store, max-age=0, must-revalidate, no-transform";
+
+/**
+ * Les seules routes du matcher, hors `/api`, qui ne sont pas des pages : des
+ * gestionnaires de route qui servent du JSON et fixent leur propre
+ * `Cache-Control` — qu'un en-tête posé ici remplacerait. Une route de ce genre
+ * ajoutée hors `/api` doit rejoindre cette liste.
+ */
+const HORS_PAGES = ["/.well-known/", "/manifest.webmanifest"];
+
+function viaCloudflare(request: NextRequest): boolean {
+  const h = request.headers;
+  return (
+    h.has("cf-ray") ||
+    h.has("cf-connecting-ip") ||
+    /(^|,)\s*cloudflare\b/i.test(h.get("cdn-loop") ?? "")
+  );
+}
+
+/**
+ * Tout ce qui arrive ici est une page — les API sont déjà parties, les
+ * fichiers statiques n'entrent pas (matcher) — sauf `HORS_PAGES`. On ne
+ * distingue pas le HTML du flux RSC d'une navigation côté client : Next
+ * retire l'en-tête `RSC` de ce que voit le middleware, et les deux sont la
+ * même page.
+ */
+function pageIntacte(request: NextRequest): boolean {
+  if (!viaCloudflare(request)) return false;
+  const { pathname } = request.nextUrl;
+  return !HORS_PAGES.some((p) => pathname === p || pathname.startsWith(p));
 }
 
 export const config = {

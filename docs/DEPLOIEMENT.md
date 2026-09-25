@@ -364,13 +364,20 @@ navigateur.
 tableau de bord Cloudflare (première ligne ci-dessous). Il prend effet tout de
 suite, sans rien redéployer.
 
-**En plus, avec Docker** : le Caddyfile marque chaque page
-`Cache-Control: … no-transform` après l'avoir compressée, ce qui interdit à
-Cloudflare de la réécrire, quel que soit le réglage. L'`updater` ne met pas le
-Caddyfile à jour : `git pull && docker compose restart caddy`. Un ancien
-Caddyfile continue de servir les pages comme avant. Sans Caddy, ne poser cette
-directive que derrière un proxy qui compresse d'abord : ni Next ni Cloudflare
-ne compressent une réponse qui la porte.
+**En plus, l'application se protège elle-même** : quand une requête est
+passée par Cloudflare (en-têtes `CF-Ray`, `CF-Connecting-IP` ou
+`CDN-Loop: cloudflare`), ses pages — HTML et flux RSC, pas les API ni les
+fichiers — partent en `Cache-Control: … no-transform`, ce qui interdit à
+Cloudflare de les réécrire, quel que soit le réglage. Sans Cloudflare, rien ne
+change.
+
+Le prix, avec un **ancien Caddyfile** (l'`updater` ne le met pas à jour) : ces
+pages partent **sans compression** — ni Caddy, ni Next, ni Cloudflare ne
+compressent une réponse `no-transform` — mais intactes. Le Caddyfile actuel
+retire la directive le temps de compresser, puis la remet : mettre à jour
+(`git pull && docker compose restart caddy`) rend la compression. Sans Caddy,
+derrière Cloudflare, il faut un proxy qui fasse de même pour retrouver la
+compression.
 
 Une page marquée ainsi ne reçoit plus aucun script de Cloudflare : ni
 obfuscation, ni détection des robots, ni **Web Analytics**. Pour garder les
@@ -380,10 +387,10 @@ ci-dessous) ; la CSP lui ouvre alors `cloudflareinsights.com`.
 
 | Réglage | Où | Pourquoi |
 |---|---|---|
-| **Email Address Obfuscation** : désactivé | Security → Settings, filtre « Client-side abuse » (anciennement Scrape Shield) | La cause de l'erreur #418 et du script bloqué. Désactivé, plus rien n'est masqué, Caddyfile à jour ou non. |
+| **Email Address Obfuscation** : désactivé | Security → Settings, filtre « Client-side abuse » (anciennement Scrape Shield) | La cause de l'erreur #418, du script bloqué et des clics perdus pendant que React reconstruisait la page. Désactivé, plus rien n'est masqué, même par une version de l'application qui ne pose pas encore `no-transform`. |
 | **Rocket Loader** : désactivé | Speed → Settings → Content Optimization | Il réécrit les balises `<script>`, et Cloudflare ne dit pas qu'il respecte `no-transform`. |
 | **Speed Brain** : désactivé | Speed → Settings → Content Optimization | Sans effet ici : les pages ne sont jamais en cache et la CSP utilise un nonce. |
-| **Web Analytics** : « Enable with JS Snippet installation », ou « Disable » | Analytics & Logs → Web Analytics → Manage site | Avec le Caddyfile à jour, Cloudflare n'ajoute plus son script. Pour garder les statistiques : choisir la première option, copier la valeur `token` de l'extrait proposé dans `CLOUDFLARE_WEB_ANALYTICS_TOKEN` (`.env`), puis `docker compose up -d`. Cloudflare cesse alors de l'ajouter lui-même, et la page ne le charge pas deux fois. Sinon, « Disable » : restent les statistiques du trafic vu par Cloudflare. |
+| **Web Analytics** : « Enable with JS Snippet installation », ou « Disable » | Analytics & Logs → Web Analytics → Manage site | Les pages étant marquées `no-transform`, Cloudflare n'ajoute plus son script. Pour garder les statistiques : choisir la première option, copier la valeur `token` de l'extrait proposé dans `CLOUDFLARE_WEB_ANALYTICS_TOKEN` (`.env`), puis `docker compose up -d`. Cloudflare cesse alors de l'ajouter lui-même, et la page ne le charge pas deux fois. Sinon, « Disable » : restent les statistiques du trafic vu par Cloudflare. |
 
 Les pages de défi de Cloudflare (« Just a moment… », Bot Fight Mode) ne sont
 pas concernées : il les sert lui-même, avec leur propre politique.

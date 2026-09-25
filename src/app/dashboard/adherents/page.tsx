@@ -1,15 +1,13 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { ContactRound } from "lucide-react";
 
-import {
-  AdherentsManager,
-  type AdherentView,
-} from "@/components/adherents-manager";
+import { AdherentsManager } from "@/components/adherents-manager";
 import {
   type EcritureRecetteView,
   type LigneRapprochementView,
 } from "@/components/cotisations-rapprochement";
 import { PageHeader } from "@/components/ui";
+import { adherentView } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { centimesDepuisSql } from "@/lib/money";
@@ -20,7 +18,6 @@ import {
   financialAccounts,
   membershipPayments,
 } from "@/lib/db/schema";
-import { getAssociationSettings } from "@/lib/services/association-settings";
 import { etatDe, rapprochement } from "@/lib/services/cotisations";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +39,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdherentsPage() {
   await requireRole("admin");
-  const [members, settings, lignes, comptes, categories, recettes] =
+  const [members, lignes, comptes, categories, recettes] =
     await Promise.all([
       db
         .select()
@@ -51,7 +48,6 @@ export default async function AdherentsPage() {
           asc(associationMembers.lastName),
           asc(associationMembers.firstName),
         ),
-      getAssociationSettings(),
       rapprochement(null),
       db
         .select({ id: financialAccounts.id, name: financialAccounts.name })
@@ -87,27 +83,7 @@ export default async function AdherentsPage() {
         .limit(200),
     ]);
 
-  const serialized: AdherentView[] = members.map((member) => ({
-    id: member.id,
-    firstName: member.firstName,
-    lastName: member.lastName,
-    email: member.email,
-    phone: member.phone,
-    addressLine1: member.addressLine1,
-    addressLine2: member.addressLine2,
-    postalCode: member.postalCode,
-    city: member.city,
-    country: member.country,
-    status: member.status,
-    schoolYear: member.schoolYear,
-    membershipFeeCents: member.membershipFeeCents,
-    donationCents: member.donationCents,
-    feePaidAt: member.feePaidAt?.toISOString() ?? null,
-    feePaymentMethod: member.feePaymentMethod,
-    joinedAt: member.joinedAt.toISOString(),
-    notes: member.notes,
-    version: member.version,
-  }));
+  const serialized = members.map(adherentView);
 
   const rapprochements: LigneRapprochementView[] = lignes.map((ligne) => ({
     memberId: ligne.memberId,
@@ -146,7 +122,6 @@ export default async function AdherentsPage() {
       />
       <AdherentsManager
         members={serialized}
-        cotisationParDefautCents={settings.membershipFeeCents}
         rapprochements={rapprochements}
         comptes={comptes}
         categoriesRecette={categories}

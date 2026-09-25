@@ -32,9 +32,11 @@
 	# (aperçu imprimable, consentement OAuth) la perdent à l'arrivée
 	# (header_down, plus bas) le temps d'être compressées, et la retrouvent ici.
 	#
+	# Derrière Cloudflare, l'application pose elle-même la directive (middleware) :
+	# elle la perd ici à l'arrivée comme les autres, le temps d'être compressée.
 	# Ce fichier n'est pas mis à jour par l'`updater` : sans ce bloc, les pages
-	# partent comme avant, et c'est le réglage Cloudflare qui protège
-	# (docs/DEPLOIEMENT.md, « Derrière Cloudflare »).
+	# restent intactes mais partent sans compression (docs/DEPLOIEMENT.md,
+	# « Derrière Cloudflare »).
 	header {
 		match header Content-Type text/html*
 		>Cache-Control "^(.+)$" "$1, no-transform"
