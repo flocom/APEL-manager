@@ -1,4 +1,13 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
@@ -69,7 +78,14 @@ export interface LigneRapprochement {
   /** Ce qui est réellement rattaché à une écriture comptable. */
   comptabiliseCents: number;
   /** Les écritures qui le portent, pour pouvoir y retourner. */
-  ecritures: { id: string; label: string; occurredAt: Date; partCents: number }[];
+  ecritures: {
+    id: string;
+    label: string;
+    occurredAt: Date;
+    /** Brouillon ou validée : une écriture en brouillon reste à relire. */
+    status: "draft" | "posted";
+    partCents: number;
+  }[];
 }
 
 export type EtatRapprochement =
@@ -148,6 +164,33 @@ export async function rapprochement(
   schoolYear: string | null,
   lecteur: Lecteur = db,
 ) {
+  return lignesRapprochement(
+    schoolYear === null
+      ? undefined
+      : eq(associationMembers.schoolYear, schoolYear),
+    lecteur,
+  );
+}
+
+/**
+ * L'état d'une seule adhésion, pour sa fiche : le même calcul que la liste,
+ * restreint à la famille, sans relire toute l'année pour n'en garder qu'une.
+ */
+export async function rapprochementAdherent(
+  memberId: string,
+  lecteur: Lecteur = db,
+): Promise<LigneRapprochement | null> {
+  const [ligne] = await lignesRapprochement(
+    eq(associationMembers.id, memberId),
+    lecteur,
+  );
+  return ligne ?? null;
+}
+
+async function lignesRapprochement(
+  filtre: SQL | undefined,
+  lecteur: Lecteur,
+) {
   const membres = await lecteur
     .select({
       id: associationMembers.id,
@@ -161,11 +204,7 @@ export async function rapprochement(
       feePaymentMethod: associationMembers.feePaymentMethod,
     })
     .from(associationMembers)
-    .where(
-      schoolYear === null
-        ? undefined
-        : eq(associationMembers.schoolYear, schoolYear),
-    )
+    .where(filtre)
     .orderBy(asc(associationMembers.lastName), asc(associationMembers.firstName));
 
   if (membres.length === 0) return [] as LigneRapprochement[];
@@ -177,6 +216,7 @@ export async function rapprochement(
       entryId: accountingEntries.id,
       label: accountingEntries.label,
       occurredAt: accountingEntries.occurredAt,
+      status: accountingEntries.status,
     })
     .from(membershipPayments)
     .innerJoin(
@@ -197,6 +237,7 @@ export async function rapprochement(
       id: part.entryId,
       label: part.label,
       occurredAt: part.occurredAt,
+      status: part.status,
       partCents: part.amountCents,
     });
     parMembre.set(part.memberId, liste);

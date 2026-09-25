@@ -12,16 +12,21 @@ import {
   Search,
   UserRoundCheck,
   UsersRound,
-  X,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import {
+  EtatComptable,
+  montantAdhesion,
+  STATUS_COLORS,
+  STATUS_LABELS,
+} from "@/components/adherent-fiche";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   CotisationsRapprochement,
   type EcritureRecetteView,
-  ETATS,
   type LigneRapprochementView,
 } from "@/components/cotisations-rapprochement";
 import { ModuleStat } from "@/components/module-stat";
@@ -29,45 +34,22 @@ import { useToast } from "@/components/toast";
 import {
   Badge,
   Button,
+  buttonClasses,
   Card,
   EmptyState,
-  Field,
   Input,
   Select,
-  Textarea,
 } from "@/components/ui";
-import { api } from "@/lib/client";
-import { formatShortDate, toDateInput } from "@/lib/dates";
-import { formatEuros } from "@/lib/money";
 import {
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_METHODS,
-  type PaymentMethod,
-} from "@/lib/labels";
+  type AdherentView,
+  type FiltresAdherents,
+  filtresDepuis,
+  requeteFiltres,
+} from "@/lib/adherent-view";
+import { api } from "@/lib/client";
+import { formatShortDate } from "@/lib/dates";
+import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
-
-export interface AdherentView {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string | null;
-  phone: string | null;
-  addressLine1: string | null;
-  addressLine2: string | null;
-  postalCode: string | null;
-  city: string | null;
-  country: string;
-  status: "active" | "pending" | "inactive";
-  schoolYear: string;
-  membershipFeeCents: number;
-  /** Don facultatif versé en plus de la cotisation ; 0 sans don. */
-  donationCents: number;
-  feePaidAt: string | null;
-  feePaymentMethod: PaymentMethod | null;
-  joinedAt: string;
-  notes: string | null;
-  version: number;
-}
 
 /**
  * Ce que la famille règle en tout : la cotisation et le don qu'elle y ajoute.
@@ -78,52 +60,16 @@ function totalAdhesion(member: AdherentView): number {
   return member.membershipFeeCents + member.donationCents;
 }
 
-/** « 30 € », ou « 30 € + 10 € de don » : le don n'apparaît que s'il existe. */
-function montantAdhesion(member: AdherentView): string {
-  return member.donationCents > 0
-    ? `${formatEuros(member.membershipFeeCents)} + ${formatEuros(member.donationCents)} de don`
-    : formatEuros(member.membershipFeeCents);
-}
-
-const STATUS_LABELS: Record<AdherentView["status"], string> = {
-  active: "Actif",
-  pending: "En attente",
-  inactive: "Inactif",
-};
-
-const STATUS_COLORS = {
-  active: "sea",
-  pending: "amber",
-  inactive: "slate",
-} as const;
-
-function currentSchoolYear() {
-  // Le calendrier de Paris, pas celui de la machine : le serveur (UTC) et le
-  // navigateur doivent tomber sur la même année la nuit du 30 juin.
-  const [annee, mois] = toDateInput(new Date()).split("-").map(Number);
-  const start = mois >= 7 ? annee : annee - 1;
-  return `${start}-${start + 1}`;
-}
-
-function dateInput(value: string | null) {
-  return value ? toDateInput(value) : "";
-}
+const LISTE = "/dashboard/adherents";
 
 export function AdherentsManager({
   members,
-  cotisationParDefautCents = null,
   rapprochements,
   comptes,
   categoriesRecette,
   ecrituresRecette,
 }: {
   members: AdherentView[];
-  /**
-   * Le tarif publié par l'association, quand il y en a un : une adhésion
-   * nouvelle s'ouvre dessus plutôt que sur 0,00 €. On ne le force jamais — une
-   * famille peut régler autre chose — mais on évite de le retaper à chaque fois.
-   */
-  cotisationParDefautCents?: number | null;
   /** L'état comptable de chaque adhésion, toutes années confondues. */
   rapprochements: LigneRapprochementView[];
   comptes: { id: string; name: string }[];
@@ -132,11 +78,13 @@ export function AdherentsManager({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"all" | AdherentView["status"]>("all");
-  const [schoolYear, setSchoolYear] = useState("all");
-  const [editor, setEditor] = useState<"new" | AdherentView | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Les filtres partent de l'adresse, et y retournent à chaque changement :
+  // la fiche ouverte depuis la liste les reçoit, et son lien de retour — comme
+  // le bouton retour du navigateur — rouvre la liste telle qu'on l'a laissée.
+  const depart = filtresDepuis(useSearchParams());
+  const [query, setQuery] = useState(depart.q);
+  const [status, setStatus] = useState(depart.statut);
+  const [schoolYear, setSchoolYear] = useState(depart.annee);
   const [pendingDelete, setPendingDelete] = useState<AdherentView | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -237,53 +185,24 @@ export function AdherentsManager({
     [rapprochements, anneeCible],
   );
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    const form = new FormData(event.currentTarget);
-    const feeInEuros = Number(String(form.get("membershipFee") ?? "0"));
-    // Champ laissé vide : pas de don, et non une erreur de saisie.
-    const donationInEuros = Number(String(form.get("donation") || "0"));
-    const body = {
-      firstName: form.get("firstName"),
-      lastName: form.get("lastName"),
-      email: form.get("email") || null,
-      phone: form.get("phone") || null,
-      addressLine1: form.get("addressLine1") || null,
-      addressLine2: form.get("addressLine2") || null,
-      postalCode: form.get("postalCode") || null,
-      city: form.get("city") || null,
-      country: form.get("country") || "France",
-      status: form.get("status"),
-      schoolYear: form.get("schoolYear"),
-      membershipFeeCents: Math.round(feeInEuros * 100),
-      donationCents: Math.round(donationInEuros * 100),
-      feePaidAt: form.get("feePaidAt") || null,
-      feePaymentMethod: form.get("feePaymentMethod") || null,
-      joinedAt: form.get("joinedAt"),
-      notes: form.get("notes") || null,
-      ...(editor !== "new" && editor ? { version: editor.version } : {}),
-    };
+  const filtres: FiltresAdherents = { q: query, statut: status, annee: schoolYear };
+  const suffixe = requeteFiltres(filtres);
 
-    try {
-      if (editor === "new") {
-        await api("/api/adherents", { body });
-        toast("Adhérent ajouté.");
-      } else if (editor) {
-        await api(`/api/adherents/${editor.id}`, {
-          method: "PATCH",
-          body,
-        });
-        toast("Fiche adhérent mise à jour.");
-      }
-      setEditor(null);
-      router.refresh();
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setSubmitting(false);
-    }
+  /**
+   * Réécrit l'adresse sans naviguer : Next suit `history.replaceState`, et la
+   * liste ne se recharge pas à chaque lettre tapée dans la recherche.
+   */
+  function filtrer(modifs: Partial<FiltresAdherents>) {
+    const suivants = { ...filtres, ...modifs };
+    setQuery(suivants.q);
+    setStatus(suivants.statut);
+    setSchoolYear(suivants.annee);
+    window.history.replaceState(null, "", `${LISTE}${requeteFiltres(suivants)}`);
   }
+
+  /** La fiche d'un adhérent, qui reçoit les filtres pour son lien de retour. */
+  const ficheDe = (member: AdherentView) => `${LISTE}/${member.id}${suffixe}`;
+  const nouvelle = `${LISTE}/nouveau${suffixe}`;
 
   async function remove() {
     if (!pendingDelete) return;
@@ -346,39 +265,6 @@ export function AdherentsManager({
         />
       </section>
 
-      {editor && (
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b-2 border-slate-100 bg-brand-50 px-5 py-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
-                Fiche adhérent
-              </p>
-              <h2 className="mt-1 text-xl font-bold text-brand-950">
-                {editor === "new"
-                  ? "Ajouter un adhérent"
-                  : `Modifier ${editor.firstName} ${editor.lastName}`}
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEditor(null)}
-              disabled={submitting}
-              className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-brand-500"
-              aria-label="Fermer le formulaire"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <AdherentForm
-            member={editor === "new" ? null : editor}
-            loading={submitting}
-            onSubmit={save}
-            onCancel={() => setEditor(null)}
-            cotisationParDefautCents={cotisationParDefautCents}
-          />
-        </Card>
-      )}
-
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
@@ -393,7 +279,7 @@ export function AdherentsManager({
               id="adherents-search"
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => filtrer({ q: event.target.value })}
               placeholder="Nom, e-mail, téléphone ou ville…"
               className="pl-10"
             />
@@ -406,9 +292,9 @@ export function AdherentsManager({
               id="adherents-status"
               value={status}
               onChange={(event) =>
-                setStatus(
-                  event.target.value as "all" | AdherentView["status"],
-                )
+                filtrer({
+                  statut: event.target.value as FiltresAdherents["statut"],
+                })
               }
               className="lg:w-44"
             >
@@ -423,7 +309,7 @@ export function AdherentsManager({
             <Select
               id="adherents-year"
               value={schoolYear}
-              onChange={(event) => setSchoolYear(event.target.value)}
+              onChange={(event) => filtrer({ annee: event.target.value })}
               className="lg:w-44"
             >
               <option value="all">Toutes les années</option>
@@ -434,14 +320,13 @@ export function AdherentsManager({
               ))}
             </Select>
           </div>
-          <Button
-            type="button"
-            icon={Plus}
-            onClick={() => setEditor("new")}
-            className="w-full lg:w-auto"
+          <Link
+            href={nouvelle}
+            className={cn(buttonClasses("primary"), "w-full lg:w-auto")}
           >
+            <Plus className="h-4 w-4" aria-hidden="true" />
             Ajouter
-          </Button>
+          </Link>
         </div>
       </Card>
 
@@ -451,14 +336,10 @@ export function AdherentsManager({
           title="Aucun adhérent enregistré"
           description="Ajoutez la première fiche pour commencer le suivi des adhésions et cotisations."
           action={
-            <Button
-              type="button"
-              size="sm"
-              icon={Plus}
-              onClick={() => setEditor("new")}
-            >
+            <Link href={nouvelle} className={buttonClasses("primary")}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Ajouter le premier adhérent
-            </Button>
+            </Link>
           }
         />
       ) : filtered.length === 0 ? (
@@ -478,7 +359,7 @@ export function AdherentsManager({
                 key={member.id}
                 member={member}
                 rapprochement={parAdherent.get(member.id)}
-                onEdit={() => setEditor(member)}
+                href={ficheDe(member)}
                 onDelete={() => setPendingDelete(member)}
               />
             ))}
@@ -509,9 +390,12 @@ export function AdherentsManager({
                 {filtered.map((member) => (
                   <tr key={member.id} className="hover:bg-brand-50/40">
                     <td className="px-5 py-4">
-                      <p className="font-bold text-slate-950">
+                      <Link
+                        href={ficheDe(member)}
+                        className="font-bold text-slate-950 underline-offset-2 hover:text-brand-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                      >
                         {member.firstName} {member.lastName}
-                      </p>
+                      </Link>
                       <p className="mt-1 text-xs text-slate-500">
                         {member.email || member.phone || "Coordonnées à compléter"}
                       </p>
@@ -539,26 +423,23 @@ export function AdherentsManager({
                           ? `Réglée le ${formatShortDate(member.feePaidAt)}`
                           : "À régulariser"}
                       </p>
-                      <EtatComptable ligne={parAdherent.get(member.id)} />
+                      <EtatComptable etat={parAdherent.get(member.id)?.etat} />
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          icon={Pencil}
-                          onClick={() => setEditor(member)}
+                        <Link
+                          href={ficheDe(member)}
+                          className={cn(buttonClasses("ghost"), "px-3")}
                           aria-label={`Modifier ${member.firstName} ${member.lastName}`}
                         >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
                           Modifier
-                        </Button>
+                        </Link>
                         <Button
                           type="button"
-                          size="sm"
                           variant="ghost"
                           icon={Archive}
-                          className="hover:!bg-coral-50 hover:!text-coral-800"
+                          className="px-3 hover:!bg-coral-50 hover:!text-coral-800"
                           onClick={() => setPendingDelete(member)}
                           disabled={member.status === "inactive"}
                           aria-label={`Archiver ${member.firstName} ${member.lastName}`}
@@ -617,41 +498,16 @@ export function AdherentsManager({
   );
 }
 
-/**
- * L'état comptable d'une adhésion, sous son montant.
- *
- * Muet quand il n'y a rien à dire — ni règlement, ni écriture : afficher
- * « Pas encore réglée » sous un « À régulariser » déjà écrit ajouterait du
- * bruit sans information. Le badge ne parle que lorsqu'il apprend quelque
- * chose que la ligne ne dit pas déjà.
- */
-function EtatComptable({
-  ligne,
-}: {
-  ligne: LigneRapprochementView | undefined;
-}) {
-  if (!ligne || ligne.etat === "attendue") return null;
-  return (
-    <span
-      className={cn(
-        "mt-1.5 inline-block rounded-lg px-2 py-0.5 text-[11px] font-extrabold ring-1 ring-inset",
-        ETATS[ligne.etat].classe,
-      )}
-    >
-      {ETATS[ligne.etat].texte}
-    </span>
-  );
-}
-
 function AdherentMobileCard({
   member,
   rapprochement,
-  onEdit,
+  href,
   onDelete,
 }: {
   member: AdherentView;
   rapprochement: LigneRapprochementView | undefined;
-  onEdit: () => void;
+  /** La fiche de l'adhérent : un vrai lien, qui marche avant l'hydratation. */
+  href: string;
   onDelete: () => void;
 }) {
   return (
@@ -660,9 +516,12 @@ function AdherentMobileCard({
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="font-bold text-slate-950">
+            <Link
+              href={href}
+              className="font-bold text-slate-950 underline-offset-2 hover:text-brand-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
               {member.firstName} {member.lastName}
-            </p>
+            </Link>
             <p className="mt-1 text-xs text-slate-500">
               Adhésion {member.schoolYear}
             </p>
@@ -689,22 +548,20 @@ function AdherentMobileCard({
             {member.feePaidAt
               ? `Cotisation réglée · ${montantAdhesion(member)}`
               : `Cotisation à régulariser · ${montantAdhesion(member)}`}
-            <EtatComptable ligne={rapprochement} />
+            <EtatComptable etat={rapprochement?.etat} />
           </p>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            icon={Pencil}
-            onClick={onEdit}
+          <Link
+            href={href}
+            className={buttonClasses("outline")}
+            aria-label={`Modifier ${member.firstName} ${member.lastName}`}
           >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
             Modifier
-          </Button>
+          </Link>
           <Button
             type="button"
-            size="sm"
             variant="ghost"
             icon={Archive}
             className="hover:!bg-coral-50 hover:!text-coral-800"
@@ -716,253 +573,5 @@ function AdherentMobileCard({
         </div>
       </div>
     </Card>
-  );
-}
-
-function AdherentForm({
-  member,
-  loading,
-  onSubmit,
-  onCancel,
-  cotisationParDefautCents,
-}: {
-  member: AdherentView | null;
-  loading: boolean;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-  onCancel: () => void;
-  cotisationParDefautCents: number | null;
-}) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-7 p-5 sm:p-6">
-      <section aria-labelledby="adherent-identity-title">
-        <h3
-          id="adherent-identity-title"
-          className="mb-4 text-sm font-bold uppercase tracking-[0.14em] text-slate-500"
-        >
-          Identité et contact
-        </h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Prénom" htmlFor="firstName">
-            <Input
-              id="firstName"
-              name="firstName"
-              required
-              defaultValue={member?.firstName}
-              autoComplete="given-name"
-            />
-          </Field>
-          <Field label="Nom" htmlFor="lastName">
-            <Input
-              id="lastName"
-              name="lastName"
-              required
-              defaultValue={member?.lastName}
-              autoComplete="family-name"
-            />
-          </Field>
-          <Field label="Adresse e-mail" htmlFor="email">
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              defaultValue={member?.email ?? ""}
-              autoComplete="email"
-            />
-          </Field>
-          <Field label="Téléphone" htmlFor="phone">
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              defaultValue={member?.phone ?? ""}
-              autoComplete="tel"
-            />
-          </Field>
-          <Field
-            label="Adresse"
-            htmlFor="addressLine1"
-            className="sm:col-span-2"
-          >
-            <Input
-              id="addressLine1"
-              name="addressLine1"
-              defaultValue={member?.addressLine1 ?? ""}
-              autoComplete="address-line1"
-            />
-          </Field>
-          <Field
-            label="Complément d'adresse"
-            htmlFor="addressLine2"
-            className="sm:col-span-2"
-          >
-            <Input
-              id="addressLine2"
-              name="addressLine2"
-              defaultValue={member?.addressLine2 ?? ""}
-              autoComplete="address-line2"
-            />
-          </Field>
-          <Field label="Code postal" htmlFor="postalCode">
-            <Input
-              id="postalCode"
-              name="postalCode"
-              defaultValue={member?.postalCode ?? ""}
-              autoComplete="postal-code"
-            />
-          </Field>
-          <Field label="Ville" htmlFor="city">
-            <Input
-              id="city"
-              name="city"
-              defaultValue={member?.city ?? ""}
-              autoComplete="address-level2"
-            />
-          </Field>
-          <Field label="Pays" htmlFor="country" className="sm:col-span-2">
-            <Input
-              id="country"
-              name="country"
-              defaultValue={member?.country ?? "France"}
-              autoComplete="country-name"
-            />
-          </Field>
-        </div>
-      </section>
-
-      <section
-        aria-labelledby="adherent-membership-title"
-        className="border-t-2 border-slate-100 pt-6"
-      >
-        <h3
-          id="adherent-membership-title"
-          className="mb-4 text-sm font-bold uppercase tracking-[0.14em] text-slate-500"
-        >
-          Adhésion et cotisation
-        </h3>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Statut" htmlFor="status">
-            <Select
-              id="status"
-              name="status"
-              defaultValue={member?.status ?? "pending"}
-            >
-              <option value="pending">En attente</option>
-              <option value="active">Actif</option>
-              <option value="inactive">Inactif</option>
-            </Select>
-          </Field>
-          <Field label="Année scolaire" htmlFor="schoolYear">
-            <Input
-              id="schoolYear"
-              name="schoolYear"
-              required
-              pattern="\d{4}-\d{4}"
-              placeholder="2026-2027"
-              defaultValue={member?.schoolYear ?? currentSchoolYear()}
-            />
-          </Field>
-          <Field label="Cotisation (€)" htmlFor="membershipFee">
-            <Input
-              id="membershipFee"
-              name="membershipFee"
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              defaultValue={(
-                (member
-                  ? member.membershipFeeCents
-                  : cotisationParDefautCents ?? 0) / 100
-              ).toFixed(2)}
-            />
-          </Field>
-          <Field
-            label="Don supplémentaire (€)"
-            htmlFor="donation"
-            hint="Facultatif. Versé en plus de la cotisation, il est enregistré dans les comptes comme un don, à part de la cotisation."
-          >
-            <Input
-              id="donation"
-              name="donation"
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              placeholder="0,00"
-              defaultValue={
-                member && member.donationCents > 0
-                  ? (member.donationCents / 100).toFixed(2)
-                  : ""
-              }
-            />
-          </Field>
-          <Field label="Réglée le" htmlFor="feePaidAt">
-            <Input
-              id="feePaidAt"
-              name="feePaidAt"
-              type="date"
-              defaultValue={dateInput(member?.feePaidAt ?? null)}
-            />
-          </Field>
-          <Field
-            label="Mode de règlement"
-            htmlFor="feePaymentMethod"
-            hint="Encaissé par HelloAsso, l’argent n’est pas encore sur le compte : la cotisation attendra le versement pour entrer en comptabilité."
-          >
-            <Select
-              id="feePaymentMethod"
-              name="feePaymentMethod"
-              defaultValue={member?.feePaymentMethod ?? ""}
-            >
-              <option value="">Non précisé</option>
-              {PAYMENT_METHODS.map((mode) => (
-                <option key={mode} value={mode}>
-                  {PAYMENT_METHOD_LABELS[mode]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Adhérent depuis le" htmlFor="joinedAt">
-            <Input
-              id="joinedAt"
-              name="joinedAt"
-              type="date"
-              required
-              defaultValue={
-                dateInput(member?.joinedAt ?? null) ||
-                toDateInput(new Date())
-              }
-            />
-          </Field>
-          <Field
-            label="Notes internes"
-            htmlFor="notes"
-            className="sm:col-span-2 lg:col-span-3"
-          >
-            <Textarea
-              id="notes"
-              name="notes"
-              rows={3}
-              defaultValue={member?.notes ?? ""}
-              placeholder="Informations utiles à la gestion de l'adhésion…"
-            />
-          </Field>
-        </div>
-      </section>
-
-      <div className="flex flex-col-reverse gap-2 border-t-2 border-slate-100 pt-5 sm:flex-row sm:justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={loading}
-        >
-          Annuler
-        </Button>
-        <Button type="submit" loading={loading}>
-          {member ? "Enregistrer les modifications" : "Ajouter l'adhérent"}
-        </Button>
-      </div>
-    </form>
   );
 }
