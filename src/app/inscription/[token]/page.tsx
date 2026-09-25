@@ -9,6 +9,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { FormattedText } from "@/components/formatted-text";
 import { MeetingAttendanceForm } from "@/components/meeting-attendance-form";
@@ -31,24 +32,9 @@ import {
   ticketingWording,
 } from "@/lib/ticketing";
 
-export const dynamic = "force-dynamic";
+import { visibilite } from "./visibilite";
 
-/**
- * Ce que la page peut dire d'un rendez-vous, selon son état. Une seule règle
- * pour le corps de la page et pour ses métadonnées (titre de l'onglet, aperçu
- * OpenGraph) : écrites deux fois, elles avaient divergé, et l'aperçu d'un lien
- * de brouillon affichait ce que la page taisait.
- *
- * Un brouillon ne dit jamais rien, même annulé : il n'a jamais été public, et
- * personne n'a de raison d'en connaître le titre.
- */
-function visibilite(
-  event: { status: string; cancelledAt: Date | null } | null | undefined,
-): "annule" | "indisponible" | "ouvert" {
-  if (!event || event.status === "draft") return "indisponible";
-  if (event.cancelledAt) return "annule";
-  return event.status === "published" ? "ouvert" : "indisponible";
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -149,33 +135,9 @@ export default async function InscriptionPage({
     );
   }
 
-  if (!event || etat !== "ouvert") {
-    return (
-      <div className="flex min-h-screen flex-col bg-slate-50">
-        <SiteHeader />
-        <main className="mx-auto flex w-full max-w-2xl flex-1 items-center px-4 py-12 sm:px-6">
-          <section className="w-full rounded-2xl border-2 border-slate-200 bg-white p-8 text-center">
-            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-950 text-white">
-              <CalendarX2 className="h-7 w-7" />
-            </span>
-            <h1 className="mt-5 text-2xl font-black tracking-[-0.03em] text-brand-950">
-              Lien d&apos;inscription indisponible
-            </h1>
-            <p className="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-slate-600">
-              Cet événement n&apos;existe pas ou n&apos;accepte pas
-              d&apos;inscriptions pour le moment.
-            </p>
-            <Link
-              href="/"
-              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-950 px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
-            >
-              Retour à l&apos;accueil
-            </Link>
-          </section>
-        </main>
-      </div>
-    );
-  }
+  // Inconnu, brouillon ou archivé : le gabarit a déjà répondu 404, avec
+  // l'écran « Lien d'inscription indisponible » (inscription/not-found.tsx).
+  if (!event || etat !== "ouvert") notFound();
 
   const [currentUser, association] = await Promise.all([
     getCurrentUser(),

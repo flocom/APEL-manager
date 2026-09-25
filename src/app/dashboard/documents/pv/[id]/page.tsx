@@ -6,8 +6,9 @@ import { hasRole, requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { associationMembers } from "@/lib/db/schema";
 import { payloadVide } from "@/lib/documents/ag-types";
-import { getAssociationDocument } from "@/lib/services/documents";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+
+import { chargerDocument } from "./document";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function PvPage({
   const { id } = await params;
 
   const [document, association] = await Promise.all([
-    getAssociationDocument(id),
+    chargerDocument(id),
     getAssociationSettings(),
   ]);
 

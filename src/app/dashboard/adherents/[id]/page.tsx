@@ -14,9 +14,10 @@ import {
   requeteFiltres,
 } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
-import { getAssociationMember } from "@/lib/services/adherents";
 import { etatDe, rapprochementAdherent } from "@/lib/services/cotisations";
 import { isUuid } from "@/lib/utils";
+
+import { chargerAdherent } from "./adherent";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,13 @@ export default async function AdherentPage({
 }) {
   await requireRole("admin");
   const { id } = await params;
-  // Une adresse tronquée ou inventée : une page introuvable, pas une erreur
-  // de la base sur un identifiant qui n'en est pas un.
+  // Le gabarit a déjà répondu 404 (hors du squelette de chargement), mais la
+  // page se rend en parallèle : elle ne doit pas envoyer à la base un
+  // identifiant qui n'en est pas un. La lecture de la fiche est partagée
+  // avec le gabarit (`cache()`).
   if (!isUuid(id)) notFound();
   const [member, ligne, recherche] = await Promise.all([
-    getAssociationMember(id),
+    chargerAdherent(id),
     rapprochementAdherent(id),
     searchParams,
   ]);

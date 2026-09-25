@@ -41,6 +41,11 @@ const eventStatusBadge = {
  *
  * `getEventWithDetails` est mis en cache par requête : l'appeler ici et dans
  * la page enfant ne fait qu'une lecture.
+ *
+ * C'est aussi ce gabarit qui répond « introuvable » pour un événement qui
+ * n'existe pas : il se rend hors de toute frontière de chargement (chaque
+ * onglet porte la sienne, en dessous), si bien que `notFound()` donne un vrai
+ * 404 au lieu d'une page d'erreur servie en 200 après le squelette.
  */
 export default async function EventDetailLayout({
   params,
