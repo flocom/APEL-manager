@@ -38,10 +38,12 @@ export async function GET(req: Request, { params }: Params) {
             "Content-Security-Policy":
               "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
             "X-Content-Type-Options": "nosniff",
-            // Comme les pages (src/middleware.ts) : derrière Cloudflare, les
+            // Comme les pages (docker/Caddyfile) : derrière Cloudflare, les
             // adresses e-mail du document seraient remplacées par
             // « [email protected] », et le script qui les rétablit bloqué
-            // par la CSP ci-dessus. Le papier garderait le masque.
+            // par la CSP ci-dessus. Le papier garderait le masque. Posé ici
+            // et non laissé au seul Caddyfile, que l'`updater` ne met pas à
+            // jour : ce qui s'imprime ne doit pas dépendre de sa version.
             "Cache-Control": "private, no-store, no-transform",
           },
         },

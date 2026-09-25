@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { REQUESTED_PATH_HEADER } from "@/lib/auth/return-path";
+import {
+  ENVOI_WEB_ANALYTICS,
+  SCRIPT_WEB_ANALYTICS,
+  jetonWebAnalytics,
+} from "@/lib/cloudflare-web-analytics";
 
 /**
  * Trois choses, toutes sans base ni cryptographie coûteuse : ce code tourne à
@@ -12,9 +17,6 @@ import { REQUESTED_PATH_HEADER } from "@/lib/auth/return-path";
  *    nonce tiré pour elle (`politiqueDeContenu`).
  * 3. Les pages de l'espace de gestion reçoivent l'adresse demandée, pour que
  *    la garde sache où revenir après la connexion.
- *
- * Les pages sont en outre marquées `no-transform` (`CACHE_DES_PAGES`), pour
- * qu'aucun intermédiaire ne réécrive leur HTML.
  */
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -40,39 +42,7 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy", csp);
-  if (estUnePage(pathname)) {
-    response.headers.set("Cache-Control", CACHE_DES_PAGES);
-  }
   return response;
-}
-
-/**
- * Le HTML d'une page doit arriver tel que Next l'a écrit. Derrière Cloudflare,
- * l'« obfuscation des adresses e-mail » remplaçait chaque adresse affichée par
- * un lien « [email protected] » et ajoutait son propre script à la page.
- * Le script, sans le nonce, était bloqué par la CSP ; et React, qui
- * retrouvait les adresses en clair dans ses données de rendu, constatait que
- * le HTML ne correspondait plus (erreur #418) et refaisait toute la page dans
- * le navigateur.
- *
- * `no-transform` interdit à un intermédiaire de modifier la réponse.
- * Cloudflare le respecte : ni obfuscation des adresses, ni injection de ses
- * scripts (détection des robots, Web Analytics). Il ne compresse plus non
- * plus : c'est à l'origine de le faire (docker/Caddyfile).
- *
- * Le reste est la valeur que Next pose de lui-même sur une page rendue à la
- * demande — toutes le sont, le nonce l'exige. Posée ici, Next la garde au lieu
- * de la remplacer.
- */
-const CACHE_DES_PAGES =
-  "private, no-cache, no-store, max-age=0, must-revalidate, no-transform";
-
-/**
- * Les pages, et non les fichiers que le middleware voit aussi passer
- * (manifeste, métadonnées OAuth) : ceux-là gardent leur propre cache.
- */
-function estUnePage(pathname: string): boolean {
-  return !pathname.startsWith("/.well-known/") && !/\.[^/]+$/.test(pathname);
 }
 
 // ---------------------------------------------------------------------------
@@ -241,17 +211,22 @@ function estEnHttps(request: NextRequest): boolean {
  * les attributs `style` (barres de progression), et un style ne s'exécute
  * pas. Images : le site, et `data:`/`blob:` pour les aperçus et les QR codes.
  * Le service worker des notifications est servi par le site (`worker-src`).
+ *
+ * Cloudflare Web Analytics n'entre dans la politique que si l'exploitant l'a
+ * configuré (lib/cloudflare-web-analytics.ts) : la page charge alors son
+ * script, qui envoie ses mesures à cloudflareinsights.com.
  */
 function politiqueDeContenu(nonce: string, https: boolean): string {
   const developpement = process.env.NODE_ENV !== "production";
   const recaptcha = "https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/";
+  const statistiques = jetonWebAnalytics() !== null;
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${recaptcha}${developpement ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${recaptcha}${statistiques ? ` ${SCRIPT_WEB_ANALYTICS}` : ""}${developpement ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' https://www.google.com/recaptcha/${developpement ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://www.google.com/recaptcha/${statistiques ? ` ${ENVOI_WEB_ANALYTICS}` : ""}${developpement ? " ws: wss:" : ""}`,
     "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
     "worker-src 'self' blob:",
     "manifest-src 'self'",

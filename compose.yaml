@@ -24,6 +24,9 @@ x-app-environment: &app-environment
   UPLOADS_DIR: ${UPLOADS_DIR:-/app/data/uploads}
   UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-15728640}
   UPLOAD_ORPHAN_MAX_AGE_HOURS: ${UPLOAD_ORPHAN_MAX_AGE_HOURS:-24}
+  # Derrière Cloudflare seulement : statistiques de Web Analytics chargées par
+  # la page (docs/DEPLOIEMENT.md, « Derrière Cloudflare »).
+  CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${CLOUDFLARE_WEB_ANALYTICS_TOKEN:-}
   # Permet à l'écran Configuration d'indiquer si la mise à jour automatique
   # tourne et à quelle cadence, sans dupliquer le réglage.
   COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}

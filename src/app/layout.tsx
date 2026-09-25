@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 
 import { NavigationProgress } from "@/components/navigation-progress";
 import { ToastProvider } from "@/components/toast";
+import { SCRIPT_WEB_ANALYTICS, jetonWebAnalytics } from "@/lib/cloudflare-web-analytics";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
 import "./globals.css";
@@ -54,11 +56,27 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const jetonStatistiques = jetonWebAnalytics();
   return (
     <html lang="fr" className={inter.variable}>
       <body className="min-h-screen bg-[#f4f7f7] font-sans text-slate-950 antialiased">
         <NavigationProgress />
         <ToastProvider>{children}</ToastProvider>
+        {/* Les statistiques de Cloudflare, qu'il n'ajoute plus lui-même à une
+            page marquée no-transform (lib/cloudflare-web-analytics.ts). Next
+            l'insère après l'hydratation, depuis ses propres scripts : la CSP
+            l'accepte (`'strict-dynamic'`), et il n'y a rien à comparer dans
+            le HTML rendu. Chargé une fois : il suit lui-même les navigations
+            internes. `crossOrigin` comme le module qui sera chargé, sans quoi
+            le navigateur téléchargerait deux fois le script. */}
+        {jetonStatistiques ? (
+          <Script
+            src={SCRIPT_WEB_ANALYTICS}
+            type="module"
+            crossOrigin="anonymous"
+            data-cf-beacon={JSON.stringify({ token: jetonStatistiques })}
+          />
+        ) : null}
       </body>
     </html>
   );

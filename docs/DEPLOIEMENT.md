@@ -351,27 +351,39 @@ la version n'est donnée qu'à un administrateur connecté.
 
 ### Derrière Cloudflare
 
-Les pages portent `Cache-Control: … no-transform` (`src/middleware.ts`) :
-aucun intermédiaire ne doit réécrire leur HTML. Cloudflare le faisait avec
-l'obfuscation des adresses e-mail : les adresses devenaient « [email protected] »,
-le script ajouté pour les rétablir était bloqué par la CSP, et React, qui
-retrouvait les adresses en clair dans ses données, rejetait la page (erreur
-React #418 en console) et la reconstruisait dans le navigateur.
+Cloudflare peut réécrire le HTML des pages au passage. Son **obfuscation des
+adresses e-mail**, active dès l'inscription, remplace chaque adresse par
+« [email protected] » et ajoute un script, `email-decode.min.js`, que la CSP
+bloque : Cloudflare ne lui donne pas le nonce de la page, alors qu'il le reprend
+pour les scripts qu'il ajoute par ailleurs (Web Analytics, détection des
+robots). React, qui retrouve les adresses en clair dans ses données, rejette
+alors la page (erreur React #418 en console) et la reconstruit dans le
+navigateur.
 
-Avec cette directive, Cloudflare n'obfusque plus les adresses et n'injecte
-plus ses scripts (détection des robots, Web Analytics). Il ne compresse plus
-non plus : il transmet la page telle que l'origine l'envoie. Avec Docker, Caddy
-la compresse (`docker/Caddyfile`) ; sans lui, prévoir devant Next un proxy qui
-compresse le HTML.
+**Le correctif, pour toute installation : désactiver ce réglage** dans le
+tableau de bord Cloudflare (première ligne ci-dessous). Il prend effet tout de
+suite, sans rien redéployer.
 
-Dans le tableau de bord Cloudflare du domaine :
+**En plus, avec Docker** : le Caddyfile marque chaque page
+`Cache-Control: … no-transform` après l'avoir compressée, ce qui interdit à
+Cloudflare de la réécrire, quel que soit le réglage. L'`updater` ne met pas le
+Caddyfile à jour : `git pull && docker compose restart caddy`. Un ancien
+Caddyfile continue de servir les pages comme avant. Sans Caddy, ne poser cette
+directive que derrière un proxy qui compresse d'abord : ni Next ni Cloudflare
+ne compressent une réponse qui la porte.
+
+Une page marquée ainsi ne reçoit plus aucun script de Cloudflare : ni
+obfuscation, ni détection des robots, ni **Web Analytics**. Pour garder les
+statistiques de Web Analytics, l'application charge elle-même le script si
+`CLOUDFLARE_WEB_ANALYTICS_TOKEN` porte le jeton du site (dernière ligne
+ci-dessous) ; la CSP lui ouvre alors `cloudflareinsights.com`.
 
 | Réglage | Où | Pourquoi |
 |---|---|---|
-| **Email Address Obfuscation** : désactivé | Security → Settings (filtre « Client-side abuse ») ; anciennement Scrape Shield | Il masquerait encore les adresses de toute réponse HTML sans la directive. |
+| **Email Address Obfuscation** : désactivé | Security → Settings, filtre « Client-side abuse » (anciennement Scrape Shield) | La cause de l'erreur #418 et du script bloqué. Désactivé, plus rien n'est masqué, Caddyfile à jour ou non. |
 | **Rocket Loader** : désactivé | Speed → Settings → Content Optimization | Il réécrit les balises `<script>`, et Cloudflare ne dit pas qu'il respecte `no-transform`. |
 | **Speed Brain** : désactivé | Speed → Settings → Content Optimization | Sans effet ici : les pages ne sont jamais en cache et la CSP utilise un nonce. |
-| **Web Analytics**, installation automatique | Analytics & Logs → Web Analytics | Le script n'est plus injecté : seules les statistiques du proxy restent. |
+| **Web Analytics** : « Enable with JS Snippet installation », ou « Disable » | Analytics & Logs → Web Analytics → Manage site | Avec le Caddyfile à jour, Cloudflare n'ajoute plus son script. Pour garder les statistiques : choisir la première option, copier la valeur `token` de l'extrait proposé dans `CLOUDFLARE_WEB_ANALYTICS_TOKEN` (`.env`), puis `docker compose up -d`. Cloudflare cesse alors de l'ajouter lui-même, et la page ne le charge pas deux fois. Sinon, « Disable » : restent les statistiques du trafic vu par Cloudflare. |
 
 Les pages de défi de Cloudflare (« Just a moment… », Bot Fight Mode) ne sont
 pas concernées : il les sert lui-même, avec leur propre politique.
