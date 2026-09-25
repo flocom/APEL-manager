@@ -111,7 +111,7 @@ export function registerAssociationTools(
     {
       title: "Lister les adhérents",
       description:
-        "Liste les adhérents juridiques de l’APEL, distincts des comptes utilisateurs.",
+        "Liste les adhérents juridiques de l’APEL, distincts des comptes utilisateurs. Chaque fiche porte sa cotisation (membershipFeeCents) et le don éventuellement versé en plus (donationCents), en centimes.",
       inputSchema: z.object({
         status: z.enum(["active", "pending", "inactive"]).optional(),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/).optional(),
@@ -158,6 +158,15 @@ export function registerAssociationTools(
         status: z.enum(["active", "pending", "inactive"]).default("pending"),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/),
         membershipFeeCents: z.number().int().min(0).default(0),
+        donationCents: z
+          .number()
+          .int()
+          .min(0)
+          .max(10_000_000)
+          .default(0)
+          .describe(
+            "Don facultatif versé en plus de la cotisation, en centimes (1000 = 10 €). Il se comptabilise à part, comme un don. 0 sans don.",
+          ),
         feePaidAt: localDateTime.nullable().optional(),
         joinedAt: localDateTime.optional(),
         notes: optionalNullableString,
@@ -180,7 +189,7 @@ export function registerAssociationTools(
     {
       title: "Modifier un adhérent",
       description:
-        "Met à jour les coordonnées, la cotisation ou le statut d’un adhérent.",
+        "Met à jour les coordonnées, la cotisation, le don supplémentaire ou le statut d’un adhérent.",
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
@@ -196,6 +205,15 @@ export function registerAssociationTools(
         status: z.enum(["active", "pending", "inactive"]).optional(),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/).optional(),
         membershipFeeCents: z.number().int().min(0).optional(),
+        donationCents: z
+          .number()
+          .int()
+          .min(0)
+          .max(10_000_000)
+          .optional()
+          .describe(
+            "Don facultatif versé en plus de la cotisation, en centimes (1000 = 10 €). 0 retire le don.",
+          ),
         feePaidAt: localDateTime.nullable().optional(),
         joinedAt: localDateTime.optional(),
         notes: optionalNullableString,
@@ -241,7 +259,7 @@ export function registerAssociationTools(
     {
       title: "Rapprochement des cotisations",
       description:
-        "Compare, pour une année scolaire, ce que les fiches d’adhérents disent encaissé et ce qui figure réellement dans les écritures comptables. Signale les adhésions réglées mais absentes des comptes.",
+        "Compare, pour une année scolaire, ce que les fiches d’adhérents disent encaissé et ce qui figure réellement dans les écritures comptables. Signale les adhésions réglées mais absentes des comptes. Le montant dû (duCents) est la cotisation plus le don supplémentaire éventuel (cotisationCents + donationCents), car un encaissement groupé couvre les deux.",
       inputSchema: z.object({
         schoolYear: z
           .string()
@@ -271,6 +289,8 @@ export function registerAssociationTools(
         lignes: lignes.map((ligne) => ({
           nom: ligne.nom,
           duCents: ligne.duCents,
+          cotisationCents: ligne.cotisationCents,
+          donationCents: ligne.donCents,
           regleLe: ligne.regleLe,
           comptabiliseCents: ligne.comptabiliseCents,
           etat: etatDe(ligne),

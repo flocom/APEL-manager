@@ -698,6 +698,12 @@ export const associationMembers = pgTable(
     /** Année scolaire au format 2026-2027. */
     schoolYear: text("school_year").notNull(),
     membershipFeeCents: integer("membership_fee_cents").notNull().default(0),
+    /**
+     * Don facultatif versé en plus de la cotisation (comme le proposent les
+     * formulaires d'adhésion HelloAsso). Tenu à part de la cotisation : c'est
+     * une autre recette, qui se comptabilise dans une catégorie de dons.
+     */
+    donationCents: integer("donation_cents").notNull().default(0),
     feePaidAt: timestamp("fee_paid_at", { withTimezone: true }),
     /** Null tant que le mode n'a pas été précisé : on ne devine pas. */
     feePaymentMethod: paymentMethodEnum("fee_payment_method"),
@@ -724,6 +730,10 @@ export const associationMembers = pgTable(
     feeCheck: check(
       "association_members_membership_fee_cents_check",
       sql`${t.membershipFeeCents} >= 0`,
+    ),
+    donationCheck: check(
+      "association_members_donation_cents_check",
+      sql`${t.donationCents} >= 0`,
     ),
   }),
 );

@@ -60,11 +60,29 @@ export interface AdherentView {
   status: "active" | "pending" | "inactive";
   schoolYear: string;
   membershipFeeCents: number;
+  /** Don facultatif versé en plus de la cotisation ; 0 sans don. */
+  donationCents: number;
   feePaidAt: string | null;
   feePaymentMethod: PaymentMethod | null;
   joinedAt: string;
   notes: string | null;
   version: number;
+}
+
+/**
+ * Ce que la famille règle en tout : la cotisation et le don qu'elle y ajoute.
+ * Les montants d'argent de l'écran se comptent sur ce total, comme le
+ * rapprochement, puisque les deux arrivent dans le même règlement.
+ */
+function totalAdhesion(member: AdherentView): number {
+  return member.membershipFeeCents + member.donationCents;
+}
+
+/** « 30 € », ou « 30 € + 10 € de don » : le don n'apparaît que s'il existe. */
+function montantAdhesion(member: AdherentView): string {
+  return member.donationCents > 0
+    ? `${formatEuros(member.membershipFeeCents)} + ${formatEuros(member.donationCents)} de don`
+    : formatEuros(member.membershipFeeCents);
 }
 
 const STATUS_LABELS: Record<AdherentView["status"], string> = {
@@ -169,15 +187,16 @@ export function AdherentsManager({
    * chiffre que rien à l'écran ne justifie.
    */
   const argent = useMemo(() => {
-    const attendu = filtered.reduce((t, m) => t + m.membershipFeeCents, 0);
+    const attendu = filtered.reduce((t, m) => t + totalAdhesion(m), 0);
+    const dons = filtered.reduce((t, m) => t + m.donationCents, 0);
     const regles = filtered.filter((m) => m.feePaidAt);
-    const encaisse = regles.reduce((t, m) => t + m.membershipFeeCents, 0);
+    const encaisse = regles.reduce((t, m) => t + totalAdhesion(m), 0);
     const comptabilise = filtered.reduce(
       (t, m) => t + (parAdherent.get(m.id)?.comptabiliseCents ?? 0),
       0,
     );
     const horsComptes = filtered.filter(
-      (m) => parAdherent.get(m.id)?.etat === "manquante" && m.membershipFeeCents > 0,
+      (m) => parAdherent.get(m.id)?.etat === "manquante" && totalAdhesion(m) > 0,
     );
     // Encaissé par une plateforme, pas encore versé sur le compte : à ne pas
     // confondre avec un retard, mais à ne pas taire non plus — « tout est
@@ -186,13 +205,14 @@ export function AdherentsManager({
       (m) => parAdherent.get(m.id)?.etat === "attente_versement",
     );
     return {
-      attenteCents: enAttente.reduce((t, m) => t + m.membershipFeeCents, 0),
+      attenteCents: enAttente.reduce((t, m) => t + totalAdhesion(m), 0),
       attenteCount: enAttente.length,
       attendu,
+      dons,
       encaisse,
       reglesCount: regles.length,
       comptabilise,
-      horsComptesCents: horsComptes.reduce((t, m) => t + m.membershipFeeCents, 0),
+      horsComptesCents: horsComptes.reduce((t, m) => t + totalAdhesion(m), 0),
       horsComptesCount: horsComptes.length,
     };
   }, [filtered, parAdherent]);
@@ -220,6 +240,8 @@ export function AdherentsManager({
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
     const feeInEuros = Number(String(form.get("membershipFee") ?? "0"));
+    // Champ laissé vide : pas de don, et non une erreur de saisie.
+    const donationInEuros = Number(String(form.get("donation") || "0"));
     const body = {
       firstName: form.get("firstName"),
       lastName: form.get("lastName"),
@@ -233,6 +255,7 @@ export function AdherentsManager({
       status: form.get("status"),
       schoolYear: form.get("schoolYear"),
       membershipFeeCents: Math.round(feeInEuros * 100),
+      donationCents: Math.round(donationInEuros * 100),
       feePaidAt: form.get("feePaidAt") || null,
       feePaymentMethod: form.get("feePaymentMethod") || null,
       joinedAt: form.get("joinedAt"),
@@ -291,7 +314,11 @@ export function AdherentsManager({
         <ModuleStat
           label="Attendu"
           value={formatEuros(argent.attendu)}
-          helper={libelleCadrage}
+          helper={
+            argent.dons > 0
+              ? `${libelleCadrage} · dont ${formatEuros(argent.dons)} de dons`
+              : libelleCadrage
+          }
           icon={ContactRound}
           tone="slate"
         />
@@ -498,6 +525,12 @@ export function AdherentsManager({
                     <td className="px-5 py-4">
                       <p className="font-bold tabular-nums text-slate-950">
                         {formatEuros(member.membershipFeeCents)}
+                        {member.donationCents > 0 && (
+                          <span className="font-semibold text-slate-600">
+                            {" "}
+                            + {formatEuros(member.donationCents)} de don
+                          </span>
+                        )}
                       </p>
                       <p className="mt-1 text-xs text-slate-600">
                         {member.feePaidAt
@@ -652,8 +685,8 @@ function AdherentMobileCard({
           <p className="flex items-center gap-2">
             <BadgeCheck className="h-4 w-4 shrink-0 text-sea-600" />
             {member.feePaidAt
-              ? `Cotisation réglée · ${formatEuros(member.membershipFeeCents)}`
-              : `Cotisation à régulariser · ${formatEuros(member.membershipFeeCents)}`}
+              ? `Cotisation réglée · ${montantAdhesion(member)}`
+              : `Cotisation à régulariser · ${montantAdhesion(member)}`}
             <EtatComptable ligne={rapprochement} />
           </p>
         </div>
@@ -839,6 +872,26 @@ function AdherentForm({
                   ? member.membershipFeeCents
                   : cotisationParDefautCents ?? 0) / 100
               ).toFixed(2)}
+            />
+          </Field>
+          <Field
+            label="Don supplémentaire (€)"
+            htmlFor="donation"
+            hint="Facultatif. Versé en plus de la cotisation, il est enregistré dans les comptes comme un don, à part de la cotisation."
+          >
+            <Input
+              id="donation"
+              name="donation"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0,00"
+              defaultValue={
+                member && member.donationCents > 0
+                  ? (member.donationCents / 100).toFixed(2)
+                  : ""
+              }
             />
           </Field>
           <Field label="Réglée le" htmlFor="feePaidAt">

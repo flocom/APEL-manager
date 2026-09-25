@@ -40,6 +40,12 @@ import { recordAudit, type AuditActor } from "./audit";
  *  — la somme des parts ne dépasse jamais le montant de l'écriture, mais peut
  *    rester en deçà : un même virement peut porter des cotisations, des billets
  *    et un don, et seule la part « cotisations » se rattache ici.
+ *
+ * Le don qu'une famille ajoute à son adhésion fait partie de ce qu'elle doit :
+ * le formulaire d'adhésion encaisse les deux ensemble, et le reversement les
+ * porte en une seule somme. Le rapprochement compare donc le total, cotisation
+ * et don ; seule la reprise les sépare, parce qu'elle crée elle-même les
+ * écritures et qu'un don se range dans sa propre catégorie.
  */
 
 export interface LigneRapprochement {
@@ -47,8 +53,15 @@ export interface LigneRapprochement {
   nom: string;
   schoolYear: string;
   statut: "active" | "pending" | "inactive";
-  /** Ce que la famille doit, tel qu'enregistré sur sa fiche. */
+  /**
+   * Ce que la famille doit, tel qu'enregistré sur sa fiche : la cotisation et
+   * le don éventuel, puisqu'un encaissement groupé couvre les deux d'un bloc.
+   */
   duCents: number;
+  /** La part cotisation de `duCents`. */
+  cotisationCents: number;
+  /** La part don de `duCents` ; 0 quand la famille n'a rien ajouté. */
+  donCents: number;
   /** Ce qui est marqué réglé sur la fiche, sans préjuger de la comptabilité. */
   regleLe: Date | null;
   /** Comment la famille a réglé : décide si l'argent est déjà sur un compte. */
@@ -143,6 +156,7 @@ export async function rapprochement(
       schoolYear: associationMembers.schoolYear,
       status: associationMembers.status,
       membershipFeeCents: associationMembers.membershipFeeCents,
+      donationCents: associationMembers.donationCents,
       feePaidAt: associationMembers.feePaidAt,
       feePaymentMethod: associationMembers.feePaymentMethod,
     })
@@ -195,7 +209,9 @@ export async function rapprochement(
       nom: `${membre.firstName} ${membre.lastName}`.trim(),
       schoolYear: membre.schoolYear,
       statut: membre.status,
-      duCents: membre.membershipFeeCents,
+      duCents: membre.membershipFeeCents + membre.donationCents,
+      cotisationCents: membre.membershipFeeCents,
+      donCents: membre.donationCents,
       regleLe: membre.feePaidAt,
       mode: membre.feePaymentMethod,
       comptabiliseCents: ecritures.reduce((t, e) => t + e.partCents, 0),
@@ -204,7 +220,10 @@ export async function rapprochement(
   });
 }
 
-/** Les totaux que lit le trésorier : ce qui est dû, encaissé, et comptabilisé. */
+/**
+ * Les totaux que lit le trésorier : ce qui est dû, encaissé, et comptabilisé —
+ * dons compris, puisque c'est ce total que les encaissements couvrent.
+ */
 export function totaux(lignes: LigneRapprochement[]) {
   const attendu = lignes.reduce((t, l) => t + l.duCents, 0);
   const encaisse = lignes
@@ -215,10 +234,14 @@ export function totaux(lignes: LigneRapprochement[]) {
   const enAttente = lignes.filter((l) => etatDe(l) === "attente_versement");
   return {
     attendu,
+    /** La part des dons dans `attendu`, pour la distinguer des cotisations. */
+    dontDons: lignes.reduce((t, l) => t + l.donCents, 0),
     encaisse,
     comptabilise,
     /** Ce que le rattrapage porterait aux comptes s'il tournait maintenant. */
     aRattraperCents: manquantes.reduce((t, l) => t + l.duCents, 0),
+    /** Dont les dons, que la reprise écrit à part dans leur catégorie. */
+    aRattraperDonsCents: manquantes.reduce((t, l) => t + l.donCents, 0),
     aRattraperCount: manquantes.length,
     /** Encaissé par une plateforme, en attente du versement sur le compte. */
     attenteVersementCents: enAttente.reduce((t, l) => t + l.duCents, 0),
@@ -347,6 +370,12 @@ export async function cotisationsARattraper(
  * Deux formes, parce que les deux existent en vrai : une écriture par adhérent
  * quand chacun a remis son chèque, une écriture groupée quand l'argent est
  * arrivé en un seul virement — le cas HelloAsso.
+ *
+ * Le don joint à une adhésion part dans une écriture à lui, dans la catégorie
+ * des dons : le ranger avec les cotisations gonflerait une recette et en
+ * cacherait une autre, alors qu'un don se suit à part (reçus fiscaux, bilan
+ * présenté en assemblée). Les deux écritures sont rattachées à la famille, si
+ * bien que ce qui est comptabilisé retombe sur ce qu'elle doit.
  */
 export async function rattraperCotisations(input: unknown, actor: AuditActor) {
   const data = cotisationRattrapageSchema.parse(input);
@@ -376,7 +405,29 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
     );
   }
 
-  const { creees, retenus, total } = await db.transaction(async (tx) => {
+  const donationCategoryId = data.donationCategoryId ?? null;
+  if (donationCategoryId !== null) {
+    const [categorieDons] = await db
+      .select({
+        type: accountingCategories.type,
+        isActive: accountingCategories.isActive,
+      })
+      .from(accountingCategories)
+      .where(eq(accountingCategories.id, donationCategoryId))
+      .limit(1);
+    if (
+      !categorieDons ||
+      !categorieDons.isActive ||
+      categorieDons.type !== "income"
+    ) {
+      throw new HttpError(
+        400,
+        "La catégorie des dons doit être une catégorie de recettes active.",
+      );
+    }
+  }
+
+  const { creees, retenus, total, totalDons } = await db.transaction(async (tx) => {
     // Le manque se calcule APRÈS le verrou, dans la transaction : calculé
     // avant, il resterait celui qu'un rattrapage concurrent vient de combler.
     await verrouillerCotisations(tx);
@@ -393,8 +444,30 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
       );
     }
 
-    const total = retenus.reduce((t, l) => t + l.duCents, 0);
-    if (data.mode === "groupee" && total > MONTANT_MAX_CENTIMES) {
+    const totalCotisations = retenus.reduce((t, l) => t + l.cotisationCents, 0);
+    const totalDons = retenus.reduce((t, l) => t + l.donCents, 0);
+    const avecDon = retenus.filter((l) => l.donCents > 0);
+
+    // Refusé plutôt que rangé d'office avec les cotisations : un don fondu
+    // dans les cotisations ne se retrouve plus, et c'est précisément ce que
+    // l'écriture séparée doit éviter.
+    if (totalDons > 0 && donationCategoryId === null) {
+      throw new HttpError(
+        400,
+        `${avecDon.length} adhésion${avecDon.length > 1 ? "s" : ""} de ce lot comporte${avecDon.length > 1 ? "nt" : ""} un don (${(totalDons / 100).toFixed(2)} €) : choisissez la catégorie des dons, où il sera enregistré à part de la cotisation. S'il n'en existe pas, créez une catégorie de recettes pour les dons dans l'onglet Comptes.`,
+      );
+    }
+    if (totalDons > 0 && donationCategoryId === data.categoryId) {
+      throw new HttpError(
+        400,
+        "Choisissez pour les dons une autre catégorie que celle des cotisations : c'est ce qui permet de les distinguer dans les comptes.",
+      );
+    }
+
+    if (
+      data.mode === "groupee" &&
+      Math.max(totalCotisations, totalDons) > MONTANT_MAX_CENTIMES
+    ) {
       throw new HttpError(
         400,
         "Le lot dépasse le plafond d'une écriture (1 000 000 €) : faites une écriture par adhérent, ou rattrapez en plusieurs fois.",
@@ -403,65 +476,115 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
 
     const ecritures: { id: string; amountCents: number }[] = [];
 
-    if (data.mode === "groupee") {
+    /**
+     * Crée une écriture en brouillon et la rattache à chaque famille pour sa
+     * part. Brouillon : le trésorier relit et valide. Une reprise de masse qui
+     * s'écrirait directement en comptabilité validée serait immuable, donc
+     * irrattrapable en cas d'erreur de sélection.
+     */
+    async function ecrire(
+      valeurs: {
+        categoryId: string;
+        label: string;
+        occurredAt: Date;
+        counterparty: string | null;
+        notes?: string;
+      },
+      parts: { memberId: string; amountCents: number }[],
+    ) {
+      const montant = parts.reduce((t, p) => t + p.amountCents, 0);
+      if (montant === 0) return;
       const [entry] = await tx
         .insert(accountingEntries)
         .values({
           type: "income",
-          // Brouillon : le trésorier relit et valide. Une reprise de masse qui
-          // s'écrirait directement en comptabilité validée serait immuable, donc
-          // irrattrapable en cas d'erreur de sélection.
           status: "draft",
           accountId: data.accountId,
-          categoryId: data.categoryId,
-          label: data.label,
-          amountCents: total,
-          occurredAt: data.occurredAt,
-          counterparty: data.counterparty ?? null,
+          categoryId: valeurs.categoryId,
+          label: valeurs.label,
+          amountCents: montant,
+          occurredAt: valeurs.occurredAt,
+          counterparty: valeurs.counterparty,
           paymentMethod: data.paymentMethod ?? null,
-          notes: `Reprise de ${retenus.length} cotisation${retenus.length > 1 ? "s" : ""} — année scolaire ${data.schoolYear}.`,
+          notes: valeurs.notes ?? null,
           createdBy: actor.userId,
         })
         .returning({ id: accountingEntries.id });
       await tx.insert(membershipPayments).values(
+        parts
+          .filter((p) => p.amountCents > 0)
+          .map((p) => ({
+            entryId: entry.id,
+            memberId: p.memberId,
+            amountCents: p.amountCents,
+            createdBy: actor.userId,
+          })),
+      );
+      ecritures.push({ id: entry.id, amountCents: montant });
+    }
+
+    if (data.mode === "groupee") {
+      const avecCotisation = retenus.filter((l) => l.cotisationCents > 0);
+      await ecrire(
+        {
+          categoryId: data.categoryId,
+          label: data.label,
+          occurredAt: data.occurredAt,
+          counterparty: data.counterparty ?? null,
+          notes: `Reprise de ${avecCotisation.length} cotisation${avecCotisation.length > 1 ? "s" : ""} — année scolaire ${data.schoolYear}.`,
+        },
         retenus.map((l) => ({
-          entryId: entry.id,
           memberId: l.memberId,
-          amountCents: l.duCents,
-          createdBy: actor.userId,
+          amountCents: l.cotisationCents,
         })),
       );
-      ecritures.push({ id: entry.id, amountCents: total });
+      if (donationCategoryId !== null) {
+        await ecrire(
+          {
+            categoryId: donationCategoryId,
+            label: `Dons joints aux adhésions — ${data.schoolYear}`,
+            occurredAt: data.occurredAt,
+            counterparty: data.counterparty ?? null,
+            notes: `Reprise de ${avecDon.length} don${avecDon.length > 1 ? "s" : ""} versé${avecDon.length > 1 ? "s" : ""} avec l'adhésion — année scolaire ${data.schoolYear}.`,
+          },
+          retenus.map((l) => ({ memberId: l.memberId, amountCents: l.donCents })),
+        );
+      }
     } else {
       for (const ligne of retenus) {
-        const [entry] = await tx
-          .insert(accountingEntries)
-          .values({
-            type: "income",
-            status: "draft",
-            accountId: data.accountId,
+        // La date de règlement portée sur la fiche, quand elle existe :
+        // une reprise qui daterait tout d'aujourd'hui fausserait l'exercice.
+        const occurredAt = ligne.regleLe ?? data.occurredAt;
+        const counterparty = data.counterparty ?? ligne.nom;
+        await ecrire(
+          {
             categoryId: data.categoryId,
             label: `${data.label} — ${ligne.nom}`,
-            amountCents: ligne.duCents,
-            // La date de règlement portée sur la fiche, quand elle existe :
-            // une reprise qui daterait tout d'aujourd'hui fausserait l'exercice.
-            occurredAt: ligne.regleLe ?? data.occurredAt,
-            counterparty: data.counterparty ?? ligne.nom,
-            paymentMethod: data.paymentMethod ?? null,
-            createdBy: actor.userId,
-          })
-          .returning({ id: accountingEntries.id });
-        await tx.insert(membershipPayments).values({
-          entryId: entry.id,
-          memberId: ligne.memberId,
-          amountCents: ligne.duCents,
-          createdBy: actor.userId,
-        });
-        ecritures.push({ id: entry.id, amountCents: ligne.duCents });
+            occurredAt,
+            counterparty,
+          },
+          [{ memberId: ligne.memberId, amountCents: ligne.cotisationCents }],
+        );
+        if (donationCategoryId !== null) {
+          await ecrire(
+            {
+              categoryId: donationCategoryId,
+              label: `Don joint à l'adhésion — ${ligne.nom}`,
+              occurredAt,
+              counterparty,
+            },
+            [{ memberId: ligne.memberId, amountCents: ligne.donCents }],
+          );
+        }
       }
     }
 
-    return { creees: ecritures, retenus, total };
+    return {
+      creees: ecritures,
+      retenus,
+      total: totalCotisations + totalDons,
+      totalDons,
+    };
   });
 
   await recordAudit(
@@ -475,14 +598,21 @@ export async function rattraperCotisations(input: unknown, actor: AuditActor) {
       adherents: retenus.length,
       ecritures: creees.length,
       totalCents: total,
+      donsCents: totalDons,
     },
   );
 
-  return { ecritures: creees.length, adherents: retenus.length, totalCents: total };
+  return {
+    ecritures: creees.length,
+    adherents: retenus.length,
+    totalCents: total,
+    donsCents: totalDons,
+  };
 }
 
 /**
  * Ce que la comptabilité a enregistré en cotisations sur une année scolaire,
+ * dons joints aux adhésions compris (ils sont rattachés aux mêmes familles),
  * validé seulement : c'est le chiffre qui a sa place dans un rapport financier.
  */
 export async function totalComptabilise(schoolYear: string) {

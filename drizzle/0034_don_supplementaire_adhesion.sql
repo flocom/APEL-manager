@@ -1,0 +1,2 @@
+ALTER TABLE "association_members" ADD COLUMN "donation_cents" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "association_members" ADD CONSTRAINT "association_members_donation_cents_check" CHECK ("association_members"."donation_cents" >= 0);

@@ -512,6 +512,13 @@ export const associationMemberSchema = z.object({
     .nonnegative("La cotisation ne peut pas être négative")
     .max(10_000_000)
     .default(0),
+  /** Don facultatif versé en plus de la cotisation ; 0 quand il n'y en a pas. */
+  donationCents: z.coerce
+    .number()
+    .int()
+    .nonnegative("Le don ne peut pas être négatif")
+    .max(10_000_000)
+    .default(0),
   feePaidAt: localDateTime.nullable().optional(),
   feePaymentMethod: z
     .enum(["especes", "cheque", "virement", "helloasso", "autre"])
@@ -876,6 +883,17 @@ export const cotisationRattrapageSchema = z.object({
   mode: z.enum(["groupee", "par_adherent"]).default("groupee"),
   accountId: z.string().uuid("Choisissez un compte de trésorerie"),
   categoryId: z.string().uuid("Choisissez une catégorie de recettes"),
+  /**
+   * Où ranger les dons versés en plus des cotisations. Un don n'est pas une
+   * cotisation — il se suit à part, et peut ouvrir droit à un reçu fiscal —,
+   * il part donc dans sa propre écriture. Facultatif tant que le lot n'en
+   * contient aucun ; le service refuse le lot sinon.
+   */
+  donationCategoryId: z
+    .string()
+    .uuid("Choisissez une catégorie de dons")
+    .nullable()
+    .optional(),
   label: z.string().trim().min(2).max(200),
   occurredAt: z.coerce.date(),
   counterparty: optionalText(200),

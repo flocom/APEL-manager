@@ -239,6 +239,13 @@
       "when": 1790167917486,
       "tag": "0033_usage_du_lien_en_ligne",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790310554940,
+      "tag": "0034_don_supplementaire_adhesion",
+      "breakpoints": true
     }
   ]
 }

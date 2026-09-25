@@ -32,6 +32,11 @@ import { cn } from "@/lib/utils";
  *  — REPRENDRE ce qui a été encaissé avant que ce rapprochement existe. Sans
  *    cela, la comptabilité démarre avec un trou sur l'année en cours.
  *
+ * Ce qu'une famille doit, c'est sa cotisation plus le don qu'elle y a ajouté :
+ * les deux arrivent dans le même règlement. Le pointage coche donc le total ;
+ * la reprise, qui crée elle-même les écritures, range le don à part, dans la
+ * catégorie des dons.
+ *
  * Rien ici ne modifie une fiche d'adhérent : on n'écrit que dans la
  * comptabilité, et toujours de façon rattachable, donc défaisable.
  */
@@ -41,7 +46,10 @@ export interface LigneRapprochementView {
   nom: string;
   schoolYear: string;
   statut: "active" | "pending" | "inactive";
+  /** Cotisation + don : ce qu'un encaissement doit couvrir pour cette famille. */
   duCents: number;
+  cotisationCents: number;
+  donCents: number;
   regleLe: string | null;
   /** Mode de règlement, pour reconnaître les encaissements de plateforme. */
   mode: PaymentMethod | null;
@@ -109,6 +117,22 @@ function aujourdhui(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Une catégorie qui s'appelle visiblement « Dons », pour la proposer d'office :
+ * un simple pré-choix, que le trésorier voit et peut changer. Rien n'est
+ * choisi quand aucun nom ne s'y prête — mieux vaut un choix vide qu'un don
+ * rangé au hasard.
+ */
+function categorieDonsProbable(
+  categories: { id: string; name: string }[],
+  exclue: string,
+): string {
+  return (
+    categories.find((c) => c.id !== exclue && /\bdons?\b/i.test(c.name))?.id ??
+    ""
+  );
+}
+
 export function CotisationsRapprochement({
   anneeCourante,
   lignes,
@@ -151,6 +175,12 @@ export function CotisationsRapprochement({
   const [mode, setMode] = useState<"groupee" | "par_adherent">("groupee");
   const [compteId, setCompteId] = useState(comptes[0]?.id ?? "");
   const [categorieId, setCategorieId] = useState(categoriesRecette[0]?.id ?? "");
+  const [categorieDonsId, setCategorieDonsId] = useState(() =>
+    categorieDonsProbable(categoriesRecette, categoriesRecette[0]?.id ?? ""),
+  );
+  // Les dons vont ailleurs que les cotisations : la catégorie retenue pour
+  // les cotisations ne figure pas parmi celles proposées pour les dons.
+  const categoriesDons = categoriesRecette.filter((c) => c.id !== categorieId);
   const [libelle, setLibelle] = useState(`Cotisations ${anneeCourante}`);
   const [date, setDate] = useState(aujourdhui());
 
@@ -159,6 +189,16 @@ export function CotisationsRapprochement({
     [lignes],
   );
   const aRattraperCents = aRattraper.reduce((t, l) => t + l.duCents, 0);
+  const aRattraperDonsCents = aRattraper.reduce((t, l) => t + l.donCents, 0);
+  const aRattraperDonsCount = aRattraper.filter((l) => l.donCents > 0).length;
+  /**
+   * La reprise refuse un lot avec des dons tant que leur catégorie n'est pas
+   * choisie ; le bouton le dit avant, plutôt que de laisser le serveur le
+   * rappeler après un clic.
+   */
+  const donsSansCategorie =
+    aRattraperDonsCents > 0 &&
+    (categorieDonsId === "" || categorieDonsId === categorieId);
   const enAttenteVersement = useMemo(
     () => lignes.filter((l) => l.etat === "attente_versement"),
     [lignes],
@@ -274,7 +314,11 @@ export function CotisationsRapprochement({
   async function reprendre() {
     setEnCours(true);
     try {
-      const bilan = await api<{ ecritures: number; adherents: number }>(
+      const bilan = await api<{
+        ecritures: number;
+        adherents: number;
+        donsCents: number;
+      }>(
         "/api/cotisations/rattrapage",
         {
           method: "POST",
@@ -283,13 +327,15 @@ export function CotisationsRapprochement({
             mode,
             accountId: compteId,
             categoryId: categorieId,
+            donationCategoryId:
+              aRattraperDonsCents > 0 && categorieDonsId ? categorieDonsId : null,
             label: libelle,
             occurredAt: new Date(date).toISOString(),
           },
         },
       );
       toast(
-        `${bilan.adherents} adhésion${bilan.adherents > 1 ? "s" : ""} portée${bilan.adherents > 1 ? "s" : ""} aux comptes : ${bilan.ecritures} écriture${bilan.ecritures > 1 ? "s" : ""} en brouillon, à relire puis valider.`,
+        `${bilan.adherents} adhésion${bilan.adherents > 1 ? "s" : ""} portée${bilan.adherents > 1 ? "s" : ""} aux comptes${bilan.donsCents > 0 ? `, dons compris (${euros(bilan.donsCents)}, dans leur catégorie)` : ""} : ${bilan.ecritures} écriture${bilan.ecritures > 1 ? "s" : ""} en brouillon, à relire puis valider.`,
       );
       demarrerRafraichissement(() => router.refresh());
     } catch (error) {
@@ -340,7 +386,8 @@ export function CotisationsRapprochement({
                 Un reversement HelloAsso ou une remise de chèques arrive en une
                 seule ligne sur le compte. Choisissez l’écriture, cochez les
                 familles qu’elle couvre : le total coché doit retomber sur son
-                montant.
+                montant. Chaque famille compte pour sa cotisation et, s’il y en
+                a un, le don versé avec.
               </p>
 
               <Field label="Écriture à pointer" htmlFor="ecriture-a-pointer">
@@ -446,6 +493,11 @@ export function CotisationsRapprochement({
                                     {PAYMENT_METHOD_LABELS[ligne.mode]}
                                   </span>
                                 )}
+                                {ligne.donCents > 0 && (
+                                  <span className="text-slate-500">
+                                    {" · "}dont {euros(ligne.donCents)} de don
+                                  </span>
+                                )}
                               </span>
                             </span>
                             <span className="shrink-0 text-sm font-extrabold tabular-nums text-brand-950">
@@ -486,6 +538,15 @@ export function CotisationsRapprochement({
                     <strong className="text-brand-950">
                       {euros(aRattraperCents)}
                     </strong>
+                    {aRattraperDonsCents > 0 && (
+                      <>
+                        , dont{" "}
+                        <strong className="text-brand-950">
+                          {euros(aRattraperDonsCents)}
+                        </strong>{" "}
+                        de dons, enregistrés à part des cotisations
+                      </>
+                    )}
                     . Les écritures créées ici naissent en brouillon : vous les
                     relisez, puis vous les validez.
                   </p>
@@ -523,10 +584,13 @@ export function CotisationsRapprochement({
                         }
                       >
                         <option value="groupee">
-                          Une écriture groupée ({euros(aRattraperCents)})
+                          {aRattraperDonsCents > 0
+                            ? `Groupée : cotisations (${euros(aRattraperCents - aRattraperDonsCents)}) et dons (${euros(aRattraperDonsCents)})`
+                            : `Une écriture groupée (${euros(aRattraperCents)})`}
                         </option>
                         <option value="par_adherent">
                           Une écriture par adhérent ({aRattraper.length})
+                          {aRattraperDonsCents > 0 ? ", plus une par don" : ""}
                         </option>
                       </Select>
                     </Field>
@@ -543,11 +607,28 @@ export function CotisationsRapprochement({
                         ))}
                       </Select>
                     </Field>
-                    <Field label="Catégorie de recettes" htmlFor="reprise-categorie">
+                    <Field
+                      label={
+                        aRattraperDonsCents > 0
+                          ? "Catégorie des cotisations"
+                          : "Catégorie de recettes"
+                      }
+                      htmlFor="reprise-categorie"
+                    >
                       <Select
                         id="reprise-categorie"
                         value={categorieId}
-                        onChange={(e) => setCategorieId(e.target.value)}
+                        onChange={(e) => {
+                          setCategorieId(e.target.value);
+                          if (categorieDonsId === e.target.value) {
+                            setCategorieDonsId(
+                              categorieDonsProbable(
+                                categoriesRecette,
+                                e.target.value,
+                              ),
+                            );
+                          }
+                        }}
                       >
                         {categoriesRecette.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -556,6 +637,44 @@ export function CotisationsRapprochement({
                         ))}
                       </Select>
                     </Field>
+                    {aRattraperDonsCents > 0 &&
+                      (categoriesDons.length === 0 ? (
+                        <div className="rounded-xl bg-sand-100 px-4 py-3 text-sm font-medium leading-6 text-sand-900">
+                          <p className="font-bold">Catégorie des dons</p>
+                          <p className="mt-1">
+                            {aRattraperDonsCount} adhésion
+                            {aRattraperDonsCount > 1 ? "s comportent" : " comporte"}{" "}
+                            un don, qui s’enregistre à part de la cotisation. Il
+                            n’existe pas d’autre catégorie de recettes pour
+                            l’accueillir : créez-en une pour les dons dans
+                            l’onglet Comptes, puis revenez ici.
+                          </p>
+                        </div>
+                      ) : (
+                        <Field
+                          label="Catégorie des dons"
+                          htmlFor="reprise-categorie-dons"
+                          hint={`${aRattraperDonsCount} adhésion${aRattraperDonsCount > 1 ? "s comportent" : " comporte"} un don (${euros(aRattraperDonsCents)}) : il part dans sa propre écriture, rattachée à la même famille.`}
+                          error={
+                            donsSansCategorie
+                              ? "Choisissez où ranger les dons pour porter ce lot aux comptes."
+                              : undefined
+                          }
+                        >
+                          <Select
+                            id="reprise-categorie-dons"
+                            value={categorieDonsId}
+                            onChange={(e) => setCategorieDonsId(e.target.value)}
+                          >
+                            <option value="">Choisir la catégorie des dons…</option>
+                            {categoriesDons.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      ))}
                     <Field
                       label="Date"
                       htmlFor="reprise-date"
@@ -582,7 +701,11 @@ export function CotisationsRapprochement({
                     </Field>
                   </div>
 
-                  <Button type="button" onClick={reprendre} disabled={verrouille}>
+                  <Button
+                    type="button"
+                    onClick={reprendre}
+                    disabled={verrouille || donsSansCategorie}
+                  >
                     {verrouille ? (
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                     ) : (
