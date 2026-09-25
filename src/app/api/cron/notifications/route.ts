@@ -117,13 +117,22 @@ export async function GET(req: Request) {
    * d'une fête décommandée use la confiance qu'on met dans ces messages —
    * après deux rappels inutiles, on ne les lit plus.
    *
+   * Même règle pour un brouillon : l'événement n'est pas encore décidé, ses
+   * dates et sa checklist bougent encore, et ses échéances ne sont pas des
+   * engagements. Les rappels reprennent d'eux-mêmes à la publication.
+   *
    * Le filtre est posé ici, une fois, plutôt que dans chacun des deux usages :
    * un troisième arriverait un jour et hériterait de l'oubli.
    */
   const dueTasks = dueTasksBrutes.filter(
-    (t) => t.event.cancelledAt === null,
+    (t) => t.event.cancelledAt === null && t.event.status !== "draft",
   );
-  const tachesAnnulees = dueTasksBrutes.length - dueTasks.length;
+  const tachesAnnulees = dueTasksBrutes.filter(
+    (t) => t.event.cancelledAt !== null,
+  ).length;
+  const tachesBrouillons = dueTasksBrutes.filter(
+    (t) => t.event.cancelledAt === null && t.event.status === "draft",
+  ).length;
 
   // 1) Construire la liste des notifications candidates (tâche × membre).
   type Candidate = {
@@ -364,6 +373,7 @@ export async function GET(req: Request) {
     checkedTasks: dueTasks.length,
     /** Tâches écartées parce que leur événement est annulé. */
     tachesEvenementsAnnules: tachesAnnulees,
+    tachesEvenementsBrouillons: tachesBrouillons,
     sent: succeeded.length,
     skipped,
     failed: results.length - succeeded.length,
