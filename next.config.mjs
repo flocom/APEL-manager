@@ -23,10 +23,11 @@ const securityHeaders = [
   // Rien de tout cela ne sert ici : une faille ne pourra pas s'en servir.
   // Seulement des fonctions que les navigateurs connaissent : un nom inconnu
   // ne protège de rien et vaut une erreur en console à chaque page
-  // (« Unrecognized feature »). C'est le sort des API publicitaires que Chrome
-  // retire — browsing-topics, attribution-reporting, private-aggregation,
-  // join-ad-interest-group, run-ad-auction, interest-cohort : inutile de
-  // couper ce qui n'existe plus.
+  // (« Unrecognized feature »). browsing-topics en est sorti parce que Chrome
+  // retire ses API publicitaires, Topics compris. Les erreurs « Unrecognized
+  // feature » sur attribution-reporting, run-ad-auction et consorts ne
+  // viennent pas de cet en-tête : il ne les a jamais nommées ; elles
+  // accompagnent des cadres tiers ou des extensions du navigateur.
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
