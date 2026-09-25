@@ -5,7 +5,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { ASSOCIATION_DOCUMENT_TYPES } from "@/lib/labels";
+import { ASSOCIATION_DOCUMENT_TYPES, PAYMENT_METHODS } from "@/lib/labels";
 import {
   accountingCategories,
   associationMembers,
@@ -101,6 +101,20 @@ const localDateTime = z
  */
 const DETAILS_SAISIS = new Set(["email", "name", "deviceLabel"]);
 
+/**
+ * Le mode de règlement d'une cotisation. Décrit pour l'assistant, qui ne lit
+ * que `.describe()` : sans lui, il ignorerait que HelloAsso n'entre pas en
+ * comptabilité comme un chèque — l'argent y arrive plus tard, dans un virement
+ * groupé qui mêle plusieurs familles.
+ */
+const feePaymentMethodInput = z
+  .enum(PAYMENT_METHODS)
+  .nullable()
+  .optional()
+  .describe(
+    "Mode de règlement de la cotisation : especes, cheque, virement, helloasso ou autre ; null s’il n’est pas connu. Espèces, chèque, virement et autre se portent directement en comptabilité ; helloasso attend le virement groupé de HelloAsso, à rapprocher ensuite. À renseigner avec feePaidAt.",
+  );
+
 export function registerAssociationTools(
   server: McpServer,
   principal: McpPrincipal,
@@ -168,6 +182,7 @@ export function registerAssociationTools(
             "Don facultatif versé en plus de la cotisation, en centimes (1000 = 10 €). Il se comptabilise à part, comme un don. 0 sans don.",
           ),
         feePaidAt: localDateTime.nullable().optional(),
+        feePaymentMethod: feePaymentMethodInput,
         joinedAt: localDateTime.optional(),
         notes: optionalNullableString,
         userId: optionalNullableUuid,
@@ -189,7 +204,7 @@ export function registerAssociationTools(
     {
       title: "Modifier un adhérent",
       description:
-        "Met à jour les coordonnées, la cotisation, le don supplémentaire ou le statut d’un adhérent.",
+        "Met à jour les coordonnées, la cotisation, le don supplémentaire, le règlement (date et mode) ou le statut d’un adhérent.",
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
@@ -215,6 +230,7 @@ export function registerAssociationTools(
             "Don facultatif versé en plus de la cotisation, en centimes (1000 = 10 €). 0 retire le don.",
           ),
         feePaidAt: localDateTime.nullable().optional(),
+        feePaymentMethod: feePaymentMethodInput,
         joinedAt: localDateTime.optional(),
         notes: optionalNullableString,
         userId: optionalNullableUuid,
