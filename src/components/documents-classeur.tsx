@@ -12,6 +12,7 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
 import type { AssociationDocumentView } from "@/components/documents-manager";
+import { formatShortDate, yearInParis } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,8 +33,11 @@ interface Emplacement {
   detail: string;
 }
 
+// Les dates des pièces sont des minuits de Paris, soit la veille en UTC : lues
+// dans le fuseau de la machine, le serveur (UTC) et le navigateur écrivaient
+// deux jours différents, et React rejetait la page (erreur #418).
 function annee(iso: string): number {
-  return new Date(iso).getFullYear();
+  return yearInParis(iso);
 }
 
 export function etatDuClasseur(documents: AssociationDocumentView[]): Emplacement[] {
@@ -51,7 +55,7 @@ export function etatDuClasseur(documents: AssociationDocumentView[]): Emplacemen
   // L'assurance se renouvelle chaque année scolaire : une attestation de
   // l'an dernier ne prouve plus rien. On tolère l'année civile en cours et la
   // précédente, l'année scolaire étant à cheval sur les deux.
-  const maintenant = new Date().getFullYear();
+  const maintenant = yearInParis(new Date());
   const assuranceAJour =
     assurance !== null && annee(assurance.documentDate) >= maintenant - 1;
 
@@ -62,7 +66,7 @@ export function etatDuClasseur(documents: AssociationDocumentView[]): Emplacemen
       icone: ScrollText,
       present: statuts !== null,
       detail: statuts
-        ? `Déposés, version du ${new Date(statuts.documentDate).toLocaleDateString("fr-FR")}`
+        ? `Déposés, version du ${formatShortDate(statuts.documentDate)}`
         : "C’est la première pièce que réclame une banque ou une mairie.",
     },
     {
@@ -90,7 +94,7 @@ export function etatDuClasseur(documents: AssociationDocumentView[]): Emplacemen
       present: pv !== null && pv.status === "final",
       detail: pv
         ? pv.status === "final"
-          ? `Assemblée du ${new Date(pv.documentDate).toLocaleDateString("fr-FR")}`
+          ? `Assemblée du ${formatShortDate(pv.documentDate)}`
           : "Un procès-verbal est en brouillon."
         : "Aucun procès-verbal d’assemblée générale.",
     },

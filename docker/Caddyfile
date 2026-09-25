@@ -16,10 +16,23 @@
 		X-Frame-Options "SAMEORIGIN"
 	}
 
+	# Les pages arrivent marquées « Cache-Control: no-transform », pour qu'un
+	# CDN comme Cloudflare ne réécrive pas leur HTML (src/middleware.ts). Next
+	# et Caddy la respectent aussi : sans ce qui suit, personne ne compresserait
+	# les pages, que Cloudflare transmettrait telles quelles, dix fois plus
+	# lourdes. Caddy fait partie de l'origine : il retire la directive à
+	# l'arrivée (header_down, plus bas), compresse, puis la remet sur le HTML
+	# au départ. Cloudflare transmet sans y toucher une page reçue compressée.
+	header {
+		match header Content-Type text/html*
+		>Cache-Control "^(.+)$" "$1, no-transform"
+	}
+
 	# Pendant une mise à jour automatique, le conteneur `app` est recréé. Les
 	# requêtes patientent le temps que la nouvelle version réponde au lieu de
 	# renvoyer une erreur 502.
 	reverse_proxy app:3000 {
+		header_down Cache-Control ",\s*no-transform" ""
 		health_uri /api/health
 		health_interval 10s
 		health_timeout 5s

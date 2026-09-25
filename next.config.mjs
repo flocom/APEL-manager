@@ -21,10 +21,15 @@ const securityHeaders = [
   // désinscription) ne partent pas en référent vers d'autres sites.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Rien de tout cela ne sert ici : une faille ne pourra pas s'en servir.
+  // Seulement des fonctions que les navigateurs connaissent : un nom inconnu
+  // ne protège de rien et vaut une erreur en console à chaque page
+  // (« Unrecognized feature »). C'est le sort des API publicitaires que Chrome
+  // retire — browsing-topics, attribution-reporting, private-aggregation,
+  // join-ad-interest-group, run-ad-auction, interest-cohort : inutile de
+  // couper ce qui n'existe plus.
   {
     key: "Permissions-Policy",
-    value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
   },
   // Pas de Cross-Origin-Opener-Policy : l'autorisation d'un connecteur MCP
   // s'ouvre dans une fenêtre que Claude surveille, et cette politique couperait

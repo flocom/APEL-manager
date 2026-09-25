@@ -349,6 +349,33 @@ tiré pour elle ; toutes les réponses portent HSTS, `X-Frame-Options`,
 (`next.config.mjs`). `/api/health` ne dit que « vivant ou non » sans session ;
 la version n'est donnée qu'à un administrateur connecté.
 
+### Derrière Cloudflare
+
+Les pages portent `Cache-Control: … no-transform` (`src/middleware.ts`) :
+aucun intermédiaire ne doit réécrire leur HTML. Cloudflare le faisait avec
+l'obfuscation des adresses e-mail : les adresses devenaient « [email protected] »,
+le script ajouté pour les rétablir était bloqué par la CSP, et React, qui
+retrouvait les adresses en clair dans ses données, rejetait la page (erreur
+React #418 en console) et la reconstruisait dans le navigateur.
+
+Avec cette directive, Cloudflare n'obfusque plus les adresses et n'injecte
+plus ses scripts (détection des robots, Web Analytics). Il ne compresse plus
+non plus : il transmet la page telle que l'origine l'envoie. Avec Docker, Caddy
+la compresse (`docker/Caddyfile`) ; sans lui, prévoir devant Next un proxy qui
+compresse le HTML.
+
+Dans le tableau de bord Cloudflare du domaine :
+
+| Réglage | Où | Pourquoi |
+|---|---|---|
+| **Email Address Obfuscation** : désactivé | Security → Settings (filtre « Client-side abuse ») ; anciennement Scrape Shield | Il masquerait encore les adresses de toute réponse HTML sans la directive. |
+| **Rocket Loader** : désactivé | Speed → Settings → Content Optimization | Il réécrit les balises `<script>`, et Cloudflare ne dit pas qu'il respecte `no-transform`. |
+| **Speed Brain** : désactivé | Speed → Settings → Content Optimization | Sans effet ici : les pages ne sont jamais en cache et la CSP utilise un nonce. |
+| **Web Analytics**, installation automatique | Analytics & Logs → Web Analytics | Le script n'est plus injecté : seules les statistiques du proxy restent. |
+
+Les pages de défi de Cloudflare (« Just a moment… », Bot Fight Mode) ne sont
+pas concernées : il les sert lui-même, avec leur propre politique.
+
 ## Rôles & permissions
 
 | Rôle | Droits |

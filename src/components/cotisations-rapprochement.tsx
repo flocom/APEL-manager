@@ -14,6 +14,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useToast } from "@/components/toast";
 import { Button, Card, EmptyState, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { formatShortDate, toDateInput } from "@/lib/dates";
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +115,7 @@ function euros(cents: number): string {
 }
 
 function aujourdhui(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInput(new Date());
 }
 
 /**
@@ -399,7 +400,7 @@ export function CotisationsRapprochement({
                   <option value="">Choisir une recette…</option>
                   {ecrituresRecette.map((e) => (
                     <option key={e.id} value={e.id}>
-                      {new Date(e.occurredAt).toLocaleDateString("fr-FR")} ·{" "}
+                      {formatShortDate(e.occurredAt)} ·{" "}
                       {e.label} · {euros(e.amountCents)}
                       {e.affecteCents > 0
                         ? ` · ${euros(e.affecteCents)} déjà pointés`
@@ -485,7 +486,7 @@ export function CotisationsRapprochement({
                               </span>
                               <span className="block text-xs font-semibold text-slate-600">
                                 {ligne.regleLe
-                                  ? `Réglée le ${new Date(ligne.regleLe).toLocaleDateString("fr-FR")}`
+                                  ? `Réglée le ${formatShortDate(ligne.regleLe)}`
                                   : "Non marquée réglée sur la fiche"}
                                 {ligne.mode && (
                                   <span className="text-slate-500">

@@ -333,6 +333,13 @@ Sans préfixe `http://` dans `CADDY_SITE_ADDRESS`, Caddy obtient et renouvelle
 automatiquement le certificat public. Son volume `caddy_data` doit être
 conservé.
 
+Derrière Cloudflare, voir [`DEPLOIEMENT.md`](DEPLOIEMENT.md#derrière-cloudflare)
+pour les réglages à désactiver. Les pages y sont marquées `no-transform`, que
+Next et Caddy respectent aussi : le Caddyfile retire la directive le temps de
+compresser le HTML, puis la remet. L'`updater` ne met pas le Caddyfile à jour ;
+après un `git pull` qui le modifie, `docker compose restart caddy` le recharge.
+Sans cela, les pages partent non compressées, environ dix fois plus lourdes.
+
 Claude.ai ne peut pas joindre une adresse `localhost` ou une adresse privée.
 Le serveur MCP nécessite donc inévitablement un domaine public avec un
 certificat HTTPS valide. Une fois le DNS et Caddy opérationnels, le connecteur

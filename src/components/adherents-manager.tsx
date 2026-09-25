@@ -37,7 +37,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
-import { formatShortDate } from "@/lib/dates";
+import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
 import {
   PAYMENT_METHOD_LABELS,
@@ -98,13 +98,15 @@ const STATUS_COLORS = {
 } as const;
 
 function currentSchoolYear() {
-  const now = new Date();
-  const start = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  // Le calendrier de Paris, pas celui de la machine : le serveur (UTC) et le
+  // navigateur doivent tomber sur la même année la nuit du 30 juin.
+  const [annee, mois] = toDateInput(new Date()).split("-").map(Number);
+  const start = mois >= 7 ? annee : annee - 1;
   return `${start}-${start + 1}`;
 }
 
 function dateInput(value: string | null) {
-  return value ? value.slice(0, 10) : "";
+  return value ? toDateInput(value) : "";
 }
 
 export function AdherentsManager({
@@ -928,7 +930,7 @@ function AdherentForm({
               required
               defaultValue={
                 dateInput(member?.joinedAt ?? null) ||
-                new Date().toISOString().slice(0, 10)
+                toDateInput(new Date())
               }
             />
           </Field>
