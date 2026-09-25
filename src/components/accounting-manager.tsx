@@ -40,7 +40,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
-import { formatShortDate } from "@/lib/dates";
+import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -78,7 +78,7 @@ export interface AccountingEntryView {
 }
 
 function dateInput(value: string | null) {
-  return value ? value.slice(0, 10) : "";
+  return value ? toDateInput(value) : "";
 }
 
 export function AccountingManager({
@@ -773,7 +773,7 @@ function AccountingEntryForm({
             required
             defaultValue={
               dateInput(entry?.occurredAt ?? null) ||
-              new Date().toISOString().slice(0, 10)
+              toDateInput(new Date())
             }
           />
         </Field>

@@ -21,10 +21,16 @@ const securityHeaders = [
   // désinscription) ne partent pas en référent vers d'autres sites.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Rien de tout cela ne sert ici : une faille ne pourra pas s'en servir.
+  // Seulement des fonctions que les navigateurs connaissent : un nom inconnu
+  // ne protège de rien et vaut une erreur en console à chaque page
+  // (« Unrecognized feature »). browsing-topics en est sorti parce que Chrome
+  // retire ses API publicitaires, Topics compris. Les erreurs « Unrecognized
+  // feature » sur attribution-reporting, run-ad-auction et consorts ne
+  // viennent pas de cet en-tête : il ne les a jamais nommées ; elles
+  // accompagnent des cadres tiers ou des extensions du navigateur.
   {
     key: "Permissions-Policy",
-    value:
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
   },
   // Pas de Cross-Origin-Opener-Policy : l'autorisation d'un connecteur MCP
   // s'ouvre dans une fenêtre que Claude surveille, et cette politique couperait

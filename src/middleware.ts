@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { REQUESTED_PATH_HEADER } from "@/lib/auth/return-path";
+import {
+  ENVOI_WEB_ANALYTICS,
+  SCRIPT_WEB_ANALYTICS,
+  jetonWebAnalytics,
+} from "@/lib/cloudflare-web-analytics";
 
 /**
  * Trois choses, toutes sans base ni cryptographie coûteuse : ce code tourne à
@@ -206,17 +211,22 @@ function estEnHttps(request: NextRequest): boolean {
  * les attributs `style` (barres de progression), et un style ne s'exécute
  * pas. Images : le site, et `data:`/`blob:` pour les aperçus et les QR codes.
  * Le service worker des notifications est servi par le site (`worker-src`).
+ *
+ * Cloudflare Web Analytics n'entre dans la politique que si l'exploitant l'a
+ * configuré (lib/cloudflare-web-analytics.ts) : la page charge alors son
+ * script, qui envoie ses mesures à cloudflareinsights.com.
  */
 function politiqueDeContenu(nonce: string, https: boolean): string {
   const developpement = process.env.NODE_ENV !== "production";
   const recaptcha = "https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/";
+  const statistiques = jetonWebAnalytics() !== null;
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${recaptcha}${developpement ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${recaptcha}${statistiques ? ` ${SCRIPT_WEB_ANALYTICS}` : ""}${developpement ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' https://www.google.com/recaptcha/${developpement ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://www.google.com/recaptcha/${statistiques ? ` ${ENVOI_WEB_ANALYTICS}` : ""}${developpement ? " ws: wss:" : ""}`,
     "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
     "worker-src 'self' blob:",
     "manifest-src 'self'",

@@ -103,3 +103,20 @@ export function toDatetimeLocal(d: Date | string | null | undefined): string {
   if (!d) return "";
   return formatInTimeZone(new Date(d), APP_TIMEZONE, "yyyy-MM-dd'T'HH:mm");
 }
+
+/**
+ * Jour de Paris d'un instant, pour <input type="date"> : « 2026-09-17 ».
+ *
+ * Une date saisie est enregistrée à minuit, heure de Paris, soit 22 h ou 23 h
+ * UTC la veille (`parseLocalDateTime`). En couper l'écriture ISO
+ * (`toISOString().slice(0, 10)`) donnait donc la veille : le formulaire
+ * reculait la date d'un jour à chaque enregistrement.
+ */
+export function toDateInput(d: Date | string): string {
+  return formatInTimeZone(new Date(d), APP_TIMEZONE, "yyyy-MM-dd");
+}
+
+/** Année civile d'un instant, à Paris. */
+export function yearInParis(d: Date | string): number {
+  return Number(formatInTimeZone(new Date(d), APP_TIMEZONE, "yyyy"));
+}

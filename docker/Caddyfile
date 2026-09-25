@@ -9,17 +9,42 @@
 		max_size {$CADDY_MAX_UPLOAD_SIZE:20MB}
 	}
 
+	header -Server
+	# Valeurs par défaut (« ? ») : une réponse qui porte déjà les siennes les
+	# garde. L'écran de consentement OAuth impose « Referrer-Policy:
+	# no-referrer » et « X-Frame-Options: DENY » (src/lib/mcp/oauth.ts), que
+	# Caddy remplaçait par ces valeurs-ci, moins strictes. Une ligne chacune :
+	# réunies dans un bloc, Caddy ne les poserait que si aucune n'existait.
+	header ?Referrer-Policy "strict-origin-when-cross-origin"
+	header ?X-Content-Type-Options "nosniff"
+	header ?X-Frame-Options "SAMEORIGIN"
+
+	# Aucun intermédiaire ne doit réécrire le HTML des pages. Derrière
+	# Cloudflare, l'obfuscation des adresses e-mail remplaçait chacune par
+	# « [email protected] » et ajoutait un script que la CSP bloque ; React,
+	# qui retrouvait les adresses en clair dans ses données, rejetait la page
+	# (erreur #418). « Cache-Control: no-transform » l'interdit.
+	#
+	# Caddy la pose lui-même, après avoir compressé : ni Next, ni Caddy, ni
+	# Cloudflare ne compressent une réponse qui la porte, et la page partirait
+	# dix fois plus lourde. Cloudflare transmet telle quelle une page reçue
+	# compressée. Les rares réponses de l'application qui la portent déjà
+	# (aperçu imprimable, consentement OAuth) la perdent à l'arrivée
+	# (header_down, plus bas) le temps d'être compressées, et la retrouvent ici.
+	#
+	# Ce fichier n'est pas mis à jour par l'`updater` : sans ce bloc, les pages
+	# partent comme avant, et c'est le réglage Cloudflare qui protège
+	# (docs/DEPLOIEMENT.md, « Derrière Cloudflare »).
 	header {
-		-Server
-		Referrer-Policy "strict-origin-when-cross-origin"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
+		match header Content-Type text/html*
+		>Cache-Control "^(.+)$" "$1, no-transform"
 	}
 
 	# Pendant une mise à jour automatique, le conteneur `app` est recréé. Les
 	# requêtes patientent le temps que la nouvelle version réponde au lieu de
 	# renvoyer une erreur 502.
 	reverse_proxy app:3000 {
+		header_down Cache-Control ",\s*no-transform" ""
 		health_uri /api/health
 		health_interval 10s
 		health_timeout 5s

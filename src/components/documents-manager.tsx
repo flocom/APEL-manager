@@ -37,7 +37,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { api } from "@/lib/client";
-import { formatShortDate } from "@/lib/dates";
+import { formatShortDate, toDateInput } from "@/lib/dates";
 import { payloadVide } from "@/lib/documents/ag-types";
 import {
   ASSOCIATION_DOCUMENT_TYPE_LABELS,
@@ -226,13 +226,13 @@ export function DocumentsManager({
   async function redigerUnPv() {
     setRedaction(true);
     const aujourdhui = new Date();
-    const jour = aujourdhui.toISOString().slice(0, 10);
+    const jour = toDateInput(aujourdhui);
     try {
       const reponse = (await api("/api/documents", {
         body: {
           type: "ag_minutes",
           status: "draft",
-          title: `Procès-verbal de l’assemblée générale du ${aujourdhui.toLocaleDateString("fr-FR")}`,
+          title: `Procès-verbal de l’assemblée générale du ${formatShortDate(aujourdhui)}`,
           documentDate: jour,
           payload: payloadVide({ date: jour }),
         },
@@ -823,8 +823,7 @@ function DocumentForm({
             type="date"
             required
             defaultValue={
-              document?.documentDate.slice(0, 10) ??
-              new Date().toISOString().slice(0, 10)
+              toDateInput(document?.documentDate ?? new Date())
             }
           />
         </Field>
