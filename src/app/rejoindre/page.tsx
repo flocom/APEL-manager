@@ -18,6 +18,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { JoinForm } from "@/components/join-form";
+import { PaymentNote } from "@/components/payment-note";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WhatsappInviteCard } from "@/components/whatsapp-invite-card";
@@ -533,9 +534,10 @@ export default async function RejoindrePage() {
                       ) : null}
                     </p>
                     {cotisation.note && (
-                      <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
-                        {cotisation.note}
-                      </p>
+                      <PaymentNote
+                        note={cotisation.note}
+                        className="mt-2 text-sm font-medium leading-6 text-slate-700"
+                      />
                     )}
                   </div>
                 )}
