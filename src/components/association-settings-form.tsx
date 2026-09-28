@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { LogoUploadField } from "@/components/logo-upload-field";
+import { PaymentNote } from "@/components/payment-note";
 import { useToast } from "@/components/toast";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
@@ -336,7 +337,7 @@ export function AssociationSettingsForm({
               <Field
                 label="Comment régler"
                 htmlFor="membership-fee-note"
-                hint="Une phrase, écrite par vous : c’est la seule façon de couvrir un chèque remis en classe comme un prélèvement sur la facture de scolarité."
+                hint="Une phrase, écrite par vous : c’est la seule façon de couvrir un chèque remis en classe comme un prélèvement sur la facture de scolarité. Un lien de paiement (HelloAsso…) y devient cliquable, avec un bouton « Régler en ligne »."
                 className="sm:col-span-2"
               >
                 <Input
@@ -372,9 +373,10 @@ export function AssociationSettingsForm({
                     {MEMBERSHIP_FEE_BASIS_SUFFIX[baseCotisation]}
                   </p>
                   {noteCotisation.trim() && (
-                    <p className="mt-1 text-sm font-medium leading-6 text-slate-600">
-                      {noteCotisation.trim()}
-                    </p>
+                    <PaymentNote
+                      note={noteCotisation.trim()}
+                      className="mt-1 text-sm font-medium leading-6 text-slate-600"
+                    />
                   )}
                 </>
               )}
