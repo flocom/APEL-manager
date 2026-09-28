@@ -21,6 +21,9 @@ html,
 body {
   padding: 0;
   margin: 0;
+  /* Un défilement lancé trop fort ne fait plus rebondir la page entière
+     (en-tête et barre latérale compris) : seule la zone défilée s'arrête. */
+  overscroll-behavior-y: none;
 }
 
 body {

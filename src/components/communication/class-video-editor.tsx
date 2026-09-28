@@ -28,14 +28,17 @@ import {
   resolvedScene,
   SCENE_LABELS,
   voiceIsCurrent,
+  voiceNeedsRefresh,
   type ClassVideoContent,
   type ClassVideoSceneContent,
   type ClassVideoSource,
 } from "@/lib/communication/class-video";
 import {
   DEFAULT_INTEGRATED_VOICE,
+  INTEGRATED_ENGINES,
   INTEGRATED_VOICES,
   isIntegratedVoice,
+  type IntegratedEngine,
 } from "@/lib/communication/voices";
 import { cn } from "@/lib/utils";
 import {
@@ -69,6 +72,8 @@ export type TtsSettingsView = {
   keyLastFour: string | null;
   voice: string | null;
   integratedAvailable: boolean;
+  integratedEngines: Record<IntegratedEngine, boolean>;
+  voiceKey: string;
   ready: boolean;
 };
 
@@ -177,9 +182,10 @@ export function ClassVideoEditor({
     const current = resolvedScene(id, base, source);
     const text = current.voiceText.trim();
     if (!text) return base;
-    const { url } = await api<{ url: string }>("/api/communication/video/voice", {
-      body: { text },
-    });
+    const { url, voiceKey } = await api<{ url: string; voiceKey: string }>(
+      "/api/communication/video/voice",
+      { body: { text } },
+    );
     const durationInSeconds = await audioDuration(url);
     return {
       ...base,
@@ -187,7 +193,13 @@ export function ClassVideoEditor({
         ...base.scenes,
         [id]: {
           ...current,
-          voice: { url, durationInSeconds, text: current.voiceText, source: "synthese" as const },
+          voice: {
+            url,
+            durationInSeconds,
+            text: current.voiceText,
+            source: "synthese" as const,
+            voiceKey,
+          },
         },
       },
     };
@@ -242,7 +254,7 @@ export function ClassVideoEditor({
     try {
       for (const id of CLASS_VIDEO_SCENE_IDS) {
         const s = resolvedScene(id, next, source);
-        if (!s.enabled || !s.voiceText.trim() || voiceIsCurrent(s)) continue;
+        if (!s.enabled || !s.voiceText.trim() || !voiceNeedsRefresh(s, tts.voiceKey)) continue;
         next = await generateVoice(id, next);
         setContent(next);
         generated += 1;
@@ -322,7 +334,7 @@ export function ClassVideoEditor({
     content.benefits.length > 0 || content.members.some((m) => m.url !== null);
   const staleVoices = CLASS_VIDEO_SCENE_IDS.filter((id) => {
     const s = scene(id);
-    return s.enabled && s.voiceText.trim() && !voiceIsCurrent(s);
+    return s.enabled && s.voiceText.trim() && voiceNeedsRefresh(s, tts.voiceKey);
   }).length;
 
   return (
@@ -372,9 +384,11 @@ export function ClassVideoEditor({
               const custom = content.scenes[id] !== undefined;
               const voiceState = !s.voice
                 ? null
-                : voiceIsCurrent(s)
-                  ? "ok"
-                  : "stale";
+                : !voiceIsCurrent(s)
+                  ? "stale"
+                  : voiceNeedsRefresh(s, tts.voiceKey)
+                    ? "other"
+                    : "ok";
               return (
                 <details
                   key={id}
@@ -399,6 +413,7 @@ export function ClassVideoEditor({
                       </Badge>
                     )}
                     {voiceState === "stale" && <Badge color="amber">Voix à refaire</Badge>}
+                    {voiceState === "other" && <Badge color="amber">Ancienne voix</Badge>}
                   </summary>
                   <div className="space-y-3 border-t-2 border-slate-100 px-4 py-4">
                     <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -793,9 +808,9 @@ function VoiceSettingsCard({
     <Card className="p-5 sm:p-6">
       <SectionTitle icon={KeyRound} title="Voix off">
         La voix intégrée, open source, est gratuite et ne quitte pas votre
-        serveur. Les services en ligne sont plus expressifs, mais facturés à
-        l’usage (quelques centimes par vidéo). Vous pouvez aussi enregistrer
-        votre propre voix, scène par scène.
+        serveur ; ses voix naturelles ont une vraie intonation. Les services
+        en ligne sont facturés à l’usage (quelques centimes par vidéo). Vous
+        pouvez aussi enregistrer votre propre voix, scène par scène.
       </SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Voix de synthèse" htmlFor="tts-provider">
@@ -819,17 +834,26 @@ function VoiceSettingsCard({
           <Field
             label="Voix"
             htmlFor="tts-voice"
-            hint={
-              isIntegratedVoice(voice)
-                ? `Voix Piper — ${INTEGRATED_VOICES[voice].credit}.`
-                : undefined
-            }
+            hint={isIntegratedVoice(voice) ? `${INTEGRATED_VOICES[voice].credit}.` : undefined}
           >
             <Select id="tts-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
-              {Object.entries(INTEGRATED_VOICES).map(([id, v]) => (
-                <option key={id} value={id}>
-                  {v.label}
-                </option>
+              {(Object.keys(INTEGRATED_ENGINES) as IntegratedEngine[]).map((engine) => (
+                <optgroup
+                  key={engine}
+                  label={
+                    engine === "supertonic"
+                      ? `${INTEGRATED_ENGINES[engine]} (recommandées)`
+                      : INTEGRATED_ENGINES[engine]
+                  }
+                >
+                  {Object.entries(INTEGRATED_VOICES)
+                    .filter(([, v]) => v.engine === engine)
+                    .map(([id, v]) => (
+                      <option key={id} value={id} disabled={!tts.integratedEngines[engine]}>
+                        {v.label}
+                      </option>
+                    ))}
+                </optgroup>
               ))}
             </Select>
           </Field>
@@ -876,9 +900,11 @@ function VoiceSettingsCard({
           </Field>
         ) : (
           <p className="text-xs leading-5 text-slate-500 sm:col-span-2">
-            {tts.integratedAvailable
-              ? "Rien à configurer. La première voix générée télécharge le modèle sur le serveur (80 à 90 Mo) : comptez une minute la première fois, une seconde ensuite."
-              : "La voix intégrée ne peut pas tourner sur ce serveur (module natif absent). Choisissez un service en ligne ou enregistrez votre voix."}
+            {!tts.integratedAvailable
+              ? "La voix intégrée ne peut pas tourner sur ce serveur (module natif absent). Choisissez un service en ligne ou enregistrez votre voix."
+              : isIntegratedVoice(voice) && INTEGRATED_VOICES[voice].engine === "supertonic"
+                ? "Rien à configurer. Les voix naturelles s’appuient sur un modèle de 380 Mo, téléchargé sur le serveur dès l’enregistrement de ce choix : comptez quelques minutes la première fois, puis trois à cinq secondes par phrase."
+                : "Rien à configurer. Les voix légères s’appuient sur un modèle de 80 à 90 Mo, téléchargé à la première voix générée : comptez une minute la première fois, une seconde ensuite."}
           </p>
         )}
       </div>

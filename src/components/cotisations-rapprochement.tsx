@@ -462,7 +462,7 @@ export function CotisationsRapprochement({
                     </Button>
                   </div>
 
-                  <ul className="max-h-96 divide-y-2 divide-slate-100 overflow-y-auto rounded-xl border-2 border-slate-200">
+                  <ul className="max-h-96 divide-y-2 divide-slate-100 overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-200">
                     {pointables.length === 0 && (
                       <li className="p-4 text-sm font-medium text-slate-500">
                         Toutes les adhésions de {anneeCourante} sont déjà

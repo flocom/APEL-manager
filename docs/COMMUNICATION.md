@@ -59,28 +59,47 @@ parents pour les enfants).
 
 Trois façons de donner une voix à chaque scène :
 
-1. **Voix intégrée (par défaut)** — des voix françaises open source
-   ([Piper](https://github.com/rhasspy/piper)), calculées sur le processeur du
-   serveur par [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Ni clé
-   d’API, ni service tiers, ni carte graphique : une phrase de dix secondes se
-   calcule en une seconde environ.
+1. **Voix intégrée (par défaut)** — des voix françaises open source,
+   calculées sur le processeur du serveur. Ni clé d’API, ni service tiers, ni
+   carte graphique. Deux familles :
 
-   | Voix | Modèle | Licence du jeu de données |
-   |---|---|---|
-   | Jessica (féminine), Pierre (masculine) | `fr_FR-upmc-medium` | CC-BY-SA 4.0 (UPMC) |
-   | Siwis (féminine) | `fr_FR-siwis-medium` | CC-BY 4.0 (SIWIS) |
+   - **Voix naturelles** ([Supertonic 3](https://huggingface.co/supertone-oss-archive/supertonic-3),
+     Supertone Inc., licence OpenRAIL-M), exécutées par
+     [ONNX Runtime](https://onnxruntime.ai) : une vraie intonation, deux à
+     trois fois plus variée que celle de Piper. Trois à cinq secondes de calcul
+     par phrase sur quatre cœurs. C’est le choix par défaut.
+   - **Voix légères** ([Piper](https://github.com/rhasspy/piper)), exécutées
+     par [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) : plus plates,
+     mais une phrase de dix secondes se calcule en une seconde environ.
+
+   | Voix | Famille | Modèle | Licence |
+   |---|---|---|---|
+   | Camille, Claire (féminines), Julien, Thomas (masculines) | naturelles | Supertonic 3, styles F1, F3, M3, M4 | OpenRAIL-M (Supertone) |
+   | Jessica (féminine), Pierre (masculine) | légères | `fr_FR-upmc-medium` | CC-BY-SA 4.0 (UPMC) |
+   | Siwis (féminine) | légères | `fr_FR-siwis-medium` | CC-BY 4.0 (SIWIS) |
 
    La voix « tom » du catalogue Piper est écartée : son jeu de données est sous
-   AGPL. Les modèles (80 à 90 Mo chacun) sont téléchargés au premier usage
-   depuis les versions publiées de sherpa-onnx (`github.com`), vérifiés par
-   empreinte SHA-256, puis gardés dans `UPLOADS_DIR/.voix` — sous Docker, le
-   volume des fichiers, qui survit aux mises à jour. `TTS_MODELS_DIR` permet de
-   choisir un autre dossier. La première génération prend donc environ une
-   minute, les suivantes une seconde.
+   AGPL. Les modèles ne sont pas livrés dans l’image. Ils sont téléchargés au
+   premier usage, vérifiés par empreinte SHA-256, puis gardés dans
+   `UPLOADS_DIR/.voix` — sous Docker, le volume des fichiers, qui survit aux
+   mises à jour. `TTS_MODELS_DIR` permet de choisir un autre dossier.
 
-   Le module natif existe pour Linux, macOS et Windows (x64 et arm64). Sur une
-   plateforme sans module (hébergement serverless, par exemple), l’écran le
-   signale et propose les deux autres voies.
+   - Supertonic 3 : environ 380 Mo depuis `huggingface.co` (révision figée),
+     téléchargés dès que l’on enregistre une voix naturelle dans l’écran.
+     En mémoire, le modèle occupe quelques centaines de Mo pendant le calcul ;
+     il est libéré après dix minutes sans voix générée.
+   - Piper : 80 à 90 Mo par modèle depuis les versions publiées de sherpa-onnx
+     (`github.com`), à la première voix générée.
+
+   Les silences de tête et de queue sont retirés et le niveau ramené à −1 dB :
+   la scène suit le rythme de la phrase, et la voix passe au-dessus de la
+   musique.
+
+   Les modules natifs existent pour Linux, macOS et Windows (x64 et arm64). Sur
+   une plateforme sans module (hébergement serverless, par exemple), l’écran le
+   signale et propose les deux autres voies. À l’installation, ONNX Runtime ne
+   télécharge pas ses bibliothèques CUDA (`.npmrc` :
+   `onnxruntime-node-install=skip`), inutiles ici.
 
 2. **Services en ligne**, plus expressifs, facturés à l’usage :
 
@@ -100,7 +119,10 @@ Trois façons de donner une voix à chaque scène :
 
 Les générations sont plafonnées par administrateur : 60 par heure chez un
 service en ligne, 200 avec la voix intégrée. Une voix reste attachée au texte
-qu’elle lit : modifier la phrase d’une scène la marque « à refaire ».
+qu’elle lit : modifier la phrase d’une scène la marque « à refaire ». Elle
+garde aussi la voix de synthèse qui l’a lue : après un changement de voix, les
+scènes lues par l’ancienne sont marquées « Ancienne voix », et « Générer les
+voix » les refait.
 
 ### Export
 

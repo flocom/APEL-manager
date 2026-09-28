@@ -49,8 +49,8 @@ la base de l’instance déployée et se saisissent depuis l’application.
   rappels automatiques des tâches.
 - **Supports de communication** — une vidéo en motion design pour présenter
   l’APEL aux parents, préparée à partir des données de l’association, aux
-  couleurs du logo, avec personnages, photos, musique générée et voix off de
-  synthèse.
+  couleurs du logo, avec personnages, photos, musique générée et voix off
+  naturelle open source, calculée sur le serveur (ou enregistrée au micro).
   Exportée en 1080p directement dans le navigateur.
 - **Intégration Claude.ai** — serveur MCP distant sécurisé par OAuth 2.1 et PKCE
   pour piloter les modules selon les droits du compte.

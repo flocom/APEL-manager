@@ -55,6 +55,8 @@ const voiceSchema = z.object({
   text: z.string().max(600),
   /** Voix de synthèse, ou voix d'un parent enregistrée dans l'écran. */
   source: z.enum(["synthese", "enregistrement"]).default("synthese"),
+  /** Voix de synthèse qui l'a lue (service et voix), voir `ttsVoiceKey`. */
+  voiceKey: z.string().max(120).optional(),
 });
 
 const sceneSchema = z.object({
@@ -278,6 +280,19 @@ export function resolvedScene(
 /** La voix enregistrée ne vaut que pour le texte qu'elle lit. */
 export function voiceIsCurrent(scene: ClassVideoSceneContent): boolean {
   return scene.voice !== null && scene.voice.text === scene.voiceText;
+}
+
+/**
+ * La voix de la scène est-elle à (re)générer ? Oui si le texte a changé, ou si
+ * elle a été lue par une autre voix de synthèse que celle réglée aujourd'hui.
+ * Une voix enregistrée par un parent ne l'est jamais pour ce second motif.
+ */
+export function voiceNeedsRefresh(
+  scene: ClassVideoSceneContent,
+  currentVoiceKey: string,
+): boolean {
+  if (!voiceIsCurrent(scene)) return true;
+  return scene.voice?.source === "synthese" && scene.voice.voiceKey !== currentVoiceKey;
 }
 
 /**

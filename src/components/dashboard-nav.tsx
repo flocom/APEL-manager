@@ -378,7 +378,7 @@ export function DashboardNav({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-3 py-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-4">
               {navLinks}
             </div>
             {userFooter}
@@ -391,7 +391,7 @@ export function DashboardNav({
         <div className="border-b border-brand-800 px-5 py-5">
           <Logo appName={appName} logoUrl={logoUrl} />
         </div>
-        <div className="flex-1 overflow-y-auto px-3 py-5">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-5">
           {navLinks}
         </div>
         <div>{userFooter}</div>
