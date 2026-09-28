@@ -182,8 +182,9 @@ export function defaultSceneTexts(
     },
     vie: {
       title: "Des fêtes toute l'année",
-      subtitle:
-        evenements.length > 0 ? `${evenements.join(", ")}…` : "Des temps forts qui font vivre l'école",
+      // Les intitulés réels (« Gouter Post Matinée sportive ») sont souvent
+      // trop longs pour un sous-titre : ils ne sont cités que par la voix.
+      subtitle: "Fêtes, goûters, rendez-vous",
       voiceText:
         evenements.length > 0
           ? `Toute l'année : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien plus.`
