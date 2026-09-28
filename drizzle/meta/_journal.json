@@ -253,6 +253,13 @@
       "when": 1790598805212,
       "tag": "0035_supports_de_communication",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790612124479,
+      "tag": "0036_voix_integree",
+      "breakpoints": true
     }
   ]
 }

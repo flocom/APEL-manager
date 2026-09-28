@@ -10,6 +10,13 @@ import {
   type ClassVideoContent,
   type ClassVideoSource,
 } from "@/lib/communication/class-video";
+import {
+  DEFAULT_INTEGRATED_VOICE,
+  integratedVoiceAvailable,
+  isIntegratedVoice,
+  synthesizeIntegrated,
+  type IntegratedVoiceId,
+} from "@/lib/communication/integrated-voice";
 import { paletteFromLogo } from "@/lib/communication/logo-palette";
 import { db } from "@/lib/db";
 import {
@@ -262,7 +269,14 @@ export async function saveClassVideo(
 // Voix de synthèse
 // ---------------------------------------------------------------------------
 
-export type TtsProvider = "openai" | "elevenlabs";
+/**
+ * `piper` : la voix intégrée, open source, calculée sur le serveur — le choix
+ * par défaut, sans clé ni frais. `openai` et `elevenlabs` : des services en
+ * ligne, plus expressifs, facturés à l'usage.
+ */
+export type TtsProvider = "piper" | "openai" | "elevenlabs";
+
+const DEFAULT_PROVIDER: TtsProvider = "piper";
 
 /** Voix par défaut d'OpenAI : chaleureuse, et la plus naturelle en français. */
 export const DEFAULT_OPENAI_VOICE = "coral";
@@ -282,10 +296,12 @@ export const OPENAI_VOICES = [
 ] as const;
 
 export type TtsSettingsView = {
-  provider: TtsProvider | null;
+  provider: TtsProvider;
   keyConfigured: boolean;
   keyLastFour: string | null;
   voice: string | null;
+  /** La voix intégrée peut-elle tourner sur ce serveur (module natif présent) ? */
+  integratedAvailable: boolean;
   ready: boolean;
 };
 
@@ -301,25 +317,32 @@ async function ttsRecord() {
 
 export async function getTtsSettings(): Promise<TtsSettingsView> {
   const row = await ttsRecord();
-  const provider = (row?.ttsProvider as TtsProvider | null) ?? null;
+  const provider = (row?.ttsProvider as TtsProvider | null) ?? DEFAULT_PROVIDER;
   const keyConfigured = Boolean(row?.encryptedTtsApiKey);
-  const voice = row?.ttsVoice ?? null;
+  const voice =
+    provider === "piper"
+      ? isIntegratedVoice(row?.ttsVoice ?? null)
+        ? (row?.ttsVoice ?? DEFAULT_INTEGRATED_VOICE)
+        : DEFAULT_INTEGRATED_VOICE
+      : (row?.ttsVoice ?? null);
+  const integratedAvailable = await integratedVoiceAvailable();
   return {
     provider,
     keyConfigured,
     keyLastFour: row?.ttsApiKeyLastFour ?? null,
     voice,
+    integratedAvailable,
     // ElevenLabs n'a pas de voix française par défaut : il en faut une choisie.
     ready:
-      provider !== null &&
-      keyConfigured &&
-      (provider === "openai" || Boolean(voice)),
+      provider === "piper"
+        ? integratedAvailable
+        : keyConfigured && (provider === "openai" || Boolean(voice)),
   };
 }
 
 export async function saveTtsSettings(
   input: {
-    provider: TtsProvider | null;
+    provider: TtsProvider;
     /** Nouvelle clé ; absente ou vide, la clé enregistrée est conservée. */
     apiKey?: string | null;
     clearKey?: boolean;
@@ -334,7 +357,7 @@ export async function saveTtsSettings(
   if (nouvelleCle) {
     encrypted = encryptSecret(nouvelleCle);
     lastFour = nouvelleCle.slice(-4);
-  } else if (input.clearKey || input.provider === null) {
+  } else if (input.clearKey) {
     encrypted = null;
     lastFour = null;
   }
@@ -344,11 +367,15 @@ export async function saveTtsSettings(
     encrypted = null;
     lastFour = null;
   }
+  const voice = input.voice?.trim() || null;
+  if (input.provider === "piper" && voice !== null && !isIntegratedVoice(voice)) {
+    throw new HttpError(400, "Voix intégrée inconnue.");
+  }
   const values = {
     ttsProvider: input.provider,
     encryptedTtsApiKey: encrypted,
     ttsApiKeyLastFour: lastFour,
-    ttsVoice: input.voice?.trim() || null,
+    ttsVoice: voice,
     updatedBy: actor.userId,
     updatedAt: new Date(),
   };
@@ -381,15 +408,24 @@ export async function saveTtsSettings(
 const OPENAI_INSTRUCTIONS =
   "Voix française de France, naturelle, chaleureuse et posée, comme un parent d'élève qui présente l'association des parents à d'autres parents lors d'une réunion de rentrée. Ton sincère et bienveillant, légèrement souriant, intonations naturelles et variées, débit calme, articulation claire, pauses naturelles aux virgules et aux points. Jamais robotique, jamais publicitaire, jamais infantilisant.";
 
-/** Au plus soixante voix par heure et par administrateur : chaque appel est facturé. */
+/**
+ * Au plus soixante voix par heure et par administrateur chez un service en
+ * ligne, où chaque appel est facturé ; deux cents avec la voix intégrée, qui
+ * ne coûte que du processeur mais en coûte.
+ */
 const VOICE_RATE_LIMIT = {
   bucket: "communication:voix",
   limit: 60,
   windowSeconds: 60 * 60,
 };
+const INTEGRATED_VOICE_RATE_LIMIT = {
+  bucket: "communication:voix-integree",
+  limit: 200,
+  windowSeconds: 60 * 60,
+};
 
 async function synthesize(
-  provider: TtsProvider,
+  provider: Exclude<TtsProvider, "piper">,
   apiKey: string,
   voice: string | null,
   text: string,
@@ -462,15 +498,37 @@ async function synthesize(
 
 /**
  * Fait lire une phrase par la voix de synthèse et range le fichier parmi les
- * médias. La durée est mesurée par le navigateur, qui sait décoder le MP3.
+ * médias. La durée est mesurée par le navigateur, qui sait décoder l'audio.
  */
 export async function generateVoiceClip(
   text: string,
   actor: AuditActor,
 ): Promise<{ url: string }> {
   const settings = await ttsRecord();
-  const provider = (settings?.ttsProvider as TtsProvider | null) ?? null;
-  if (!provider || !settings?.encryptedTtsApiKey) {
+  const provider = (settings?.ttsProvider as TtsProvider | null) ?? DEFAULT_PROVIDER;
+
+  if (provider === "piper") {
+    const verdict = await hitRateLimit(INTEGRATED_VOICE_RATE_LIMIT, actor.userId);
+    if (!verdict.ok) {
+      throw rateLimitError(verdict, "Trop de voix générées d'un coup. Réessayez dans un moment.");
+    }
+    const voice = isIntegratedVoice(settings?.ttsVoice ?? null)
+      ? (settings?.ttsVoice as IntegratedVoiceId)
+      : DEFAULT_INTEGRATED_VOICE;
+    const audio = await synthesizeIntegrated(text, voice);
+    const saved = await saveUpload(
+      "media",
+      new File([new Uint8Array(audio)], "voix-off.wav", { type: "audio/wav" }),
+    );
+    await recordAudit(actor, "communication.voice.generate", "stored_file", saved.id, {
+      provider,
+      voice,
+      characters: text.length,
+    });
+    return { url: saved.url };
+  }
+
+  if (!settings?.encryptedTtsApiKey) {
     throw new HttpError(409, "Configurez d'abord la voix off (service et clé d'API).");
   }
   if (provider === "elevenlabs" && !settings.ttsVoice) {

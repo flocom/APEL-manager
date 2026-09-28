@@ -1072,9 +1072,10 @@ export const communicationSettings = pgTable(
   {
     id: text("id").primaryKey().default("default"),
     /**
-     * Service de voix de synthèse : `openai` (gpt-4o-mini-tts, qu'on guide sur
-     * le ton) ou `elevenlabs` (eleven_multilingual_v2). `null` : aucun, la
-     * vidéo reste sans voix off.
+     * Service de voix de synthèse : `piper` (voix intégrée, open source,
+     * calculée sur le serveur), `openai` (gpt-4o-mini-tts, qu'on guide sur le
+     * ton) ou `elevenlabs` (eleven_multilingual_v2). `null` : jamais réglé,
+     * la voix intégrée s'applique.
      */
     ttsProvider: text("tts_provider"),
     /** Clé d'API chiffrée ; jamais exposée par une API de lecture. */
@@ -1096,7 +1097,7 @@ export const communicationSettings = pgTable(
     ),
     providerCheck: check(
       "communication_settings_tts_provider_check",
-      sql`${t.ttsProvider} is null or ${t.ttsProvider} in ('openai', 'elevenlabs')`,
+      sql`${t.ttsProvider} is null or ${t.ttsProvider} in ('piper', 'openai', 'elevenlabs')`,
     ),
   }),
 );

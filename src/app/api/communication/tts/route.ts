@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
-  provider: z.enum(["openai", "elevenlabs"]).nullable(),
+  provider: z.enum(["piper", "openai", "elevenlabs"]),
   apiKey: z.string().trim().max(300).nullable().optional(),
   clearKey: z.boolean().optional(),
   voice: z

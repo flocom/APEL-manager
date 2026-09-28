@@ -20,7 +20,9 @@ const securityHeaders = [
   // Les adresses internes (liens de réinitialisation, jetons de
   // désinscription) ne partent pas en référent vers d'autres sites.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Rien de tout cela ne sert ici : une faille ne pourra pas s'en servir.
+  // Rien de tout cela ne sert ici : une faille ne pourra pas s'en servir. Le
+  // micro fait exception, pour le site lui-même seulement : la voix off de la
+  // vidéo peut être enregistrée par un parent (supports de communication).
   // Seulement des fonctions que les navigateurs connaissent : un nom inconnu
   // ne protège de rien et vaut une erreur en console à chaque page
   // (« Unrecognized feature »). browsing-topics en est sorti parce que Chrome
@@ -30,7 +32,7 @@ const securityHeaders = [
   // accompagnent des cadres tiers ou des extensions du navigateur.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
   },
   // Pas de Cross-Origin-Opener-Policy : l'autorisation d'un connecteur MCP
   // s'ouvre dans une fenêtre que Claude surveille, et cette politique couperait
@@ -42,6 +44,9 @@ const nextConfig = {
   // « X-Powered-By: Next.js » annonçait le cadriciel à qui cherche une
   // version vulnérable.
   poweredByHeader: false,
+  // Module natif de la voix intégrée (src/lib/communication/integrated-voice.ts) :
+  // chargé tel quel par Node, jamais empaqueté.
+  serverExternalPackages: ["sherpa-onnx-node"],
   eslint: {
     // Le lint tourne dans la CI (.github/workflows/ci.yml), avant la fusion :
     // une remarque de style ne doit pas faire échouer la construction de

@@ -53,6 +53,8 @@ const voiceSchema = z.object({
    * voix n'y correspond plus et propose de la régénérer.
    */
   text: z.string().max(600),
+  /** Voix de synthèse, ou voix d'un parent enregistrée dans l'écran. */
+  source: z.enum(["synthese", "enregistrement"]).default("synthese"),
 });
 
 const sceneSchema = z.object({

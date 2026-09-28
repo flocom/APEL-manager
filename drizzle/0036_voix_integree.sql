@@ -1,0 +1,2 @@
+ALTER TABLE "communication_settings" DROP CONSTRAINT "communication_settings_tts_provider_check";--> statement-breakpoint
+ALTER TABLE "communication_settings" ADD CONSTRAINT "communication_settings_tts_provider_check" CHECK ("communication_settings"."tts_provider" is null or "communication_settings"."tts_provider" in ('piper', 'openai', 'elevenlabs'));
