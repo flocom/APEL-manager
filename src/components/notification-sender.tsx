@@ -181,7 +181,7 @@ export function NotificationSender({
                 </button>
               </div>
             </div>
-            <div className="grid max-h-72 gap-2 overflow-y-auto rounded-xl border-2 border-slate-200 p-2 sm:grid-cols-2">
+            <div className="grid max-h-72 gap-2 overflow-y-auto overscroll-contain rounded-xl border-2 border-slate-200 p-2 sm:grid-cols-2">
               {recipients.map((membre) => {
                 const joignable = membre.pushEnabled && membre.devices > 0;
                 return (

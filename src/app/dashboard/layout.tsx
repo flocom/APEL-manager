@@ -30,7 +30,7 @@ export default async function DashboardLayout({
         user={{ name: user.name, role: user.role }}
         pendingAccounts={pendingAccounts}
       />
-      <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:px-10 lg:py-10 xl:px-12">
+      <main className="flex-1 px-4 py-6 sm:px-7 sm:py-8 lg:h-screen lg:overflow-y-auto lg:overscroll-contain lg:px-10 lg:py-10 xl:px-12">
         <div className="mx-auto max-w-7xl space-y-6">
           <PushBanner accountEnabled={user.pushEnabled} />
           {children}

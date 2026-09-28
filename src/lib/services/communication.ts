@@ -14,11 +14,14 @@ import {
 } from "@/lib/communication/class-video";
 import {
   DEFAULT_INTEGRATED_VOICE,
-  integratedVoiceAvailable,
+  INTEGRATED_VOICES,
+  integratedEnginesAvailable,
   isIntegratedVoice,
+  prepareIntegratedVoice,
   synthesizeIntegrated,
   type IntegratedVoiceId,
 } from "@/lib/communication/integrated-voice";
+import { ttsVoiceKey, type IntegratedEngine } from "@/lib/communication/voices";
 import { paletteFromLogo } from "@/lib/communication/logo-palette";
 import { APP_TIMEZONE } from "@/lib/dates";
 import { db } from "@/lib/db";
@@ -304,7 +307,8 @@ export async function saveClassVideo(
 
 /**
  * `piper` : la voix intégrée, open source, calculée sur le serveur — le choix
- * par défaut, sans clé ni frais. `openai` et `elevenlabs` : des services en
+ * par défaut, sans clé ni frais. Le nom est historique : il couvre aujourd'hui
+ * les voix naturelles (Supertonic) comme les voix légères (Piper). `openai` et `elevenlabs` : des services en
  * ligne, plus expressifs, facturés à l'usage.
  */
 export type TtsProvider = "piper" | "openai" | "elevenlabs";
@@ -335,6 +339,10 @@ export type TtsSettingsView = {
   voice: string | null;
   /** La voix intégrée peut-elle tourner sur ce serveur (module natif présent) ? */
   integratedAvailable: boolean;
+  /** Le détail par moteur : un serveur peut faire tourner l'un sans l'autre. */
+  integratedEngines: Record<IntegratedEngine, boolean>;
+  /** Identité de la voix réglée, gardée avec chaque voix générée. */
+  voiceKey: string;
   ready: boolean;
 };
 
@@ -358,17 +366,19 @@ export async function getTtsSettings(): Promise<TtsSettingsView> {
         ? (row?.ttsVoice ?? DEFAULT_INTEGRATED_VOICE)
         : DEFAULT_INTEGRATED_VOICE
       : (row?.ttsVoice ?? null);
-  const integratedAvailable = await integratedVoiceAvailable();
+  const integratedEngines = await integratedEnginesAvailable();
   return {
     provider,
     keyConfigured,
     keyLastFour: row?.ttsApiKeyLastFour ?? null,
     voice,
-    integratedAvailable,
+    integratedAvailable: integratedEngines.supertonic || integratedEngines.piper,
+    integratedEngines,
+    voiceKey: ttsVoiceKey(provider, voice),
     // ElevenLabs n'a pas de voix française par défaut : il en faut une choisie.
     ready:
       provider === "piper"
-        ? integratedAvailable
+        ? integratedEngines[INTEGRATED_VOICES[voice as IntegratedVoiceId].engine]
         : keyConfigured && (provider === "openai" || Boolean(voice)),
   };
 }
@@ -431,6 +441,14 @@ export async function saveTtsSettings(
       tx,
     );
   });
+  // Le modèle se télécharge dès maintenant, en arrière-plan : la première voix
+  // générée n'aura pas à l'attendre.
+  if (input.provider === "piper") {
+    const chosen = isIntegratedVoice(voice) ? voice : DEFAULT_INTEGRATED_VOICE;
+    void prepareIntegratedVoice(chosen).catch((error: unknown) =>
+      console.error("[communication] préparation de la voix intégrée", redactError(error)),
+    );
+  }
   return getTtsSettings();
 }
 
@@ -536,7 +554,7 @@ async function synthesize(
 export async function generateVoiceClip(
   text: string,
   actor: AuditActor,
-): Promise<{ url: string }> {
+): Promise<{ url: string; voiceKey: string }> {
   const settings = await ttsRecord();
   const provider = (settings?.ttsProvider as TtsProvider | null) ?? DEFAULT_PROVIDER;
 
@@ -558,7 +576,7 @@ export async function generateVoiceClip(
       voice,
       characters: text.length,
     });
-    return { url: saved.url };
+    return { url: saved.url, voiceKey: ttsVoiceKey(provider, voice) };
   }
 
   if (!settings?.encryptedTtsApiKey) {
@@ -589,5 +607,5 @@ export async function generateVoiceClip(
     provider,
     characters: text.length,
   });
-  return { url: saved.url };
+  return { url: saved.url, voiceKey: ttsVoiceKey(provider, settings.ttsVoice) };
 }

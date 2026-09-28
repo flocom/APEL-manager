@@ -11,7 +11,17 @@ import { extract } from "tar-stream";
 
 import { HttpError } from "@/lib/auth/guards";
 
-import { INTEGRATED_VOICES, type IntegratedVoiceId } from "./voices";
+import {
+  prepareSupertonic,
+  supertonicAvailable,
+  synthesizeSupertonic,
+} from "./supertonic";
+import { modelsRoot, normalizePeak, toWav, trimSilence } from "./voice-files";
+import {
+  INTEGRATED_VOICES,
+  type IntegratedEngine,
+  type IntegratedVoiceId,
+} from "./voices";
 
 export {
   DEFAULT_INTEGRATED_VOICE,
@@ -21,16 +31,15 @@ export {
 } from "./voices";
 
 /**
- * Voix off intégrée : des voix françaises open source (Piper), calculées sur
- * le processeur du serveur par sherpa-onnx. Ni clé d'API, ni service tiers, ni
- * carte graphique : une phrase de dix secondes se calcule en une seconde
- * environ.
+ * Voix off intégrée : des voix françaises open source, calculées sur le
+ * processeur du serveur. Ni clé d'API, ni service tiers, ni carte graphique.
  *
- * Les modèles ne sont pas livrés dans l'image (80 à 90 Mo chacun) : ils sont
- * téléchargés au premier usage depuis les versions publiées de sherpa-onnx,
- * vérifiés par empreinte SHA-256, puis gardés dans le volume des fichiers
- * (`UPLOADS_DIR/.voix`), qui survit aux mises à jour. Le nettoyage des
- * orphelins ne touche pas ce dossier : son nom n'est pas celui d'un dépôt.
+ * - Supertonic 3 (voix naturelles) : voir `supertonic.ts`.
+ * - Piper (voix légères), par sherpa-onnx : une phrase de dix secondes se
+ *   calcule en une seconde environ. Les modèles ne sont pas livrés dans
+ *   l'image (80 à 90 Mo chacun) : ils sont téléchargés au premier usage depuis
+ *   les versions publiées de sherpa-onnx, vérifiés par empreinte SHA-256, puis
+ *   gardés dans le volume des fichiers (`UPLOADS_DIR/.voix`).
  */
 
 type ModelId = "siwis" | "upmc";
@@ -56,14 +65,6 @@ const MODELS: Record<
 const RELEASE_URL =
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models";
 
-function modelsRoot(): string {
-  const configured = process.env.TTS_MODELS_DIR?.trim();
-  if (configured) return path.resolve(configured);
-  const uploads =
-    process.env.UPLOADS_DIR?.trim() || path.join(process.cwd(), "data/uploads");
-  return path.resolve(uploads, ".voix");
-}
-
 let addon: Promise<typeof import("sherpa-onnx-node")> | null = null;
 
 /**
@@ -79,13 +80,21 @@ function loadAddon() {
   return addon;
 }
 
-export async function integratedVoiceAvailable(): Promise<boolean> {
+async function piperAvailable(): Promise<boolean> {
   try {
     await loadAddon();
     return true;
   } catch {
     return false;
   }
+}
+
+/** Moteurs dont le module natif est présent sur ce serveur. */
+export async function integratedEnginesAvailable(): Promise<
+  Record<IntegratedEngine, boolean>
+> {
+  const [supertonic, piper] = await Promise.all([supertonicAvailable(), piperAvailable()]);
+  return { supertonic, piper };
 }
 
 /**
@@ -216,62 +225,45 @@ function engine(id: ModelId): Promise<OfflineTts> {
   return task;
 }
 
+const UNAVAILABLE =
+  "La voix intégrée n'est pas disponible sur ce serveur. Choisissez un service en ligne ou enregistrez votre voix.";
+
 /**
- * Les voix Piper sortent assez bas (−25 dB en moyenne) : ramenées à un pic de
- * −1 dB, elles passent au-dessus de la musique sans qu'on ait à y penser.
+ * Télécharge à l'avance le modèle d'une voix, pour que la première voix
+ * générée n'ait pas à l'attendre. Les erreurs sont celles du téléchargement.
  */
-function normalize(samples: Float32Array): Float32Array {
-  let peak = 0;
-  for (const s of samples) peak = Math.max(peak, Math.abs(s));
-  if (peak < 1e-4) return samples;
-  const gain = 0.89 / peak;
-  return samples.map((s) => s * gain);
-}
-
-/** Échantillons flottants → WAV PCM 16 bits mono. */
-function toWav(samples: Float32Array, sampleRate: number): Buffer {
-  const data = Buffer.alloc(samples.length * 2);
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    data.writeInt16LE(Math.round(s < 0 ? s * 0x8000 : s * 0x7fff), i * 2);
+export async function prepareIntegratedVoice(voice: IntegratedVoiceId): Promise<void> {
+  const entry = INTEGRATED_VOICES[voice];
+  if (entry.engine === "supertonic") {
+    if (await supertonicAvailable()) await prepareSupertonic();
+  } else if (await piperAvailable()) {
+    await ensureModel(entry.model);
   }
-  const header = Buffer.alloc(44);
-  header.write("RIFF", 0, "ascii");
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write("WAVE", 8, "ascii");
-  header.write("fmt ", 12, "ascii");
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36, "ascii");
-  header.writeUInt32LE(data.length, 40);
-  return Buffer.concat([header, data]);
 }
 
 /**
- * Lit une phrase avec une voix intégrée, au débit natif des voix Piper : la
- * vidéo est rythmée, et un débit ralenti la rendait traînante.
+ * Lit une phrase avec une voix intégrée. Les voix Piper gardent leur débit
+ * natif : la vidéo est rythmée, et un débit ralenti la rendait traînante. Les
+ * deux moteurs sortent à des niveaux différents (Piper, −25 dB en moyenne) :
+ * débarrassés de leurs silences et ramenés au même pic, ils passent au-dessus
+ * de la musique de la même façon.
  */
 export async function synthesizeIntegrated(
   text: string,
   voice: IntegratedVoiceId,
 ): Promise<Buffer> {
-  const { model, speaker } = INTEGRATED_VOICES[voice];
-  let tts: OfflineTts;
+  const entry = INTEGRATED_VOICES[voice];
   try {
-    tts = await engine(model);
+    if (entry.engine === "supertonic") {
+      const audio = await synthesizeSupertonic(text, entry.style);
+      return toWav(normalizePeak(trimSilence(audio.samples, audio.sampleRate)), audio.sampleRate);
+    }
+    const tts = await engine(entry.model);
+    const audio = await tts.generateAsync({ text, sid: entry.speaker, speed: 1 });
+    return toWav(normalizePeak(trimSilence(audio.samples, audio.sampleRate)), audio.sampleRate);
   } catch (error) {
     if (error instanceof HttpError) throw error;
     console.error("[communication] voix intégrée indisponible", error);
-    throw new HttpError(
-      503,
-      "La voix intégrée n'est pas disponible sur ce serveur. Choisissez un service en ligne ou enregistrez votre voix.",
-    );
+    throw new HttpError(503, UNAVAILABLE);
   }
-  const audio = await tts.generateAsync({ text, sid: speaker, speed: 1 });
-  return toWav(normalize(audio.samples), audio.sampleRate);
 }

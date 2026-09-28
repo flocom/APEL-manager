@@ -15,7 +15,7 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 FROM base AS dependencies
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 
 
@@ -28,9 +28,13 @@ RUN npm run build
 
 FROM base AS production-dependencies
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
+# ONNX Runtime livre ses bibliothèques pour macOS et Windows aussi (plus de
+# 200 Mo) : l'image n'en garde que celles de Linux.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci --omit=dev && npm cache clean --force
+    npm ci --omit=dev && npm cache clean --force \
+    && rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin \
+              node_modules/onnxruntime-node/bin/napi-v6/win32
 
 
 FROM base AS runner

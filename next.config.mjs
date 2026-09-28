@@ -46,7 +46,7 @@ const nextConfig = {
   poweredByHeader: false,
   // Module natif de la voix intégrée (src/lib/communication/integrated-voice.ts) :
   // chargé tel quel par Node, jamais empaqueté.
-  serverExternalPackages: ["sherpa-onnx-node"],
+  serverExternalPackages: ["sherpa-onnx-node", "onnxruntime-node"],
   eslint: {
     // Le lint tourne dans la CI (.github/workflows/ci.yml), avant la fusion :
     // une remarque de style ne doit pas faire échouer la construction de
