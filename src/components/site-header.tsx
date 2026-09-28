@@ -76,18 +76,21 @@ export async function SiteHeader() {
                 Nous rejoindre
               </Link>
               <Link
-                href="/login"
-                className="hidden min-h-10 items-center whitespace-nowrap rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
-              >
-                Connexion
-              </Link>
-              <Link
                 href="/register"
                 className="hidden min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-4 py-2 font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
               >
                 {/* « Créer un compte » attirait les parents venus adhérer :
                     ce bouton mène à l'espace de gestion, pas à l'adhésion. */}
                 Espace organisateurs
+              </Link>
+              {/* Connexion ferme toujours la ligne, à droite : c'est là qu'on
+                  la cherche sur n'importe quel site. Sous lg, c'est le bouton
+                  du menu qui prend cette place. */}
+              <Link
+                href="/login"
+                className="hidden min-h-10 items-center whitespace-nowrap rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
+              >
+                Connexion
               </Link>
               {/* Sous lg, Connexion et Espace organisateurs passent dans un
                   menu : quatre boutons ne tiennent pas sur une ligne de
