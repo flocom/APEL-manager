@@ -67,41 +67,41 @@ export function ClassVideoPreview({
   const [exportState, setExportState] = useState<ExportState>({ status: "idle" });
   const abortRef = useRef<AbortController | null>(null);
 
-  // Bruitages : générés une fois, gardés le temps de la page.
-  const sfx = useMemo<ClassVideoProps["sfx"]>(
-    () => ({
-      pop: wavToBlobUrl(renderSfxWav("pop")),
-      whoosh: wavToBlobUrl(renderSfxWav("whoosh")),
-      sparkle: wavToBlobUrl(renderSfxWav("sparkle")),
-    }),
-    [],
-  );
-
-  // La musique est jouée en boucle : une minute et demie suffit, et la
-  // régénérer à chaque frappe dans un titre n'aurait aucun sens.
-  const [musicUrl, setMusicUrl] = useState<string | null>(null);
-  const wantsGeneratedMusic = content.music.mode === "generated";
+  // Musique et bruitages, générés une fois pour la page. La musique est jouée
+  // en boucle : une minute et demie suffit, et la régénérer à chaque frappe
+  // dans un titre n'aurait aucun sens.
+  //
+  // Chaque adresse `blob:` est créée et révoquée dans le même effet : révoquée
+  // ailleurs (dans le nettoyage d'un autre effet), elle l'était aussi au
+  // double montage du mode strict de React, et l'export ne trouvait plus
+  // l'audio.
+  const [audio, setAudio] = useState<{
+    musicUrl: string;
+    sfx: NonNullable<ClassVideoProps["sfx"]>;
+  } | null>(null);
   useEffect(() => {
-    if (!wantsGeneratedMusic || musicUrl) return;
+    let created: string[] = [];
     // Laisse la page s'afficher avant ce calcul d'une seconde environ.
     const timer = window.setTimeout(() => {
-      setMusicUrl(wavToBlobUrl(renderMusicWav({ seconds: 96, seed: 7 })));
+      const next = {
+        musicUrl: wavToBlobUrl(renderMusicWav({ seconds: 96, seed: 7 })),
+        sfx: {
+          pop: wavToBlobUrl(renderSfxWav("pop")),
+          whoosh: wavToBlobUrl(renderSfxWav("whoosh")),
+          sparkle: wavToBlobUrl(renderSfxWav("sparkle")),
+        },
+      };
+      created = [next.musicUrl, ...Object.values(next.sfx)];
+      setAudio(next);
     }, 50);
-    return () => window.clearTimeout(timer);
-  }, [wantsGeneratedMusic, musicUrl]);
-
-  useEffect(
-    () => () => {
-      if (sfx) Object.values(sfx).forEach((url) => URL.revokeObjectURL(url));
-    },
-    [sfx],
-  );
-  useEffect(
-    () => () => {
-      if (musicUrl) URL.revokeObjectURL(musicUrl);
-    },
-    [musicUrl],
-  );
+    return () => {
+      window.clearTimeout(timer);
+      created.forEach((url) => URL.revokeObjectURL(url));
+      setAudio(null);
+    };
+  }, []);
+  const musicUrl = audio?.musicUrl ?? null;
+  const sfx = audio?.sfx ?? null;
 
   const props = useMemo(
     () => buildClassVideoProps(content, source, { generatedMusicUrl: musicUrl, sfx }),
@@ -195,11 +195,12 @@ export function ClassVideoPreview({
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <p className="mr-auto text-sm font-semibold text-slate-600">
-          {Math.floor(seconds / 60)} min {String(Math.round(seconds % 60)).padStart(2, "0")} s · 1080p
+          {Math.floor(Math.round(seconds) / 60)} min{" "}
+          {String(Math.round(seconds) % 60).padStart(2, "0")} s · 1080p
         </p>
         {exportState.status === "idle" && (
-          <Button type="button" icon={Film} onClick={exportVideo}>
-            Exporter la vidéo
+          <Button type="button" icon={Film} disabled={!audio} onClick={exportVideo}>
+            {audio ? "Exporter la vidéo" : "Préparation du son…"}
           </Button>
         )}
         {exportState.status === "rendering" && (
@@ -247,7 +248,7 @@ export function ClassVideoPreview({
       )}
       <p className="text-xs leading-5 text-slate-500">
         L’export se fait dans votre navigateur (Chrome ou Edge recommandés) :
-        gardez cet onglet ouvert pendant la préparation, compter une à deux
+        gardez cet onglet ouvert pendant la préparation, qui prend quelques
         minutes.
       </p>
     </div>
