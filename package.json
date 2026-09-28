@@ -34,7 +34,10 @@
     "react-dom": "19.0.0",
     "remotion": "4.0.529",
     "resend": "^6.18.0",
+    "seek-bzip": "2.0.0",
     "sharp": "^0.34.5",
+    "sherpa-onnx-node": "1.13.8",
+    "tar-stream": "3.2.1",
     "web-push": "^3.6.7",
     "zod": "^3.24.1"
   },
@@ -46,6 +49,7 @@
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "@types/tar-stream": "3.1.4",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.10",

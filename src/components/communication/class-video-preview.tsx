@@ -132,7 +132,7 @@ export function ClassVideoPreview({
       const format = await pickOutputFormat();
       const result = await renderMediaOnWeb({
         composition: {
-          id: "video-classes",
+          id: "video-parents",
           component: ClassVideo,
           durationInFrames: timeline.durationInFrames,
           fps: CLASS_VIDEO_FPS,
@@ -157,7 +157,7 @@ export function ClassVideoPreview({
       setExportState({
         status: "done",
         url: URL.createObjectURL(blob),
-        filename: `video-apel-classes.${format.extension}`,
+        filename: `video-apel-parents.${format.extension}`,
         sizeMb: blob.size / 1024 / 1024,
       });
     } catch (error) {

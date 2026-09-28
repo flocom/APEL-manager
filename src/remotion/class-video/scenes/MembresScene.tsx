@@ -1,209 +1,129 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { useCurrentFrame } from "remotion";
 
-import { lighten, readableOn, tooClose, WHITE } from "../colors";
-import { InitialsAvatar, Polaroid, SafeImg } from "../components/media";
-import { bob, pop } from "../components/motion";
-import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
-import { fitFontSize, frenchSpaces, KineticTitle, Pill } from "../components/text";
+import { contrastRatio, mix, WHITE } from "../colors";
+import { initials, SafeImg } from "../components/media";
+import { enter } from "../components/motion";
+import { SceneBackdrop, type SceneProps } from "../components/scene";
+import { BODY_CHAR, fitFontSize, TextBlock } from "../components/text";
 import { MEMBRES_MAX } from "../timeline";
 import { FONT_FAMILY, sceneTheme } from "../theme";
 import type { ClassVideoMember } from "../types";
+import { MARGIN_X, TextColumn } from "./common";
 
 type Slot = { member: ClassVideoMember | null; extra: number };
 
 /**
- * Membres : jusqu'à 4 en polaroïds, au-delà en bulles rondes sur deux rangées.
- * Au-delà de 12, la dernière bulle affiche « +N ».
+ * L'équipe : portraits ronds (photo ou initiales sur une teinte douce),
+ * prénom et rôle. Jusqu'à trois à côté du titre, au-delà en grille sous le
+ * titre ; après 12, la dernière pastille affiche « +N ».
  */
-export const MembresScene: React.FC<SceneProps> = ({ scene, video, index }) => {
+export const MembresScene: React.FC<SceneProps> = ({ scene, video }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "membres");
   const all = video.members;
   const slots: Slot[] =
     all.length > MEMBRES_MAX
       ? [...all.slice(0, MEMBRES_MAX - 1).map((m) => ({ member: m, extra: 0 })), { member: null, extra: all.length - (MEMBRES_MAX - 1) }]
       : all.map((m) => ({ member: m, extra: 0 }));
-  const avatarColors = [video.palette.secondary, video.palette.accent, video.palette.primary].filter(
-    (c) => !tooClose(c, WHITE),
+  const tints = [video.palette.primary, video.palette.secondary, video.palette.accent].map((col) =>
+    contrastRatio(col, WHITE) >= 3 ? col : mix(col, video.palette.dark, 0.45),
   );
-  const rolePillBg = theme.pop;
-  const rolePillInk = readableOn(rolePillBg, video.palette.dark);
-  const stagger = Math.max(3, Math.min(7, Math.round(40 / Math.max(1, slots.length))));
-  const startOf = (i: number) => 16 + i * stagger;
-  const usePolaroids = slots.length <= 4;
+  const side = slots.length <= 3;
+  const perRow = side ? slots.length : slots.length <= 4 ? slots.length : slots.length <= 8 ? Math.ceil(slots.length / 2) : 6;
+  const avatar = side ? (slots.length <= 2 ? 270 : 230) : perRow <= 4 ? (slots.length <= 4 ? 230 : 180) : 150;
+  const colW = side ? avatar + 90 : Math.min(360, 1640 / perRow);
+  const startOf = (i: number) => 18 + i * Math.max(3, Math.min(8, Math.round(36 / Math.max(1, slots.length))));
 
-  const avatarFor = (slot: Slot, i: number, size: number) =>
-    slot.member ? (
-      slot.member.url ? (
-        <SafeImg src={slot.member.url} fallback={lighten(video.palette.primary, 0.5)} />
-      ) : (
-        <InitialsAvatar
-          name={slot.member.name}
-          color={avatarColors[i % Math.max(1, avatarColors.length)] ?? video.palette.secondary}
-          dark={video.palette.dark}
-          size={size}
-        />
-      )
-    ) : (
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: theme.pop,
-          color: readableOn(theme.pop, video.palette.dark),
-          fontFamily: FONT_FAMILY,
-          fontWeight: 900,
-          fontSize: size * 0.34,
-        }}
-      >
-        +{slot.extra}
-      </div>
-    );
-
-  const rolePill = (role: string, size: number, delay: number) =>
-    role.trim() ? (
-      <Pill text={role} bg={rolePillBg} color={rolePillInk} delay={delay} fontSize={size} maxWidth={size * 11} />
-    ) : null;
-
-  let content: React.ReactNode;
-  if (usePolaroids) {
-    const w = slots.length <= 2 ? 440 : slots.length === 3 ? 400 : 360;
-    const h = w * 1.2;
-    content = (
-      <div style={{ display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "flex-start", gap: 70 }}>
-        {slots.map((slot, i) => {
-          const p = pop(frame, fps, startOf(i), 140, 11);
-          const rot = [-4, 3, -2, 4][i % 4];
-          return (
+  const portrait = (slot: Slot, i: number) => {
+    const p = enter(frame, startOf(i), 22);
+    const color = tints[i % tints.length];
+    const name = slot.member?.name.trim() ?? "";
+    const role = slot.member?.role.trim() ?? "";
+    const nameSize = fitFontSize(name, colW - 10, 1, avatar * 0.17 + 4, 22, 0.6);
+    return (
+      <div key={i} style={{ width: colW, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, opacity: p, transform: `translateY(${(1 - p) * 30}px)` }}>
+        <div
+          style={{
+            position: "relative",
+            width: avatar,
+            height: avatar,
+            borderRadius: "50%",
+            overflow: "hidden",
+            border: `${Math.round(avatar * 0.035)}px solid #ffffff`,
+            boxSizing: "border-box",
+            boxShadow: "0 16px 36px rgba(15, 25, 40, 0.14)",
+            background: mix(color, WHITE, 0.84),
+            marginBottom: 14,
+          }}
+        >
+          {slot.member?.url ? (
+            <SafeImg src={slot.member.url} fallback={mix(color, WHITE, 0.7)} />
+          ) : (
             <div
-              key={i}
               style={{
-                width: w,
+                position: "absolute",
+                inset: 0,
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
-                gap: 22,
-                transform: `translateY(${(1 - p) * 300 + bob(frame, fps, 7, 3, i * 1.3)}px) rotate(${rot * p + (1 - p) * rot * 4}deg) scale(${0.5 + 0.5 * p})`,
-                opacity: Math.min(1, p * 2),
+                justifyContent: "center",
+                fontFamily: FONT_FAMILY,
+                fontWeight: 700,
+                fontSize: avatar * (slot.member ? 0.34 : 0.28),
+                letterSpacing: "0.01em",
+                color,
               }}
             >
-              <div style={{ position: "relative", width: w, height: h }}>
-                <Polaroid
-                  width={w}
-                  height={h}
-                  tint={video.palette.secondary}
-                  ink={video.palette.dark}
-                  caption={slot.member ? frenchSpaces(slot.member.name) : ""}
-                  captionSize={fitFontSize(slot.member?.name ?? "", w * 0.86, 1, 48, 28)}
-                >
-                  {avatarFor(slot, i, w)}
-                </Polaroid>
-              </div>
-              {slot.member ? rolePill(slot.member.role, 36, startOf(i) + 8) : null}
+              {slot.member ? initials(slot.member.name) : `+${slot.extra}`}
             </div>
-          );
-        })}
+          )}
+        </div>
+        {name ? (
+          <div style={{ fontFamily: FONT_FAMILY, fontWeight: 700, fontSize: nameSize, color: theme.ink, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{name}</div>
+        ) : null}
+        {role ? (
+          <div
+            style={{
+              fontFamily: FONT_FAMILY,
+              fontWeight: 500,
+              fontSize: fitFontSize(role, colW - 10, 1, Math.max(24, avatar * 0.12 + 6), 18, BODY_CHAR),
+              color: theme.muted,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {role}
+          </div>
+        ) : null}
       </div>
     );
-  } else {
-    const perRow = Math.ceil(slots.length / 2);
-    const bubble = perRow <= 3 ? 250 : perRow === 4 ? 240 : 225;
-    const colW = bubble + (perRow <= 3 ? 110 : perRow === 4 ? 70 : 44);
-    const rows = [slots.slice(0, perRow), slots.slice(perRow)];
-    content = (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: perRow <= 4 ? 30 : 36 }}>
-        {rows.map((row, r) => (
-          <div key={r} style={{ display: "flex", flexDirection: "row", justifyContent: "center", gap: 26 }}>
-            {row.map((slot, j) => {
-              const i = r * perRow + j;
-              const p = pop(frame, fps, startOf(i), 170, 10);
-              const name = slot.member?.name ?? "";
-              return (
-                <div
-                  key={i}
-                  style={{
-                    width: colW,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    transform: `translateY(${bob(frame, fps, 6, 2.6, i * 0.9)}px) scale(${p})`,
-                    opacity: Math.min(1, p * 2),
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "relative",
-                      width: bubble,
-                      height: bubble,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      border: "10px solid #ffffff",
-                      boxSizing: "border-box",
-                      boxShadow: "0 14px 28px rgba(0, 0, 0, 0.25)",
-                      background: "#ffffff",
-                    }}
-                  >
-                    {avatarFor(slot, i, bubble)}
-                  </div>
-                  {name ? (
-                    <div
-                      style={{
-                        fontFamily: FONT_FAMILY,
-                        fontWeight: 900,
-                        fontSize: fitFontSize(name, colW, 1, bubble * 0.17, 24, 0.6),
-                        color: theme.ink,
-                        textShadow: `0 3px 0 ${theme.inkShadow}`,
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {name}
-                    </div>
-                  ) : null}
-                  {slot.member?.role.trim() ? (
-                    <div
-                      style={{
-                        padding: "6px 18px",
-                        borderRadius: 999,
-                        background: rolePillBg,
-                        color: rolePillInk,
-                        fontFamily: FONT_FAMILY,
-                        fontWeight: 800,
-                        fontSize: fitFontSize(slot.member.role, colW - 36, 1, bubble * 0.13, 20, 0.55),
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {slot.member.role}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+  };
+
+  if (side) {
+    return (
+      <SceneBackdrop theme={theme} blob={{ x: 1330, y: 540, r: 420 }}>
+        <TextColumn width={640}>
+          <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={640} maxLines={3} delay={4} />
+        </TextColumn>
+        <div style={{ position: "absolute", left: 860, right: MARGIN_X - 40, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
+          {slots.map(portrait)}
+        </div>
+      </SceneBackdrop>
     );
   }
 
+  const rows = [slots.slice(0, perRow), slots.slice(perRow)].filter((r) => r.length > 0);
   return (
-    <SceneBackdrop theme={theme} seed={601 + index} shapeCount={10}>
-      <AbsoluteFill style={{ alignItems: "center", paddingTop: 50 }}>
-        <KineticTitle text={scene.title} color={theme.ink} shadow={theme.inkShadow} maxWidth={1600} maxSize={100} maxLines={1} delay={2} />
-        <div style={{ height: 16 }} />
-        <Pill text={scene.subtitle} bg={theme.pill} color={theme.pillInk} delay={10} fontSize={40} />
-      </AbsoluteFill>
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", paddingTop: usePolaroids ? 190 : 250 }}>
-        {content}
-      </AbsoluteFill>
-      {slots.slice(0, 6).map((_, i) => (
-        <Sfx key={i} src={video.sfx?.pop} at={startOf(i) + 1} volume={0.32} />
-      ))}
+    <SceneBackdrop theme={theme}>
+      <div style={{ position: "absolute", left: MARGIN_X, top: 100, width: 1640 }}>
+        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={1400} maxLines={1} titleSize={96} subtitleSize={42} gap={22} delay={4} />
+      </div>
+      <div style={{ position: "absolute", left: MARGIN_X, right: MARGIN_X, top: 400, bottom: 50, display: "flex", flexDirection: "column", justifyContent: "center", gap: rows.length > 1 ? 34 : 0 }}>
+        {rows.map((row, r) => (
+          <div key={r} style={{ display: "flex", justifyContent: "center" }}>
+            {row.map((slot, j) => portrait(slot, r * perRow + j))}
+          </div>
+        ))}
+      </div>
     </SceneBackdrop>
   );
 };

@@ -9,9 +9,12 @@ import {
 } from "@/remotion/class-video/types";
 
 /**
- * La vidéo présentée aux classes : ce que le bureau enregistre, ce que
- * l'application sait déjà de l'association, et l'assemblage des deux en props
- * pour la composition Remotion.
+ * La vidéo de présentation de l'APEL aux parents : ce que le bureau
+ * enregistre, ce que l'application sait déjà de l'association, et l'assemblage
+ * des deux en props pour la composition Remotion.
+ *
+ * Elle s'appelait d'abord « vidéo des classes » ; `video_classes` est resté
+ * comme clé en base pour ne pas perdre ce qui a déjà été enregistré.
  *
  * Rien n'est à écrire pour obtenir une première vidéo : les textes par défaut
  * sont tirés des données (nom de l'école, événements de l'année, nombre de
@@ -31,12 +34,12 @@ export const mediaUrlSchema = z
 
 export const SCENE_LABELS: Record<ClassVideoSceneId, string> = {
   intro: "Ouverture",
-  apel: "L'APEL, c'est quoi ?",
+  apel: "Qui sommes-nous ?",
   vie: "Donner vie à l'école",
   sourire: "Faire sourire",
   souvenirs: "Créer des souvenirs",
   rassembler: "Rassembler",
-  bienfaits: "Ce que l'APEL a offert",
+  bienfaits: "Concrètement",
   chiffres: "L'APEL en chiffres",
   membres: "L'équipe",
   fin: "Conclusion",
@@ -50,6 +53,8 @@ const voiceSchema = z.object({
    * voix n'y correspond plus et propose de la régénérer.
    */
   text: z.string().max(600),
+  /** Voix de synthèse, ou voix d'un parent enregistrée dans l'écran. */
+  source: z.enum(["synthese", "enregistrement"]).default("synthese"),
 });
 
 const sceneSchema = z.object({
@@ -122,6 +127,8 @@ export type ClassVideoSource = {
   palette: VideoPalette;
   /** Adresse de la page « Nous rejoindre », sans schéma : « apel-ndf.fr/rejoindre ». */
   joinLabel: string;
+  /** Cotisation publiée, prête à afficher (« 23 € par famille »), ou null. */
+  membershipFee: string | null;
   /** Événements publiés de l'année scolaire en cours, dans l'ordre du calendrier. */
   recentEvents: string[];
   /** Chiffres assez parlants pour être montrés (les trop petits sont écartés). */
@@ -141,7 +148,11 @@ function minusculeInitiale(titre: string): string {
   return titre.charAt(0).toLocaleLowerCase("fr-FR") + titre.slice(1);
 }
 
-/** Textes par défaut de chaque scène, écrits pour des enfants de 3 à 11 ans. */
+/**
+ * Textes par défaut de chaque scène, écrits pour des parents : on les
+ * vouvoie, on reste concret et sobre. La vidéo leur dit ce que fait l'APEL et
+ * leur donne envie d'adhérer ou de donner un coup de main.
+ */
 export function defaultSceneTexts(
   source: ClassVideoSource,
 ): Record<ClassVideoSceneId, Omit<ClassVideoSceneContent, "voice" | "enabled">> {
@@ -150,72 +161,73 @@ export function defaultSceneTexts(
   const figure = (key: ClassVideoSource["figures"][number]["key"]) =>
     source.figures.find((f) => f.key === key)?.value ?? 0;
   const chiffres = [
-    figure("familles") > 0 ? `${figure("familles")} familles` : null,
+    figure("familles") > 0 ? `${figure("familles")} familles adhérentes` : null,
     figure("benevoles") > 0 ? `${figure("benevoles")} bénévoles` : null,
     figure("evenements") > 0 ? `${figure("evenements")} rendez-vous` : null,
   ].filter((v): v is string => v !== null);
 
   return {
     intro: {
-      title: "Bonjour les enfants !",
+      title: "Bienvenue à l'APEL",
       subtitle: source.associationName,
-      voiceText: `Bonjour à tous ! Aujourd'hui, on vous présente l'APEL, l'association des parents d'élèves ${ecole}.`,
+      voiceText: `Chers parents, bienvenue. Voici l'APEL, l'association des parents d'élèves ${ecole}.`,
     },
     apel: {
-      title: "L'APEL, c'est quoi ?",
-      subtitle: "Des parents qui font vivre l'école",
+      title: "L'APEL, c'est vous",
+      subtitle: "Une association de parents bénévoles",
       voiceText:
-        "L'APEL, ce sont des parents, comme vos papas et vos mamans, qui donnent un peu de leur temps pour rendre l'école encore plus belle.",
+        "L'APEL réunit des parents bénévoles qui, chacun selon ses disponibilités, s'engagent pour la vie de l'école et le bien-être des enfants.",
     },
     vie: {
       title: "Donner vie à l'école",
-      subtitle: "Des moments joyeux toute l'année",
+      subtitle: "Des rendez-vous toute l'année",
       voiceText:
         evenements.length > 0
-          ? `Toute l'année, on prépare des moments joyeux : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien d'autres !`
-          : "Toute l'année, on organise des fêtes et des moments joyeux à l'école !",
+          ? `Tout au long de l'année, nous organisons des temps forts : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien d'autres.`
+          : "Tout au long de l'année, nous organisons des temps forts qui font vivre l'école.",
     },
     sourire: {
       title: "Faire sourire les enfants",
-      subtitle: "C'est notre plus belle récompense",
-      voiceText: "Notre plus belle récompense, c'est de voir vos sourires !",
+      subtitle: "Goûters, fêtes et surprises",
+      voiceText:
+        "Goûters, fêtes, surprises : notre première motivation, ce sont les sourires des enfants.",
     },
     souvenirs: {
       title: "Créer des souvenirs",
-      subtitle: "Sorties, voyages, spectacles",
+      subtitle: "Sorties, voyages et projets financés",
       voiceText:
-        "Avec l'argent récolté, on aide à financer des sorties, des voyages et du matériel, pour que vous gardiez de merveilleux souvenirs.",
+        "Les bénéfices de nos actions aident à financer des sorties, des voyages et du matériel pour les classes : autant de souvenirs pour vos enfants.",
     },
     rassembler: {
       title: "Rassembler",
-      subtitle: "Enfants, parents et enseignants",
+      subtitle: "Familles et équipe éducative",
       voiceText:
-        "Et surtout, l'APEL rassemble les enfants, les parents et toute l'équipe de l'école.",
+        "L'APEL fait aussi le lien entre les familles et l'équipe éducative, et offre l'occasion de se rencontrer entre parents.",
     },
     bienfaits: {
-      title: "Grâce à l'APEL",
-      subtitle: "Ce que nous avons réalisé ensemble",
-      voiceText: "Regardez tout ce que nous avons pu réaliser ensemble !",
+      title: "Concrètement",
+      subtitle: "Ce que nous réalisons ensemble",
+      voiceText: "Voici quelques exemples de ce que votre participation rend possible.",
     },
     chiffres: {
       title: "L'APEL en chiffres",
       subtitle: "",
       voiceText:
         chiffres.length > 0
-          ? `Cette année, l'APEL, c'est ${listeFrancaise(chiffres)} !`
-          : "Chaque année, de plus en plus de familles nous rejoignent !",
+          ? `Cette année, l'APEL, c'est déjà ${listeFrancaise(chiffres)}.`
+          : "Chaque année, de nouvelles familles nous rejoignent.",
     },
     membres: {
-      title: "L'équipe de l'APEL",
+      title: "L'équipe",
       subtitle: "Des parents à votre écoute",
       voiceText:
-        "Voici quelques parents de l'APEL. Si vous nous croisez, n'hésitez pas à venir nous dire bonjour !",
+        "Voici les parents qui animent l'association. N'hésitez pas à venir nous rencontrer : nous sommes à votre écoute.",
     },
     fin: {
-      title: "Merci !",
-      subtitle: "Et si vos parents nous rejoignaient ?",
+      title: "Rejoignez-nous",
+      subtitle: "Adhérez ou donnez un coup de main",
       voiceText:
-        "Merci à tous ! Parlez-en à vos parents : l'APEL, c'est aussi avec eux. À très bientôt !",
+        "Adhérer, c'est soutenir nos actions ; donner un peu de temps, c'est les faire vivre. Nous comptons sur vous !",
     },
   };
 }
@@ -302,6 +314,7 @@ export function buildClassVideoProps(
     figures,
     members,
     joinLabel: source.joinLabel,
+    membershipFee: source.membershipFee,
     music,
     sfx: content.sfx ? audio.sfx : null,
   };

@@ -32,6 +32,11 @@ import {
   type ClassVideoSceneContent,
   type ClassVideoSource,
 } from "@/lib/communication/class-video";
+import {
+  DEFAULT_INTEGRATED_VOICE,
+  INTEGRATED_VOICES,
+  isIntegratedVoice,
+} from "@/lib/communication/voices";
 import { cn } from "@/lib/utils";
 import {
   CLASS_VIDEO_SCENE_IDS,
@@ -39,6 +44,7 @@ import {
 } from "@/remotion/class-video/types";
 
 import { audioDuration, uploadMedia } from "./media-upload";
+import { VoiceRecorder } from "./voice-recorder";
 
 /**
  * Remotion (lecteur et export) ne vit que dans le navigateur : il manipule le
@@ -58,10 +64,11 @@ const ClassVideoPreview = dynamic(
 );
 
 export type TtsSettingsView = {
-  provider: "openai" | "elevenlabs" | null;
+  provider: "piper" | "openai" | "elevenlabs";
   keyConfigured: boolean;
   keyLastFour: string | null;
   voice: string | null;
+  integratedAvailable: boolean;
   ready: boolean;
 };
 
@@ -178,9 +185,41 @@ export function ClassVideoEditor({
       ...base,
       scenes: {
         ...base.scenes,
-        [id]: { ...current, voice: { url, durationInSeconds, text: current.voiceText } },
+        [id]: {
+          ...current,
+          voice: { url, durationInSeconds, text: current.voiceText, source: "synthese" as const },
+        },
       },
     };
+  }
+
+  /** Garde la voix enregistrée par un parent pour une scène, puis enregistre. */
+  async function keepRecording(id: ClassVideoSceneId, file: File) {
+    setVoiceBusy(id);
+    try {
+      const url = await uploadMedia(file);
+      const durationInSeconds = await audioDuration(url);
+      const current = resolvedScene(id, content, source);
+      const next: ClassVideoContent = {
+        ...content,
+        scenes: {
+          ...content.scenes,
+          [id]: {
+            ...current,
+            voice: {
+              url,
+              durationInSeconds,
+              text: current.voiceText,
+              source: "enregistrement",
+            },
+          },
+        },
+      };
+      setContent(next);
+      await persist(next, "Voix enregistrée.");
+    } finally {
+      setVoiceBusy(null);
+    }
   }
 
   async function generateOne(id: ClassVideoSceneId) {
@@ -354,7 +393,11 @@ export function ClassVideoEditor({
                       </span>
                       <span className="block truncate text-xs text-slate-500">{s.title}</span>
                     </span>
-                    {voiceState === "ok" && <Badge color="green" icon={Check}>Voix</Badge>}
+                    {voiceState === "ok" && (
+                      <Badge color="green" icon={Check}>
+                        {s.voice?.source === "enregistrement" ? "Voix enregistrée" : "Voix"}
+                      </Badge>
+                    )}
                     {voiceState === "stale" && <Badge color="amber">Voix à refaire</Badge>}
                   </summary>
                   <div className="space-y-3 border-t-2 border-slate-100 px-4 py-4">
@@ -406,8 +449,13 @@ export function ClassVideoEditor({
                         loading={voiceBusy === id}
                         onClick={() => generateOne(id)}
                       >
-                        {s.voice ? "Régénérer la voix" : "Générer la voix"}
+                        {s.voice?.source === "synthese" ? "Régénérer la voix" : "Voix de synthèse"}
                       </Button>
+                      <VoiceRecorder
+                        text={s.voiceText}
+                        disabled={voiceBusy !== null}
+                        onKeep={(file) => keepRecording(id, file)}
+                      />
                       {s.voice && voiceIsCurrent(s) && (
                         <audio controls src={s.voice.url} className="h-9 max-w-full" />
                       )}
@@ -426,7 +474,7 @@ export function ClassVideoEditor({
 
         {/* Photos des bienfaits -------------------------------------- */}
         <Card className="p-5 sm:p-6">
-          <SectionTitle icon={ImagePlus} title="Ce que l’APEL a offert">
+          <SectionTitle icon={ImagePlus} title="Ce que l’APEL finance">
             Photos des achats, sorties, voyages ou spectacles financés, avec
             une légende courte. Sans photo, la vidéo montre les événements de
             l’année.
@@ -488,8 +536,8 @@ export function ClassVideoEditor({
         {/* Équipe ---------------------------------------------------- */}
         <Card className="p-5 sm:p-6">
           <SectionTitle icon={Users} title="L’équipe">
-            Les parents que les enfants pourront reconnaître. Le prénom suffit ;
-            sans photo, la vidéo dessine une bulle à l’initiale.
+            Les parents qui animent l’association, pour que les familles
+            sachent à qui s’adresser. Sans photo, la vidéo affiche l’initiale.
           </SectionTitle>
           {content.members.length > 0 && (
             <ul className="mb-4 space-y-3">
@@ -691,7 +739,9 @@ export function ClassVideoEditor({
             </Button>
             {!tts.ready && (
               <p className="w-full text-xs text-slate-500">
-                Configurez la voix off (en bas de page) pour générer les voix.
+                La voix de synthèse n’est pas prête : voyez « Voix off » en bas
+                de page. Vous pouvez aussi enregistrer votre voix, scène par
+                scène.
               </p>
             )}
           </Card>
@@ -701,6 +751,12 @@ export function ClassVideoEditor({
   );
 }
 
+const DEFAULT_VOICE: Record<TtsSettingsView["provider"], string> = {
+  piper: DEFAULT_INTEGRATED_VOICE,
+  openai: "coral",
+  elevenlabs: "",
+};
+
 function VoiceSettingsCard({
   tts,
   onSaved,
@@ -709,17 +765,18 @@ function VoiceSettingsCard({
   onSaved: (next: TtsSettingsView) => void;
 }) {
   const toast = useToast();
-  const [provider, setProvider] = useState<TtsSettingsView["provider"]>(tts.provider ?? "openai");
+  const [provider, setProvider] = useState<TtsSettingsView["provider"]>(tts.provider);
   const [apiKey, setApiKey] = useState("");
-  const [voice, setVoice] = useState(tts.voice ?? (tts.provider === "elevenlabs" ? "" : "coral"));
+  const [voice, setVoice] = useState(tts.voice ?? DEFAULT_VOICE[tts.provider]);
   const [saving, setSaving] = useState(false);
+  const cloud = provider !== "piper";
 
   async function save() {
     setSaving(true);
     try {
       const { tts: next } = await api<{ tts: TtsSettingsView }>("/api/communication/tts", {
         method: "PUT",
-        body: { provider, apiKey: apiKey || null, voice: voice || null },
+        body: { provider, apiKey: cloud ? apiKey || null : null, voice: voice || null },
       });
       onSaved(next);
       setApiKey("");
@@ -734,26 +791,48 @@ function VoiceSettingsCard({
   return (
     <Card className="p-5 sm:p-6">
       <SectionTitle icon={KeyRound} title="Voix off">
-        Une voix de synthèse naturelle, en français, lit le texte de chaque
-        scène. Le service est facturé à l’usage par son fournisseur : quelques
-        centimes pour une vidéo entière.
+        La voix intégrée, open source, est gratuite et ne quitte pas votre
+        serveur. Les services en ligne sont plus expressifs, mais facturés à
+        l’usage (quelques centimes par vidéo). Vous pouvez aussi enregistrer
+        votre propre voix, scène par scène.
       </SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Service" htmlFor="tts-provider">
+        <Field label="Voix de synthèse" htmlFor="tts-provider">
           <Select
             id="tts-provider"
-            value={provider ?? "openai"}
+            value={provider}
             onChange={(e) => {
-              const next = e.target.value as "openai" | "elevenlabs";
+              const next = e.target.value as TtsSettingsView["provider"];
               setProvider(next);
-              setVoice(next === "openai" ? "coral" : "");
+              setVoice(DEFAULT_VOICE[next]);
             }}
           >
+            <option value="piper" disabled={!tts.integratedAvailable}>
+              Voix intégrée — open source, gratuite
+            </option>
             <option value="openai">OpenAI (gpt-4o-mini-tts)</option>
             <option value="elevenlabs">ElevenLabs (multilingue v2)</option>
           </Select>
         </Field>
-        {provider === "openai" ? (
+        {provider === "piper" ? (
+          <Field
+            label="Voix"
+            htmlFor="tts-voice"
+            hint={
+              isIntegratedVoice(voice)
+                ? `Voix Piper — ${INTEGRATED_VOICES[voice].credit}.`
+                : undefined
+            }
+          >
+            <Select id="tts-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
+              {Object.entries(INTEGRATED_VOICES).map(([id, v]) => (
+                <option key={id} value={id}>
+                  {v.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : provider === "openai" ? (
           <Field label="Voix" htmlFor="tts-voice">
             <Select id="tts-voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
               {OPENAI_VOICES.map((v) => (
@@ -772,27 +851,35 @@ function VoiceSettingsCard({
             <Input id="tts-voice" value={voice} onChange={(e) => setVoice(e.target.value)} placeholder="Ex. : a5n9pJUnAhX4fn7lx3uo" />
           </Field>
         )}
-        <Field
-          label="Clé d’API"
-          htmlFor="tts-key"
-          className="sm:col-span-2"
-          hint={
-            tts.keyConfigured && tts.provider === provider
-              ? `Clé enregistrée, se terminant par ${tts.keyLastFour}. Laissez vide pour la garder.`
-              : provider === "openai"
-                ? "Créez-la sur platform.openai.com, rubrique API keys. Elle reste chiffrée sur le serveur."
-                : "Créez-la sur elevenlabs.io, rubrique API Keys. Elle reste chiffrée sur le serveur."
-          }
-        >
-          <Input
-            id="tts-key"
-            type="password"
-            autoComplete="off"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={tts.keyConfigured && tts.provider === provider ? "••••••••" : "sk-…"}
-          />
-        </Field>
+        {cloud ? (
+          <Field
+            label="Clé d’API"
+            htmlFor="tts-key"
+            className="sm:col-span-2"
+            hint={
+              tts.keyConfigured && tts.provider === provider
+                ? `Clé enregistrée, se terminant par ${tts.keyLastFour}. Laissez vide pour la garder.`
+                : provider === "openai"
+                  ? "Créez-la sur platform.openai.com, rubrique API keys. Elle reste chiffrée sur le serveur."
+                  : "Créez-la sur elevenlabs.io, rubrique API Keys. Elle reste chiffrée sur le serveur."
+            }
+          >
+            <Input
+              id="tts-key"
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={tts.keyConfigured && tts.provider === provider ? "••••••••" : "sk-…"}
+            />
+          </Field>
+        ) : (
+          <p className="text-xs leading-5 text-slate-500 sm:col-span-2">
+            {tts.integratedAvailable
+              ? "Rien à configurer. La première voix générée télécharge le modèle sur le serveur (80 à 90 Mo) : comptez une minute la première fois, une seconde ensuite."
+              : "La voix intégrée ne peut pas tourner sur ce serveur (module natif absent). Choisissez un service en ligne ou enregistrez votre voix."}
+          </p>
+        )}
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button type="button" variant="secondary" loading={saving} onClick={save}>

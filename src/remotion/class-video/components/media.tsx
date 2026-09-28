@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Img, useCurrentFrame } from "remotion";
 
-import { darken, lighten, readableOn, withAlpha } from "../colors";
+import { readableOn } from "../colors";
 import { FONT_FAMILY } from "../theme";
 
 /**
- * Photos : cadre polaroïd, effet Ken Burns, avatar à initiales. Les images
+ * Photos : cadre sobre, effet Ken Burns, avatar à initiales. Les images
  * acceptent n'importe quel format (objectFit: cover) et une image cassée
  * n'interrompt jamais l'export : on dessine un aplat à la place.
  */
@@ -47,14 +47,14 @@ export const KenBurns: React.FC<{
     [-0.6, -0.8],
   ];
   const [dx, dy] = dirs[((direction % dirs.length) + dirs.length) % dirs.length];
-  const scale = 1.06 + 0.12 * t;
+  const scale = 1.04 + 0.08 * t;
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
       <div
         style={{
           position: "absolute",
           inset: 0,
-          transform: `scale(${scale}) translate(${dx * 2.2 * t}%, ${dy * 2.2 * t}%)`,
+          transform: `scale(${scale}) translate(${dx * 1.4 * t}%, ${dy * 1.4 * t}%)`,
         }}
       >
         <SafeImg src={src} fallback={fallback} />
@@ -63,40 +63,21 @@ export const KenBurns: React.FC<{
   );
 };
 
-/** Bout de ruban adhésif translucide posé sur un cadre. */
-export const Tape: React.FC<{ tint: string; width?: number; rotate?: number; style?: React.CSSProperties }> = ({
-  tint,
-  width = 180,
-  rotate = -4,
-  style,
-}) => (
-  <div
-    style={{
-      position: "absolute",
-      width,
-      height: width * 0.28,
-      background: `linear-gradient(90deg, ${withAlpha(lighten(tint, 0.55), 0.78)}, ${withAlpha(lighten(tint, 0.7), 0.7)})`,
-      boxShadow: "0 2px 6px rgba(0, 0, 0, 0.12)",
-      transform: `rotate(${rotate}deg)`,
-      ...style,
-    }}
-  />
-);
-
-/** Cadre polaroïd : bord blanc, légende manuscrite en bas, ruban en haut. */
-export const Polaroid: React.FC<{
+/**
+ * Cadre photo sobre : carte blanche arrondie, ombre douce, photo en retrait
+ * et légende sur la carte.
+ */
+export const PhotoFrame: React.FC<{
   width: number;
   height: number;
-  tint: string;
   ink: string;
   caption?: string;
   captionSize?: number;
   children: React.ReactNode;
   style?: React.CSSProperties;
-  tape?: boolean;
-}> = ({ width, height, tint, ink, caption, captionSize = 40, children, style, tape = true }) => {
-  const border = Math.round(width * 0.045);
-  const bottom = caption ? Math.round(captionSize * 2.1) : border * 2.4;
+}> = ({ width, height, ink, caption, captionSize = 40, children, style }) => {
+  const pad = 16;
+  const band = caption ? Math.round(captionSize * 2.3) : 0;
   return (
     <div
       style={{
@@ -104,21 +85,21 @@ export const Polaroid: React.FC<{
         width,
         height,
         background: "#ffffff",
-        borderRadius: 10,
-        boxShadow: "0 22px 44px rgba(0, 0, 0, 0.28)",
+        borderRadius: 30,
+        boxShadow: "0 30px 60px rgba(15, 25, 40, 0.16), 0 4px 12px rgba(15, 25, 40, 0.08)",
         ...style,
       }}
     >
       <div
         style={{
           position: "absolute",
-          left: border,
-          top: border,
-          right: border,
-          bottom,
+          left: pad,
+          top: pad,
+          right: pad,
+          bottom: caption ? band : pad,
           overflow: "hidden",
-          borderRadius: 4,
-          background: lighten(tint, 0.6),
+          borderRadius: 18,
+          background: "#e9edf1",
         }}
       >
         {children}
@@ -127,26 +108,24 @@ export const Polaroid: React.FC<{
         <div
           style={{
             position: "absolute",
-            left: border,
-            right: border,
+            left: pad + 14,
+            right: pad + 14,
             bottom: 0,
-            height: bottom,
+            height: band,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
             fontFamily: FONT_FAMILY,
-            fontWeight: 800,
+            fontWeight: 600,
             fontSize: captionSize,
             color: ink,
-            textAlign: "center",
-            lineHeight: 1.05,
+            lineHeight: 1.1,
             overflow: "hidden",
+            whiteSpace: "nowrap",
           }}
         >
           {caption}
         </div>
       ) : null}
-      {tape ? <Tape tint={tint} width={width * 0.34} style={{ left: width * 0.33, top: -width * 0.045 }} /> : null}
     </div>
   );
 };
@@ -180,11 +159,11 @@ export const InitialsAvatar: React.FC<{ name: string; color: string; dark: strin
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: `linear-gradient(145deg, ${lighten(color, 0.18)}, ${darken(color, 0.12)})`,
+        background: color,
         color: ink,
         fontFamily: FONT_FAMILY,
-        fontWeight: 900,
-        fontSize: size * 0.38,
+        fontWeight: 700,
+        fontSize: size * 0.36,
         letterSpacing: "0.02em",
       }}
     >

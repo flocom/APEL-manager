@@ -57,19 +57,31 @@ export async function uploadMedia(file: File): Promise<string> {
   return payload.file.url;
 }
 
-/** Durée d'un fichier audio, lue dans ses métadonnées par le navigateur. */
-export function audioDuration(url: string): Promise<number> {
-  return new Promise((resolve, reject) => {
+/**
+ * Durée d'un fichier audio. Lue dans les métadonnées quand elles la donnent ;
+ * sinon, le fichier est décodé en entier. C'est le cas des enregistrements
+ * WebM de Chrome, dont l'en-tête annonce une durée infinie.
+ */
+export async function audioDuration(url: string): Promise<number> {
+  const fromMetadata = await new Promise<number | null>((resolve) => {
     const audio = new Audio();
     audio.preload = "metadata";
-    audio.onloadedmetadata = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        resolve(audio.duration);
-      } else {
-        reject(new Error("Durée du fichier audio illisible."));
-      }
-    };
-    audio.onerror = () => reject(new Error("Fichier audio illisible."));
+    audio.onloadedmetadata = () =>
+      resolve(Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null);
+    audio.onerror = () => resolve(null);
     audio.src = url;
   });
+  if (fromMetadata !== null) return fromMetadata;
+
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Fichier audio illisible.");
+  const context = new AudioContext();
+  try {
+    const decoded = await context.decodeAudioData(await response.arrayBuffer());
+    return decoded.duration;
+  } catch {
+    throw new Error("Fichier audio illisible.");
+  } finally {
+    void context.close();
+  }
 }

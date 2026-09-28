@@ -1,150 +1,115 @@
 import React from "react";
-import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
-import { darken, lighten, readableOn, tooClose } from "../colors";
-import { Twinkles } from "../components/decor";
+import { contrastRatio, mix, WHITE } from "../colors";
+import { Character, makeCast } from "../components/characters";
 import { BadgeIcon, iconForText } from "../components/illustrations";
-import { bob, pop } from "../components/motion";
-import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
-import { fitFontSize, frenchSpaces, KineticTitle, Pill } from "../components/text";
+import { enter } from "../components/motion";
+import { SceneBackdrop, type SceneProps } from "../components/scene";
+import { BODY_CHAR, fitFontSize, frenchSpaces, TextBlock } from "../components/text";
 import { CHIFFRES_MAX } from "../timeline";
 import { FONT_FAMILY, illuColors, sceneTheme } from "../theme";
+import { MARGIN_X } from "./common";
 
 /** 12500 → « 12 500 » (espace insécable, sans dépendre d'Intl). */
 export function formatFigure(value: number): string {
   const rounded = Math.round(Math.max(0, value));
-  return String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-const COUNT_SECONDS = 1.7;
+const COUNT_SECONDS = 1.8;
+const AREA = { x: 750, w: 1050, top: 250, h: 620 };
 
-export const ChiffresScene: React.FC<SceneProps> = ({ scene, video, index }) => {
+/** Chiffres clés : cartes sobres, comptage qui ralentit, un papa les présente. */
+export const ChiffresScene: React.FC<SceneProps> = ({ scene, video }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "chiffres");
-  const colors = illuColors(video.palette);
+  const c = illuColors(video.palette);
+  const cast = makeCast(c, theme.bold ? theme.bg : undefined);
   const figures = video.figures.slice(0, CHIFFRES_MAX);
-  const circle = figures.length <= 2 ? 460 : 420;
-  const badgeColors = [video.palette.primary, video.palette.secondary, video.palette.accent, video.palette.dark].filter(
-    (c) => !tooClose(c, theme.bg),
+  const n = Math.max(1, figures.length);
+  const gap = 32;
+  const cardW = (AREA.w - gap * (n - 1)) / n;
+  const cardH = n === 3 ? 440 : 470;
+  const startOf = (i: number) => 22 + i * 10;
+  // Chiffres tous dans la même couleur lisible ; la palette varie sur les pictogrammes.
+  const numberColor = contrastRatio(video.palette.primary, WHITE) >= 3 ? video.palette.primary : video.palette.dark;
+  const colors = [video.palette.primary, video.palette.secondary, video.palette.accent].map((col) =>
+    contrastRatio(col, WHITE) >= 2 ? col : mix(col, video.palette.dark, 0.3),
   );
-  const startOf = (i: number) => 18 + i * 12;
-  const countEnd = startOf(figures.length - 1) + 6 + Math.round(COUNT_SECONDS * fps);
 
   return (
-    <SceneBackdrop theme={theme} seed={503 + index} shapeCount={12}>
-      <Twinkles color={theme.pop} seed={29} count={9} delay={countEnd - 6} box={{ x: 120, y: 260, w: 1680, h: 640 }} size={54} />
-      <AbsoluteFill style={{ alignItems: "center", paddingTop: 70 }}>
-        <KineticTitle text={scene.title} color={theme.ink} shadow={theme.inkShadow} maxWidth={1600} maxSize={120} maxLines={1} delay={2} />
-        <div style={{ height: 22 }} />
-        <Pill text={scene.subtitle} bg={theme.pill} color={theme.pillInk} delay={10} fontSize={42} />
-      </AbsoluteFill>
-      <AbsoluteFill style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 90, paddingTop: 190 }}>
+    <SceneBackdrop theme={theme} floorY={960}>
+      <div style={{ position: "absolute", left: MARGIN_X, top: 140, width: 580 }}>
+        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={580} maxLines={3} titleSize={100} subtitleSize={42} delay={4} />
+      </div>
+      <Character look={cast.karim} c={c} x={430} y={1015} height={480} gesture="present" gestureAt={30} gaze={0.6} seed={50} appear={6} shadow={theme.shadow} />
+      <div style={{ position: "absolute", left: AREA.x, top: AREA.top, width: AREA.w, height: AREA.h, display: "flex", alignItems: "center", gap }}>
         {figures.map((figure, i) => {
           const start = startOf(i);
-          const p = pop(frame, fps, start, 150, 10);
+          const p = enter(frame, start, 22);
           const count = interpolate(frame, [start + 6, start + 6 + COUNT_SECONDS * fps], [0, figure.value], {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
             easing: Easing.out(Easing.cubic),
           });
-          const done = frame >= start + 6 + COUNT_SECONDS * fps;
-          const bump = done ? 1 + 0.08 * Math.max(0, 1 - (frame - (start + 6 + COUNT_SECONDS * fps)) / 8) : 1;
-          const bg = badgeColors[i % Math.max(1, badgeColors.length)] ?? video.palette.primary;
-          const ink = readableOn(bg, video.palette.dark);
+          const color = colors[i % colors.length];
           const finalText = formatFigure(figure.value);
-          const numberSize = Math.min(170, (circle * 0.78) / (Math.max(2, finalText.length) * 0.62));
+          const numberSize = Math.min(n === 3 ? 150 : 176, (cardW - 90) / (Math.max(2, finalText.length) * 0.62));
+          const label = frenchSpaces(figure.label);
           return (
             <div
               key={i}
               style={{
-                width: circle + 40,
+                width: cardW,
+                height: cardH,
+                borderRadius: 34,
+                background: WHITE,
+                boxShadow: "0 24px 50px rgba(15, 25, 40, 0.10), 0 3px 10px rgba(15, 25, 40, 0.05)",
+                padding: "44px 44px 40px",
+                boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                gap: 34,
-                transform: `translateY(${bob(frame, fps, 8, 2.8, i * 1.7)}px)`,
+                justifyContent: "flex-start",
+                gap: 18,
+                opacity: p,
+                transform: `translateY(${(1 - p) * 40}px)`,
               }}
             >
-              <div
-                style={{
-                  position: "relative",
-                  width: circle,
-                  height: circle,
-                  transform: `scale(${p * bump}) rotate(${(1 - p) * (i % 2 ? 20 : -20)}deg)`,
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: "50%",
-                    background: darken(bg, 0.2),
-                    transform: "translate(0px, 18px)",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: "50%",
-                    background: `linear-gradient(160deg, ${lighten(bg, 0.16)}, ${bg})`,
-                    border: "10px solid #ffffff",
-                    boxSizing: "border-box",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: ink,
-                    fontFamily: FONT_FAMILY,
-                    fontWeight: 900,
-                    fontSize: numberSize,
-                    fontVariantNumeric: "tabular-nums",
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {formatFigure(count)}
-                </div>
-                <div
-                  style={{
-                    position: "absolute",
-                    right: -6,
-                    top: -6,
-                    width: 140,
-                    height: 140,
-                    borderRadius: "50%",
-                    background: "#ffffff",
-                    boxShadow: "0 8px 0 rgba(0, 0, 0, 0.1)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: `scale(${pop(frame, fps, start + 8, 200, 10)})`,
-                  }}
-                >
-                  <BadgeIcon kind={iconForText(figure.label, i)} c={colors} size={96} t={frame / fps} />
-                </div>
+              <div style={{ width: 84, height: 84, borderRadius: "50%", background: mix(color, WHITE, 0.87), display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <BadgeIcon kind={iconForText(figure.label, i)} color={color} accent={video.palette.accent === color ? video.palette.primary : video.palette.accent} size={50} />
               </div>
               <div
                 style={{
-                  maxWidth: circle + 40,
-                  textAlign: "center",
+                  marginTop: 16,
                   fontFamily: FONT_FAMILY,
                   fontWeight: 800,
-                  fontSize: fitFontSize(frenchSpaces(figure.label), circle + 40, 2, 50, 30),
-                  lineHeight: 1.12,
-                  color: theme.ink,
-                  opacity: Math.min(1, pop(frame, fps, start + 10) * 1.5),
+                  fontSize: numberSize,
+                  lineHeight: 1,
+                  letterSpacing: "-0.04em",
+                  color: numberColor,
+                  fontVariantNumeric: "tabular-nums",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {frenchSpaces(figure.label)}
+                {formatFigure(count)}
+              </div>
+              <div
+                style={{
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: 600,
+                  fontSize: fitFontSize(label, cardW - 88, 2, n === 3 ? 36 : 40, 24, BODY_CHAR + 0.04),
+                  lineHeight: 1.2,
+                  color: theme.muted,
+                }}
+              >
+                {label}
               </div>
             </div>
           );
         })}
-      </AbsoluteFill>
-      {figures.map((_, i) => (
-        <Sfx key={i} src={video.sfx?.pop} at={startOf(i) + 1} volume={0.4} />
-      ))}
-      {figures.length > 0 ? <Sfx src={video.sfx?.sparkle} at={countEnd - 2} volume={0.45} /> : null}
+      </div>
     </SceneBackdrop>
   );
 };

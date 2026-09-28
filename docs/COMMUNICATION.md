@@ -1,12 +1,15 @@
 # Supports de communication
 
-Configuration → **Supports de communication**, réservé aux administrateurs.
+Entrée **Supports de communication** du menu, réservée aux administrateurs.
 
-## Vidéo de présentation aux classes
+## Vidéo de présentation aux parents
 
-Une vidéo en motion design (1920 × 1080, 30 images/s) qui présente l’APEL aux
-enfants : donner vie à l’école, faire sourire, créer des souvenirs,
-rassembler. Elle est composée avec [Remotion](https://www.remotion.dev).
+Une vidéo en motion design (1920 × 1080, 30 images/s), à projeter en réunion
+de rentrée ou à partager aux familles, qui présente l’APEL aux parents :
+donner vie à l’école, faire sourire les enfants, créer des souvenirs,
+rassembler — et leur donne envie d’adhérer ou de donner un coup de main. Ton
+sobre, personnages illustrés. Elle est composée avec
+[Remotion](https://www.remotion.dev).
 
 ### Ce qui est prérempli
 
@@ -18,9 +21,11 @@ Rien n’est à écrire pour obtenir une première version :
   blanc, gris) laisse place à une palette par défaut. Voir
   `src/lib/communication/palette.ts`.
 - **Textes** — chaque scène a un titre, un sous-titre et une phrase de voix off
-  rédigés pour des enfants de 3 à 11 ans, à partir du nom de l’école, des
-  événements des douze derniers mois, du nombre de familles adhérentes et de
-  bénévoles. Tout est modifiable, scène par scène.
+  rédigés pour des parents (vouvoiement, ton sobre), à partir du nom de
+  l’école, des événements publiés de l’année scolaire, du nombre de familles
+  adhérentes, de bénévoles et de rendez-vous (un chiffre inférieur à 5 n’est
+  pas montré). La cotisation publiée s’affiche à la fin. Tout est modifiable,
+  scène par scène.
 - **Équipe** — les prénoms des comptes administrateurs et organisateurs peuvent
   être repris d’un clic.
 
@@ -44,21 +49,50 @@ parents pour les enfants).
 
 ### Voix off
 
-Voix de synthèse française naturelle, au choix :
+Trois façons de donner une voix à chaque scène :
 
-| Service | Modèle | Voix |
-|---|---|---|
-| OpenAI | `gpt-4o-mini-tts`, guidé par une consigne de ton (chaleureux, enthousiaste, pour des enfants) | liste proposée à l’écran (« coral » par défaut) |
-| ElevenLabs | `eleven_multilingual_v2` | identifiant d’une voix française de leur bibliothèque |
+1. **Voix intégrée (par défaut)** — des voix françaises open source
+   ([Piper](https://github.com/rhasspy/piper)), calculées sur le processeur du
+   serveur par [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Ni clé
+   d’API, ni service tiers, ni carte graphique : une phrase de dix secondes se
+   calcule en une seconde environ.
 
-La clé d’API se saisit dans l’écran de la vidéo ; elle est chiffrée comme les
-autres secrets de la Configuration et n’est jamais renvoyée au navigateur.
-Chaque génération est facturée par le fournisseur (quelques centimes pour une
-vidéo entière) et plafonnée à 60 par heure et par administrateur. Le serveur
-doit pouvoir joindre `api.openai.com` ou `api.elevenlabs.io`.
+   | Voix | Modèle | Licence du jeu de données |
+   |---|---|---|
+   | Jessica (féminine), Pierre (masculine) | `fr_FR-upmc-medium` | CC-BY-SA 4.0 (UPMC) |
+   | Siwis (féminine) | `fr_FR-siwis-medium` | CC-BY 4.0 (SIWIS) |
 
-Une voix reste attachée au texte qu’elle lit : modifier la phrase d’une scène
-la marque « à refaire ».
+   La voix « tom » du catalogue Piper est écartée : son jeu de données est sous
+   AGPL. Les modèles (80 à 90 Mo chacun) sont téléchargés au premier usage
+   depuis les versions publiées de sherpa-onnx (`github.com`), vérifiés par
+   empreinte SHA-256, puis gardés dans `UPLOADS_DIR/.voix` — sous Docker, le
+   volume des fichiers, qui survit aux mises à jour. `TTS_MODELS_DIR` permet de
+   choisir un autre dossier. La première génération prend donc environ une
+   minute, les suivantes une seconde.
+
+   Le module natif existe pour Linux, macOS et Windows (x64 et arm64). Sur une
+   plateforme sans module (hébergement serverless, par exemple), l’écran le
+   signale et propose les deux autres voies.
+
+2. **Services en ligne**, plus expressifs, facturés à l’usage :
+
+   | Service | Modèle | Voix |
+   |---|---|---|
+   | OpenAI | `gpt-4o-mini-tts`, guidé par une consigne de ton (parent qui s’adresse à d’autres parents) | liste proposée à l’écran (« coral » par défaut) |
+   | ElevenLabs | `eleven_multilingual_v2` | identifiant d’une voix française de leur bibliothèque |
+
+   La clé d’API se saisit dans l’écran de la vidéo ; elle est chiffrée comme les
+   autres secrets de la Configuration et n’est jamais renvoyée au navigateur.
+   Le serveur doit pouvoir joindre `api.openai.com` ou `api.elevenlabs.io`.
+
+3. **Enregistrement au micro** — un parent lit le texte de la scène, affiché
+   comme sur un prompteur, réécoute et garde la prise (WebM/Opus, ou MP4/AAC
+   sous Safari). Le site autorise le micro pour lui-même seulement
+   (`Permissions-Policy: microphone=(self)`).
+
+Les générations sont plafonnées par administrateur : 60 par heure chez un
+service en ligne, 200 avec la voix intégrée. Une voix reste attachée au texte
+qu’elle lit : modifier la phrase d’une scène la marque « à refaire ».
 
 ### Export
 
