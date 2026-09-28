@@ -118,6 +118,7 @@ export default async function EventsPage({
                   events={reunions}
                   emptyLabel="Aucune réunion à venir."
                   accent
+                  firstOnly
                 />
               )}
               <Section title="À venir" events={upcoming} emptyLabel="Aucun événement à venir." />
@@ -235,6 +236,7 @@ function Section({
   emptyLabel,
   dimmed = false,
   accent = false,
+  firstOnly = false,
 }: {
   title: string;
   events: Awaited<ReturnType<typeof getAllEvents>>;
@@ -242,7 +244,14 @@ function Section({
   dimmed?: boolean;
   /** Réunions : filet et compteur colorés, pour qu'elles se voient d'abord. */
   accent?: boolean;
+  /**
+   * N'affiche que le premier élément, les suivants se déroulant à la demande :
+   * c'est la prochaine réunion qu'on vient chercher, et les autres
+   * repoussaient les manifestations sous la ligne de flottaison.
+   */
+  firstOnly?: boolean;
 }) {
+  const [first, ...rest] = events;
   if (events.length === 0 && !emptyLabel) return null;
   return (
     <section className="space-y-4">
@@ -273,6 +282,28 @@ function Section({
         <Card className="!rounded-2xl !shadow-none p-7 text-sm text-slate-500">
           {emptyLabel}
         </Card>
+      ) : firstOnly && rest.length > 0 ? (
+        <div className="space-y-3">
+          <EventRows events={[first]} dimmed={dimmed} />
+          <details className="group/suite">
+            <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 [&::-webkit-details-marker]:hidden">
+              <ChevronDown className="h-4 w-4 transition-transform group-open/suite:rotate-180" />
+              <span className="group-open/suite:hidden">
+                {rest.length > 1
+                  ? `Voir les ${rest.length} autres réunions`
+                  : "Voir l'autre réunion"}
+              </span>
+              <span className="hidden group-open/suite:inline">
+                {rest.length > 1
+                  ? "Masquer les autres réunions"
+                  : "Masquer l'autre réunion"}
+              </span>
+            </summary>
+            <div className="mt-3">
+              <EventRows events={rest} dimmed={dimmed} />
+            </div>
+          </details>
+        </div>
       ) : (
         <EventRows events={events} dimmed={dimmed} />
       )}
