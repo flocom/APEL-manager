@@ -426,7 +426,7 @@ export function ClassVideoEditor({
 
         {/* Photos des bienfaits -------------------------------------- */}
         <Card className="p-5 sm:p-6">
-          <SectionTitle icon={ImagePlus} title="Ce que l’APEL a offert">
+          <SectionTitle icon={ImagePlus} title="Ce que l’APEL finance">
             Photos des achats, sorties, voyages ou spectacles financés, avec
             une légende courte. Sans photo, la vidéo montre les événements de
             l’année.
@@ -488,8 +488,8 @@ export function ClassVideoEditor({
         {/* Équipe ---------------------------------------------------- */}
         <Card className="p-5 sm:p-6">
           <SectionTitle icon={Users} title="L’équipe">
-            Les parents que les enfants pourront reconnaître. Le prénom suffit ;
-            sans photo, la vidéo dessine une bulle à l’initiale.
+            Les parents qui animent l’association, pour que les familles
+            sachent à qui s’adresser. Sans photo, la vidéo affiche l’initiale.
           </SectionTitle>
           {content.members.length > 0 && (
             <ul className="mb-4 space-y-3">

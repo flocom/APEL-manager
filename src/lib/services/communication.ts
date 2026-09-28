@@ -23,6 +23,7 @@ import {
 } from "@/lib/db/schema";
 import { redactError } from "@/lib/errors";
 import { readUpload, saveUpload, storedUploadIdFromUrl } from "@/lib/uploads";
+import { MEMBERSHIP_FEE_BASIS_SUFFIX } from "@/lib/validation";
 
 import { getAssociationSettings } from "./association-settings";
 import { recordAudit, type AuditActor } from "./audit";
@@ -46,6 +47,29 @@ async function logoBytes(logoUrl: string | null): Promise<Buffer | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * La cotisation telle que la page « Nous rejoindre » l'annonce : « 23,00 € par
+ * famille ». Non publiée, la vidéo n'en dit rien plutôt que d'afficher 0 €.
+ */
+function cotisationAffichee(settings: {
+  membershipFeePublished: boolean;
+  membershipFeeCents: number | null;
+  membershipFeeBasis: keyof typeof MEMBERSHIP_FEE_BASIS_SUFFIX;
+}): string | null {
+  if (!settings.membershipFeePublished || settings.membershipFeeCents === null) {
+    return null;
+  }
+  const montant = (settings.membershipFeeCents / 100).toLocaleString("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    // « 23 € » se lit mieux que « 23,00 € » sur un écran ; les centimes
+    // restent quand il y en a.
+    minimumFractionDigits: settings.membershipFeeCents % 100 === 0 ? 0 : 2,
+  });
+  const suffixe = MEMBERSHIP_FEE_BASIS_SUFFIX[settings.membershipFeeBasis];
+  return suffixe ? `${montant} ${suffixe}` : montant;
 }
 
 /** « apel-ndf.fr/rejoindre » : l'adresse telle qu'on la lit à voix haute. */
@@ -160,6 +184,7 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
     logoUrl: settings.logoUrl,
     palette,
     joinLabel: joinLabel(),
+    membershipFee: cotisationAffichee(settings),
     recentEvents,
     figures: (
       [
@@ -351,10 +376,10 @@ export async function saveTtsSettings(
 
 /**
  * Consigne de jeu donnée à gpt-4o-mini-tts : c'est ce qui fait la différence
- * entre une lecture plate et une voix qui parle vraiment à des enfants.
+ * entre une lecture plate et une voix qui s'adresse vraiment à des parents.
  */
 const OPENAI_INSTRUCTIONS =
-  "Voix française de France, naturelle et chaleureuse, comme une maman ou un papa qui présente avec enthousiasme l'association des parents à une classe d'enfants de 3 à 11 ans. Sourire dans la voix, intonations vivantes et variées, débit posé, articulation claire, petites pauses naturelles aux virgules. Jamais robotique, jamais publicitaire.";
+  "Voix française de France, naturelle, chaleureuse et posée, comme un parent d'élève qui présente l'association des parents à d'autres parents lors d'une réunion de rentrée. Ton sincère et bienveillant, légèrement souriant, intonations naturelles et variées, débit calme, articulation claire, pauses naturelles aux virgules et aux points. Jamais robotique, jamais publicitaire, jamais infantilisant.";
 
 /** Au plus soixante voix par heure et par administrateur : chaque appel est facturé. */
 const VOICE_RATE_LIMIT = {

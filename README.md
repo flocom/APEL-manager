@@ -48,8 +48,9 @@ la base de l’instance déployée et se saisissent depuis l’application.
 - **Communication** — e-mails via Resend ou SMTP, notifications Telegram et
   rappels automatiques des tâches.
 - **Supports de communication** — une vidéo en motion design pour présenter
-  l’APEL aux classes, préparée à partir des données de l’association, aux
-  couleurs du logo, avec photos, musique générée et voix off de synthèse.
+  l’APEL aux parents, préparée à partir des données de l’association, aux
+  couleurs du logo, avec personnages, photos, musique générée et voix off de
+  synthèse.
   Exportée en 1080p directement dans le navigateur.
 - **Intégration Claude.ai** — serveur MCP distant sécurisé par OAuth 2.1 et PKCE
   pour piloter les modules selon les droits du compte.
@@ -185,4 +186,4 @@ PostgreSQL compatible ; le guide Vercel utilise Neon.
 - [Déploiement Docker complet](docs/DOCKER.md)
 - [Connexion MCP à Claude.ai](docs/MCP_CLAUDE.md)
 - [Alternative Vercel + Neon](docs/DEPLOIEMENT.md)
-- [Supports de communication (vidéo des classes)](docs/COMMUNICATION.md)
+- [Supports de communication (vidéo de présentation aux parents)](docs/COMMUNICATION.md)

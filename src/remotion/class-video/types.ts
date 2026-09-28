@@ -1,6 +1,10 @@
 /**
  * Contrat entre l'éditeur (src/components/communication/…) et la composition
- * Remotion de la vidéo présentée aux classes.
+ * Remotion de la vidéo de présentation de l'APEL aux parents.
+ *
+ * Elle s'appelait d'abord « vidéo des classes » : les noms de code
+ * (`class-video`, `ClassVideo`, `video_classes` en base) sont restés, pour ne
+ * pas perdre ce qui a déjà été enregistré.
  *
  * Tout ce que la vidéo affiche arrive par ces props : la composition ne lit
  * jamais la base ni l'API. C'est ce qui permet de la prévisualiser dans le
@@ -104,6 +108,11 @@ export type ClassVideoProps = {
   members: ClassVideoMember[];
   /** Adresse affichée à la fin (page « Nous rejoindre »), sans schéma. */
   joinLabel: string;
+  /**
+   * Cotisation publiée, prête à afficher : « 23 € par famille », « 18 € ».
+   * null quand l'association n'en publie pas.
+   */
+  membershipFee: string | null;
   /** Fond musical (généré ou importé), joué en boucle sous la voix. */
   music: { url: string; volume: number } | null;
   /** Bruitages générés (pop, whoosh, étincelle), ou null pour aucun. */

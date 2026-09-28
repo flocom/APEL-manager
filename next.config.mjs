@@ -52,6 +52,17 @@ const nextConfig = {
     // Tree-shaking ciblé des gros barrels (icônes, dates) → bundles plus légers.
     optimizePackageImports: ["lucide-react", "date-fns"],
   },
+  async redirects() {
+    return [
+      // Les supports de communication sont d'abord nés dans la Configuration,
+      // avant d'avoir leur propre entrée dans le menu.
+      {
+        source: "/dashboard/settings/communication/:path*",
+        destination: "/dashboard/communication/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       // Les pages et les fichiers statiques : tous les en-têtes.
