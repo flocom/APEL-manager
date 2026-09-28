@@ -253,9 +253,8 @@ function toWav(samples: Float32Array, sampleRate: number): Buffer {
 }
 
 /**
- * Lit une phrase avec une voix intégrée. Le débit est légèrement ralenti :
- * au débit natif, les voix Piper paraissent pressées pour un public qui écoute
- * une présentation.
+ * Lit une phrase avec une voix intégrée, au débit natif des voix Piper : la
+ * vidéo est rythmée, et un débit ralenti la rendait traînante.
  */
 export async function synthesizeIntegrated(
   text: string,
@@ -273,6 +272,6 @@ export async function synthesizeIntegrated(
       "La voix intégrée n'est pas disponible sur ce serveur. Choisissez un service en ligne ou enregistrez votre voix.",
     );
   }
-  const audio = await tts.generateAsync({ text, sid: speaker, speed: 0.92 });
+  const audio = await tts.generateAsync({ text, sid: speaker, speed: 1 });
   return toWav(normalize(audio.samples), audio.sampleRate);
 }

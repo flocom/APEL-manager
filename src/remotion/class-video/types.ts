@@ -109,6 +109,12 @@ export type ClassVideoProps = {
   /** Adresse affichée à la fin (page « Nous rejoindre »), sans schéma. */
   joinLabel: string;
   /**
+   * La même adresse, complète (`https://…/rejoindre`), encodée dans le QR code
+   * de l'écran final. Chaîne vide quand l'adresse publique du site n'est pas
+   * configurée : pas de QR code plutôt qu'un code qui mène nulle part.
+   */
+  joinUrl: string;
+  /**
    * Cotisation publiée, prête à afficher : « 23 € par famille », « 18 € ».
    * null quand l'association n'en publie pas.
    */

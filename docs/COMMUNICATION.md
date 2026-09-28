@@ -7,8 +7,8 @@ Entrée **Supports de communication** du menu, réservée aux administrateurs.
 Une vidéo en motion design (1920 × 1080, 30 images/s), à projeter en réunion
 de rentrée ou à partager aux familles, qui présente l’APEL aux parents :
 donner vie à l’école, faire sourire les enfants, créer des souvenirs,
-rassembler — et leur donne envie d’adhérer ou de donner un coup de main. Ton
-sobre, personnages illustrés. Elle est composée avec
+rassembler — et leur donne envie d’adhérer ou de donner un coup de main. Rythmée,
+avec des personnages illustrés. Elle est composée avec
 [Remotion](https://www.remotion.dev).
 
 ### Ce qui est prérempli
@@ -24,8 +24,10 @@ Rien n’est à écrire pour obtenir une première version :
   rédigés pour des parents (vouvoiement, ton sobre), à partir du nom de
   l’école, des événements publiés de l’année scolaire, du nombre de familles
   adhérentes, de bénévoles et de rendez-vous (un chiffre inférieur à 5 n’est
-  pas montré). La cotisation publiée s’affiche à la fin. Tout est modifiable,
-  scène par scène.
+  pas montré). Tout est modifiable, scène par scène.
+- **Écran final** — la cotisation publiée et un QR code vers la page « Nous
+  rejoindre », lisible depuis le fond d’une salle. Il suppose que l’adresse
+  publique du site (`APP_URL`) est configurée ; sans elle, pas de QR code.
 - **Équipe** — les prénoms des comptes administrateurs et organisateurs peuvent
   être repris d’un clic.
 
