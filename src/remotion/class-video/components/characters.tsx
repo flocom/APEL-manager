@@ -3,6 +3,8 @@ import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
 import { darken, lighten, mix, parseColor, withAlpha } from "../colors";
 import type { IlluColors } from "../theme";
+import { beatFrames } from "../timeline";
+import { snap } from "./motion";
 
 /**
  * Personnages dessinés en SVG, style illustration « à plat » : parents,
@@ -269,6 +271,7 @@ const HeadSvg: React.FC<{ look: Look; tie: string }> = ({ look, tie }) => {
       <circle cx={HX - 45} cy={110} r={10} fill={shade} />
       <circle cx={HX + 45} cy={110} r={10} fill={shade} />
       <ellipse cx={HX} cy={HY} rx={46} ry={52} fill={look.skin} />
+      <path d={`M${HX + 18},${HY - 47} A46,52 0 0 1 ${HX + 18},${HY + 47} A38,50 0 0 0 ${HX + 18},${HY - 47} Z`} fill={shade} opacity={0.35} />
       <circle cx={HX - 27} cy={121} r={7.5} fill="#f08a7e" opacity={0.28} />
       <circle cx={HX + 27} cy={121} r={7.5} fill="#f08a7e" opacity={0.28} />
       {look.beard ? (
@@ -277,6 +280,9 @@ const HeadSvg: React.FC<{ look: Look; tie: string }> = ({ look, tie }) => {
       <rect x={HX - EYE_DX - 8} y={90} width={15} height={4} rx={2} fill={brow} opacity={0.85} />
       <rect x={HX + EYE_DX - 7} y={90} width={15} height={4} rx={2} fill={brow} opacity={0.85} />
       {hairFront(look.hair, look.hairColor, tie)}
+      {look.hair !== "bald" && look.hair !== "buzz" ? (
+        <path d="M62,58 Q78,46 98,46" stroke={lighten(look.hairColor, 0.28)} strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.55} />
+      ) : null}
     </svg>
   );
 };
@@ -357,6 +363,9 @@ const TorsoSvg: React.FC<{ look: Look; b: Build }> = ({ look, b }) => {
         <path d={skirt} fill={bottomStyle === "dress" ? top : look.bottom} />
       ) : null}
       <path d={body} fill={top} />
+      {/* Modelé : flanc droit dans l'ombre, épaule gauche dans la lumière. */}
+      <path d={`M${R - 4},${b.S + r * 0.7} Q${R},${b.S + r} ${R},${b.S + r + 6} L${CX + b.hh},${b.hipY - 10} Q${CX + b.hh},${b.hipY} ${CX + b.hh - 10},${b.hipY} L${CX + b.hh - 22},${b.hipY} L${R - 18},${b.S + r + 10} Z`} fill={darken(top, 0.14)} opacity={0.75} />
+      <path d={`M${L + r * 0.6},${b.S + 3} Q${L + 6},${b.S + 6} ${L + 5},${b.S + r} L${L + 14},${b.S + r + 4} Q${L + 16},${b.S + 14} ${L + r * 0.9},${b.S + 9} Z`} fill={lighten(top, 0.22)} opacity={0.7} />
       {/* Détails selon le vêtement. */}
       {look.topStyle === "tee" || look.topStyle === "dress" || look.topStyle === "sweater" || look.topStyle === "hoodie" ? (
         <path d={`M${CX - neckW - 5},${b.S} Q${CX},${b.S + 20} ${CX + neckW + 5},${b.S} Z`} fill={look.skin} />
@@ -422,7 +431,7 @@ const LegSvg: React.FC<{ look: Look; b: Build; side: -1 | 1 }> = ({ look, b, sid
   const shoeH = w * 0.55;
   return (
     <svg width={boxW} height={len + shoeH} viewBox={`0 0 ${boxW} ${len + shoeH}`} style={{ position: "absolute", left: 0, top: 0 }}>
-      <rect x={c - w / 2} y={0} width={w} height={len + 4} rx={w * 0.45} fill={legColor} />
+      <rect x={c - w / 2} y={0} width={w} height={len + 4} rx={w * 0.45} fill={side > 0 ? darken(legColor, 0.08) : legColor} />
       {bottomStyle === "shorts" ? <rect x={c - w / 2 - 1} y={0} width={w + 2} height={(b.hipY - b.S) * 0.55} rx={8} fill={look.bottom} /> : null}
       <rect x={c - w / 2 - 3 + side * 7} y={len - 4} width={w + 6} height={shoeH} rx={shoeH / 2} fill={look.shoes} />
     </svg>
@@ -595,7 +604,7 @@ function gesturePose(gesture: Gesture, t: number, seed: number): { left: ArmPose
   const osc = (period: number, amp: number, phase = 0) => Math.sin((t * 2 * Math.PI) / period + phase + seed) * amp;
   switch (gesture) {
     case "wave":
-      return { left: IDLE, right: { u: 104 + osc(2.4, 3), f: 58 + osc(0.62, 16) }, main: "right" };
+      return { left: IDLE, right: { u: 104 + osc(2.4, 3), f: 58 + osc(0.5, 18) }, main: "right" };
     case "present":
       return { left: IDLE, right: { u: 50 + osc(3.2, 2), f: 42 + osc(2.6, 4) }, main: "right" };
     case "point":
@@ -703,6 +712,8 @@ export type CharacterProps = {
   talkRange?: [number, number];
   seed?: number;
   shadow?: string;
+  /** Amplitude (unités) du rebond sur les temps ; 0 = aucun. */
+  groove?: number;
 };
 
 export const Character: React.FC<CharacterProps> = ({
@@ -729,6 +740,7 @@ export const Character: React.FC<CharacterProps> = ({
   talkRange,
   seed = 0,
   shadow = "rgba(20, 30, 40, 0.12)",
+  groove = 0,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -753,11 +765,10 @@ export const Character: React.FC<CharacterProps> = ({
     const remaining = 1 - k;
     walking = frame < walk.at ? 0 : Math.min(1, remaining * 3);
   }
-  const appearK = appear === undefined ? 1 : interpolate(frame, [appear, appear + 16], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: Easing.out(Easing.cubic),
-  });
+  // Apparition « pop » : le personnage jaillit du sol avec un léger dépassement.
+  const popK = appear === undefined ? 1 : Math.max(0, snap(frame, fps, appear, 240, 17));
+  const appearK = Math.min(1, popK * 3);
+  const sc = 0.35 + 0.65 * popK;
 
   // Respiration, balancement, pas.
   const breathe = Math.sin(t * 1.7 + phase) * 1.6;
@@ -766,9 +777,11 @@ export const Character: React.FC<CharacterProps> = ({
   const legSwing = Math.sin(stride) * 17 * walking;
   const laughing = mood === "laugh";
   const laughBob = laughing ? Math.abs(Math.sin(t * 9 + phase)) * -3 : 0;
+  // Petit rebond sur chaque temps de la musique (personnages « dans le rythme »).
+  const grooveBob = groove ? -Math.abs(Math.sin((Math.PI * frame) / beatFrames(fps))) * groove : 0;
 
   // Gestes : fondu du repos vers la pose du geste, puis retour éventuel.
-  const inK = interpolate(frame, [gestureAt, gestureAt + 12], [0, 1], {
+  const inK = interpolate(frame, [gestureAt, gestureAt + 8], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.inOut(Easing.cubic),
@@ -776,7 +789,7 @@ export const Character: React.FC<CharacterProps> = ({
   const outK =
     gestureUntil === undefined
       ? 0
-      : interpolate(frame, [gestureUntil, gestureUntil + 12], [0, 1], {
+      : interpolate(frame, [gestureUntil, gestureUntil + 8], [0, 1], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
           easing: Easing.inOut(Easing.cubic),
@@ -922,7 +935,7 @@ export const Character: React.FC<CharacterProps> = ({
         width: W,
         height: b.H,
         transformOrigin: "0 0",
-        transform: `translate(${px - CX * s}px, ${y - b.H * s + (1 - appearK) * 24}px) scale(${s})`,
+        transform: `translate(${px - CX * s * sc}px, ${y - b.H * s * sc}px) scale(${s * sc})`,
         opacity: appearK,
       }}
     >
@@ -945,7 +958,7 @@ export const Character: React.FC<CharacterProps> = ({
           width: W,
           height: b.H,
           transformOrigin: `${CX}px ${b.H}px`,
-          transform: `translateY(${breathe * 0.4 + stepBob + laughBob}px) rotate(${sway}deg)`,
+          transform: `translateY(${breathe * 0.4 + stepBob + laughBob + grooveBob}px) rotate(${sway}deg)`,
         }}
       >
         {leg(-1)}

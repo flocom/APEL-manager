@@ -1,18 +1,18 @@
-import { contrastRatio, darken, lighten, mix, readableOn, tooClose, withAlpha, WHITE } from "./colors";
+import { contrastRatio, darken, lighten, mix, parseColor, readableOn, relativeLuminance, tooClose, withAlpha, WHITE } from "./colors";
 import type { ClassVideoSceneId, VideoPalette } from "./types";
 
 /** Police de l'app (Inter via next/font), avec replis locaux : aucun téléchargement. */
 export const FONT_FAMILY = "var(--font-sans), Inter, system-ui, sans-serif";
 
 /**
- * Habillage d'une scène. La vidéo s'adresse aux parents : fonds clairs et
- * calmes la plupart du temps, la palette du logo en touches, et deux scènes
- * franches (« rassembler », « fin ») sur la couleur principale.
+ * Habillage d'une scène. Rythme de couleurs franc pour accrocher l'œil :
+ * les scènes alternent la couleur principale, la seconde couleur du logo et
+ * un fond clair. Le texte reste toujours lisible (contraste WCAG).
  */
 export type SceneTheme = {
   /** Aplat de fond. */
   bg: string;
-  /** Vrai sur les scènes en couleur pleine (texte clair en général). */
+  /** Vrai sur les scènes en couleur pleine. */
   bold: boolean;
   /** Titre. */
   ink: string;
@@ -20,8 +20,21 @@ export type SceneTheme = {
   muted: string;
   /** Couleur d'accent lisible sur le fond (filet sous le titre, chiffres). */
   accent: string;
+  /** Surligneur du mot clé du titre, et couleur du mot surligné. */
+  marker: string;
+  markerInk: string;
+  /** Formes géométriques d'accompagnement (bandes, cercles), visibles sur le fond. */
+  shapes: string[];
   /** Grande forme douce derrière l'illustration. */
   soft: string;
+  /** Dégradé de fond étalonné (CSS linear-gradient). */
+  gradient: string;
+  /** Lumière douce (halo) et filet fin du cercle derrière l'illustration. */
+  glow: string;
+  line: string;
+  /** Bas du sol (dégradé) et couleur des particules. */
+  floorDeep: string;
+  particle: string;
   /** Sol sous les personnages. */
   floor: string;
   /** Ombre portée des personnages et objets. */
@@ -39,21 +52,37 @@ function legible(bg: string, candidates: string[], min: number, fallback: string
   return candidates.find((c) => contrastRatio(c, bg) >= min) ?? fallback;
 }
 
-/** Fond de chaque scène : clair, teinté tour à tour par les couleurs du logo. */
+/** Distance entre deux couleurs (RVB) : sert à écarter un accent invisible sur le fond. */
+function distinct(a: string, b: string, min = 90): boolean {
+  const pa = parseColor(a);
+  const pb = parseColor(b);
+  return Math.hypot(pa.r - pb.r, pa.g - pb.g, pa.b - pb.b) >= min;
+}
+
+/**
+ * Seconde couleur utilisable en fond plein : si elle est trop proche de la
+ * principale ou trop pâle, on prend la teinte foncée.
+ */
+function secondaryBackground(palette: VideoPalette): string {
+  const s = palette.secondary;
+  if (!distinct(s, palette.primary, 80) || relativeLuminance(s) > 0.62) return palette.dark;
+  return s;
+}
+
+/** Fond de chaque scène : principale, claire, seconde, claire… */
 function sceneBackground(palette: VideoPalette, id: ClassVideoSceneId): { bg: string; bold: boolean; tint: string } {
   const paper = mix(WHITE, palette.light, 0.55);
   switch (id) {
     case "intro":
     case "souvenirs":
-      return { bg: mix(WHITE, palette.light, 0.9), bold: false, tint: palette.primary };
-    case "vie":
     case "chiffres":
-      return { bg: mix(WHITE, palette.accent, 0.1), bold: false, tint: palette.accent };
-    case "sourire":
-      return { bg: mix(WHITE, palette.secondary, 0.07), bold: false, tint: palette.secondary };
-    case "rassembler":
     case "fin":
       return { bg: palette.primary, bold: true, tint: WHITE };
+    case "vie":
+    case "rassembler":
+      return { bg: secondaryBackground(palette), bold: true, tint: WHITE };
+    case "sourire":
+      return { bg: mix(WHITE, palette.accent, 0.14), bold: false, tint: palette.accent };
     case "apel":
     case "bienfaits":
     case "membres":
@@ -65,17 +94,29 @@ export function sceneTheme(palette: VideoPalette, id: ClassVideoSceneId): SceneT
   const { bg, bold, tint } = sceneBackground(palette, id);
   const ink = bold ? readableOn(bg, palette.dark) : legible(bg, [palette.dark], 7, readableOn(bg, palette.dark));
   const inkIsLight = ink === WHITE;
+  const marker = pickContrasting(bg, [palette.accent, palette.secondary, palette.primary, WHITE].filter((c) => distinct(c, bg)));
+  const shapes = [palette.accent, palette.secondary, palette.primary, WHITE].filter((c) => distinct(c, bg, 110));
   return {
     bg,
     bold,
     ink,
-    muted: inkIsLight ? withAlpha(WHITE, 0.86) : mix(ink, bg, 0.28),
+    muted: inkIsLight ? withAlpha(WHITE, 0.88) : mix(ink, bg, 0.25),
     accent: bold
       ? legible(bg, [palette.accent, WHITE], 1.8, ink)
       : legible(bg, [palette.primary, palette.secondary, palette.dark], 3, palette.dark),
-    soft: bold ? mix(bg, WHITE, 0.1) : mix(bg, tint, 0.09),
-    floor: bold ? darken(bg, 0.1) : mix(bg, palette.dark, 0.05),
-    shadow: withAlpha(darken(bold ? bg : palette.dark, 0.5), bold ? 0.28 : 0.13),
+    marker,
+    markerInk: readableOn(marker, palette.dark),
+    shapes: shapes.length >= 2 ? shapes : [lighten(bg, 0.35), darken(bg, 0.25)],
+    soft: bold ? mix(bg, WHITE, 0.12) : mix(bg, tint, 0.1),
+    gradient: bold
+      ? `linear-gradient(155deg, ${mix(bg, WHITE, 0.14)} 0%, ${bg} 48%, ${darken(bg, 0.16)} 100%)`
+      : `linear-gradient(155deg, ${mix(bg, WHITE, 0.6)} 0%, ${bg} 50%, ${mix(bg, tint, 0.1)} 100%)`,
+    glow: bold ? mix(bg, WHITE, 0.45) : mix(bg, tint, 0.35),
+    line: bold ? withAlpha(WHITE, 0.22) : withAlpha(tint, 0.25),
+    floor: bold ? darken(bg, 0.12) : mix(bg, palette.dark, 0.05),
+    floorDeep: bold ? darken(bg, 0.26) : mix(bg, palette.dark, 0.1),
+    particle: bold ? withAlpha(WHITE, 0.9) : withAlpha(tint, 0.9),
+    shadow: withAlpha(darken(bold ? bg : palette.dark, 0.5), bold ? 0.3 : 0.13),
   };
 }
 

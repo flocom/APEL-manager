@@ -24,6 +24,11 @@ export function shortName(name: string): string {
     .join("");
 }
 
+/** Surtitre de chapitre : « 03 · APEL » (numéro de la scène, nom court). */
+export function chapter(index: number, associationName: string): string {
+  return `${String(Math.max(1, index)).padStart(2, "0")} · ${shortName(associationName)}`;
+}
+
 /** Carte blanche qui porte le logo (ou le nom court de l'association sans logo). */
 export const LogoCard: React.FC<{
   logoUrl: string | null;

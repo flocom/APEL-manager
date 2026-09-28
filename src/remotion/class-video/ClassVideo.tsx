@@ -2,7 +2,9 @@ import { Audio } from "@remotion/media";
 import React, { useCallback, useMemo } from "react";
 import { AbsoluteFill, Sequence, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 
-import { SceneLayer, Sfx, type SceneProps, type TransitionKind } from "./components/scene";
+import { darken } from "./colors";
+import { Grain } from "./components/finish";
+import { SceneLayer, Sfx, TRANSITION_ORDER, type SceneProps, type TransitionKind } from "./components/scene";
 import { ApelScene } from "./scenes/ApelScene";
 import { BienfaitsScene } from "./scenes/BienfaitsScene";
 import { ChiffresScene } from "./scenes/ChiffresScene";
@@ -22,9 +24,9 @@ import {
 
 export { CLASS_VIDEO_FPS, CLASS_VIDEO_HEIGHT, CLASS_VIDEO_WIDTH };
 
-/** Musique : montée au début, descente à la fin, et baisse sous la voix. */
-const MUSIC_FADE_IN_SECONDS = 1.2;
-const MUSIC_FADE_OUT_SECONDS = 2.2;
+/** Musique : présente dès la première image (accroche), descente à la fin, baisse sous la voix. */
+const MUSIC_FADE_IN_SECONDS = 0.08;
+const MUSIC_FADE_OUT_SECONDS = 1.6;
 const MUSIC_DUCK_LEVEL = 0.3;
 const MUSIC_DUCK_RAMP_SECONDS = 0.3;
 
@@ -102,13 +104,10 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
       {timeline.scenes.map((entry, i) => {
         const scene = props.scenes[i];
         const next = props.scenes[i + 1];
-        // Volet net vers ou depuis une scène en couleur pleine, fondu enchaîné sinon.
-        const prev = props.scenes[i - 1];
-        const kind: TransitionKind | null = !prev
-          ? null
-          : sceneTheme(props.palette, scene.id).bold || sceneTheme(props.palette, prev.id).bold
-            ? "wipe"
-            : "fade";
+        // Transitions variées, dans un ordre fixe (même vidéo à chaque rendu).
+        const kindAt = (k: number): TransitionKind | null => (k <= 0 ? null : TRANSITION_ORDER[(k - 1) % TRANSITION_ORDER.length]);
+        const kind = kindAt(i);
+        const nextKind = next ? kindAt(i + 1) : null;
         return (
           <Sequence
             key={`${entry.id}-${i}`}
@@ -119,9 +118,10 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
           >
             <SceneLayer
               kind={kind}
+              nextKind={nextKind}
               transitionFrames={overlap}
               durationInFrames={entry.durationInFrames}
-              exits={Boolean(next)}
+              panelColors={panelColors(props.palette, scene.id)}
             >
               <SceneContent scene={scene} video={props} durationInFrames={entry.durationInFrames} index={i} />
             </SceneLayer>
@@ -135,16 +135,24 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
                 <Audio src={scene.voice.url} />
               </Sequence>
             ) : null}
-            {i > 0 ? <Sfx src={props.sfx?.whoosh} at={0} volume={0.22} /> : null}
+            {i > 0 ? <Sfx src={props.sfx?.whoosh} at={0} volume={0.3} /> : null}
           </Sequence>
         );
       })}
+      {/* Finition commune à toutes les scènes : grain très léger. */}
+      <Grain opacity={0.022} />
       {props.music && props.music.url ? (
         <Audio src={props.music.url} loop loopVolumeCurveBehavior="extend" volume={volumeAt} />
       ) : null}
     </AbsoluteFill>
   );
 };
+
+/** Bandes du balayage d'entrée : accent, seconde couleur, puis la teinte de la scène qui arrive. */
+function panelColors(palette: ClassVideoProps["palette"], id: ClassVideoScene["id"]): string[] {
+  const theme = sceneTheme(palette, id);
+  return [theme.marker, theme.shapes.find((c) => c !== theme.marker) ?? "#ffffff", darken(theme.bg, 0.12)];
+}
 
 /** À passer en `calculateMetadata` de la <Composition> ou du rendu web. */
 export const calculateClassVideoMetadata: CalculateMetadataFunction<ClassVideoProps> = ({ props }) => {

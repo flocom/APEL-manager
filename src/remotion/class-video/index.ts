@@ -15,6 +15,6 @@ export {
   type ClassVideoTimeline,
   type ClassVideoTimelineEntry,
 } from "./timeline";
-export { renderMusicWav, renderSfxWav, wavToBlobUrl, encodeWav, SYNTH_SAMPLE_RATE, type MusicOptions, type SfxKind } from "./audio-synth";
+export { renderMusicWav, renderSfxWav, wavToBlobUrl, encodeWav, SYNTH_SAMPLE_RATE, DEFAULT_MUSIC_BPM, type MusicOptions, type SfxKind } from "./audio-synth";
 export { readableOn, contrastRatio, relativeLuminance, mix, lighten, darken, withAlpha } from "./colors";
 export * from "./types";
