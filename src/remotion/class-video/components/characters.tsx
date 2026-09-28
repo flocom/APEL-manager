@@ -463,7 +463,7 @@ const ArmSegmentSvg: React.FC<{ width: number; length: number; color: string; sl
 // ---------------------------------------------------------------------------
 // Objets tenus
 
-export type HandItem = "balloon" | "heartBalloon" | "clipboard" | "mug" | "book" | "cupcake" | "pennant" | "heart";
+export type HandItem = "balloon" | "heartBalloon" | "clipboard" | "mug" | "book" | "cupcake" | "pennant" | "heart" | "phone";
 export type CarryItem = "box" | "tray";
 
 /** Boîte de chaque objet tenu : taille et position de la main (ancre). */
@@ -476,6 +476,7 @@ const ITEM_BOX: Record<HandItem, { w: number; h: number; ax: number; ay: number 
   cupcake: { w: 56, h: 64, ax: 28, ay: 52 },
   pennant: { w: 80, h: 120, ax: 10, ay: 110 },
   heart: { w: 100, h: 100, ax: 50, ay: 88 },
+  phone: { w: 50, h: 84, ax: 25, ay: 58 },
 };
 
 /** Objets tenus dans une main, dessinés avec la main en (0, 0). */
@@ -542,6 +543,15 @@ const HandItemSvg: React.FC<{ item: HandItem; c: IlluColors; color: string }> = 
           <path d="M3,-104 L62,-86 L3,-66 Z" fill={color} />
         </svg>
       );
+    case "phone":
+      return (
+        <svg width={50} height={84} viewBox="-25 -58 50 84" style={{ position: "absolute", left: 0, top: 0 }}>
+          <rect x={-19} y={-54} width={38} height={72} rx={8} fill="#1b2230" />
+          <rect x={-15} y={-48} width={30} height={60} rx={5} fill={mix(color, "#ffffff", 0.35)} />
+          <rect x={-10} y={-40} width={20} height={6} rx={3} fill="#ffffff" opacity={0.9} />
+          <rect x={-10} y={-28} width={20} height={14} rx={3} fill="#ffffff" opacity={0.7} />
+        </svg>
+      );
     case "heart":
       return (
         <svg width={100} height={100} viewBox="-50 -88 100 100" style={{ position: "absolute", left: 0, top: 0 }}>
@@ -594,7 +604,7 @@ const CarrySvg: React.FC<{ item: CarryItem; b: Build; c: IlluColors; color: stri
 /** Angles d'un bras (degrés). u : bras, f : avant-bras relatif. Positif = vers l'extérieur. */
 export type ArmPose = { u: number; f: number };
 
-export type Gesture = "idle" | "wave" | "present" | "point" | "carry" | "tray" | "hold" | "cheer" | "talk" | "balloon";
+export type Gesture = "idle" | "wave" | "present" | "point" | "carry" | "tray" | "hold" | "cheer" | "talk" | "balloon" | "raise";
 
 type Side = "left" | "right";
 
@@ -617,6 +627,9 @@ function gesturePose(gesture: Gesture, t: number, seed: number): { left: ArmPose
       return { left: { u: 8 + osc(3.1, 2), f: -14 + osc(2.3, 5) }, right: { u: 20 + osc(2.2, 5), f: -70 + osc(1.3, 14) }, main: "right" };
     case "balloon":
       return { left: IDLE, right: { u: 26, f: -52 + osc(2.8, 4) }, main: "right" };
+    case "raise":
+      // Main levée (vote, prise de parole).
+      return { left: IDLE, right: { u: 166 + osc(1.6, 2), f: 6 }, main: "right" };
     case "carry":
     case "tray":
     case "idle":
@@ -848,7 +861,7 @@ export const Character: React.FC<CharacterProps> = ({
     const FW = b.AW - 4;
     const cuff = sleeveLong ? darken(look.top, 0.1) : undefined;
     const holds = item && sideName === itemSide ? item : undefined;
-    const behind = holds === "clipboard" || holds === "book" || holds === "cupcake";
+    const behind = holds === "clipboard" || holds === "book" || holds === "cupcake" || holds === "phone";
     const upright = -(rot[0] + rot[1]);
     const itemSway = holds === "balloon" || holds === "heartBalloon" ? Math.sin(t * 1.4 + phase) * 4 - rot[1] * 0.08 : 0;
     const box = holds ? ITEM_BOX[holds] : null;

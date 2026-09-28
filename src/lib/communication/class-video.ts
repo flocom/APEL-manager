@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { deEtablissement } from "@/lib/etablissement";
 import {
   CLASS_VIDEO_SCENE_IDS,
   type ClassVideoProps,
@@ -33,13 +32,14 @@ export const mediaUrlSchema = z
   .regex(MEDIA_URL, "Importez le fichier depuis cet écran.");
 
 export const SCENE_LABELS: Record<ClassVideoSceneId, string> = {
-  intro: "Ouverture",
+  intro: "Accroche",
   apel: "Qui sommes-nous ?",
-  vie: "Donner vie à l'école",
-  sourire: "Faire sourire",
-  souvenirs: "Créer des souvenirs",
-  rassembler: "Rassembler",
-  bienfaits: "Concrètement",
+  agenda: "Les rendez-vous de l'année",
+  site: "Tout est sur le site",
+  benevolat: "Prêter main-forte",
+  bienfaits: "Grâce à vous",
+  lien: "Le lien avec l'école",
+  membre: "Devenir membre",
   chiffres: "L'APEL en chiffres",
   membres: "L'équipe",
   fin: "Conclusion",
@@ -133,6 +133,10 @@ export type ClassVideoSource = {
   membershipFee: string | null;
   /** Événements publiés de l'année scolaire en cours, dans l'ordre du calendrier. */
   recentEvents: string[];
+  /** Rendez-vous de l'année : total, prochain, et quelques suivants. */
+  agenda: ClassVideoProps["agenda"];
+  /** Adresse du site, sans schéma : « apel-ndf.fr » ; vide sans adresse publique. */
+  siteLabel: string;
   /** Chiffres assez parlants pour être montrés (les trop petits sont écartés). */
   figures: { key: "familles" | "benevoles" | "evenements"; value: number; label: string }[];
   /** Membres de l'équipe proposés par défaut (prénoms des comptes du bureau). */
@@ -151,16 +155,18 @@ function minusculeInitiale(titre: string): string {
 }
 
 /**
- * Textes par défaut de chaque scène, écrits pour des parents : on les
- * vouvoie, et on fait court. La vidéo doit accrocher — une idée par scène,
- * une phrase de voix off de deux ou trois secondes —, puis donner envie
- * d'adhérer ou de donner un coup de main.
+ * Textes par défaut de chaque scène, écrits pour des parents sur le fil de la
+ * présentation qu'un parent du bureau fait en réunion de rentrée : qui nous
+ * sommes, les rendez-vous de l'année, le site, venir prêter main-forte, ce
+ * que les contributions financent, le lien avec l'école, devenir membre.
+ *
+ * La voix off ne lit jamais l'adresse du site : « apel tiret n d f point f r »
+ * ne s'écoute pas. Elle est à l'écran, et dans le QR code.
  */
 export function defaultSceneTexts(
   source: ClassVideoSource,
 ): Record<ClassVideoSceneId, Omit<ClassVideoSceneContent, "voice" | "enabled">> {
-  const ecole = deEtablissement(source.schoolName);
-  const evenements = source.recentEvents.slice(0, 3);
+  const { total, next, upcoming } = source.agenda;
   const figure = (key: ClassVideoSource["figures"][number]["key"]) =>
     source.figures.find((f) => f.key === key)?.value ?? 0;
   const chiffres = [
@@ -168,47 +174,60 @@ export function defaultSceneTexts(
     figure("benevoles") > 0 ? `${figure("benevoles")} bénévoles` : null,
     figure("evenements") > 0 ? `${figure("evenements")} rendez-vous` : null,
   ].filter((v): v is string => v !== null);
+  const suivants = upcoming.slice(0, 3).map((e) => minusculeInitiale(e.title));
 
   return {
     intro: {
-      title: "Et si l'école, c'était aussi vous ?",
-      subtitle: source.associationName,
-      voiceText: `Et si l'école, c'était aussi vous ? Voici l'APEL ${ecole}.`,
+      title: "L'APEL, c'est nous.",
+      subtitle: "Et ça peut être vous.",
+      voiceText: "L'APEL, c'est nous. Et ça peut être vous aussi.",
     },
     apel: {
-      title: "L'APEL, c'est vous",
-      subtitle: "Des parents qui s'engagent",
-      voiceText: "Des parents bénévoles, qui s'engagent pour l'école et pour les enfants.",
-    },
-    vie: {
-      title: "Des fêtes toute l'année",
-      // Les intitulés réels (« Gouter Post Matinée sportive ») sont souvent
-      // trop longs pour un sous-titre : ils ne sont cités que par la voix.
-      subtitle: "Fêtes, goûters, rendez-vous",
+      title: "Des parents bénévoles",
+      subtitle: "Des temps forts toute l'année, pour les enfants et pour l'école",
       voiceText:
-        evenements.length > 0
-          ? `Toute l'année : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien plus.`
-          : "Toute l'année, des temps forts qui font vivre l'école.",
+        "Nous sommes des parents bénévoles qui organisent, tout au long de l'année, des temps forts pour les enfants et pour la vie de l'école.",
     },
-    sourire: {
-      title: "Des sourires garantis",
-      subtitle: "Goûters, fêtes et surprises",
-      voiceText: "Goûters, fêtes, surprises : des sourires garantis.",
+    agenda: {
+      title: total > 1 ? `${total} rendez-vous cette année` : "Des rendez-vous toute l'année",
+      subtitle: next ? "Le prochain arrive très bientôt" : "",
+      voiceText: [
+        total > 1 ? `Il y en a déjà ${total} de prévus cette année.` : "",
+        next ? `Le prochain arrive très bientôt : ${minusculeInitiale(next.title)}, ${next.dateLabel}.` : "",
+        suivants.length > 0 ? `Et aussi ${listeFrancaise(suivants)}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" ") || "Toute l'année, nous organisons des temps forts pour les enfants.",
     },
-    souvenirs: {
-      title: "Des souvenirs plein la tête",
-      subtitle: "Sorties et voyages financés",
-      voiceText: "Nos actions financent sorties, voyages et projets de classe.",
+    site: {
+      title: "Tout est sur le site",
+      subtitle: "Dates, inscriptions, adhésion",
+      voiceText:
+        "Vous retrouvez tous les événements sur notre site : les dates, les inscriptions, et l'adhésion.",
     },
-    rassembler: {
-      title: "Tous ensemble",
-      subtitle: "Familles et équipe éducative",
-      voiceText: "Et surtout, l'APEL rassemble les familles et toute l'équipe de l'école.",
+    benevolat: {
+      title: "Venez prêter main-forte",
+      subtitle: "À votre rythme, sur le créneau de votre choix",
+      voiceText:
+        "Vous pouvez donner un coup de main simplement, à votre rythme, sur le créneau qui vous convient. C'est l'occasion idéale de rencontrer d'autres parents.",
     },
     bienfaits: {
-      title: "Concrètement",
-      subtitle: "Ce que nous réalisons ensemble",
-      voiceText: "Concrètement, voici ce que nous réalisons ensemble.",
+      title: "Grâce à vous",
+      subtitle: "Des projets, de l'équipement, des souvenirs",
+      voiceText:
+        "Et c'est grâce à vous, et à vos contributions, que nous finançons des projets pour l'école, de l'équipement et de beaux souvenirs.",
+    },
+    lien: {
+      title: "On est là pour vous",
+      subtitle: "Le lien entre les familles et l'école",
+      voiceText:
+        "L'APEL fait aussi le lien entre les familles et l'école, même sur les sujets délicats. N'hésitez jamais à venir nous voir.",
+    },
+    membre: {
+      title: "Devenez membre",
+      subtitle: "Décidez, proposez, organisez avec nous",
+      voiceText:
+        "Envie de vous impliquer davantage, de participer aux décisions ou de donner vie à vos idées ? Devenez membre : nous nous réunissons plusieurs fois par an.",
     },
     chiffres: {
       title: "L'APEL en chiffres",
@@ -221,19 +240,29 @@ export function defaultSceneTexts(
     membres: {
       title: "L'équipe",
       subtitle: "Des parents à votre écoute",
-      voiceText: "Une équipe de parents, à votre écoute.",
+      voiceText: "Voici l'équipe, à votre écoute.",
     },
     fin: {
       title: "Rejoignez-nous !",
-      subtitle: "Adhérez ou donnez un coup de main",
+      subtitle: "Merci de votre attention",
       // Le QR code n'existe que si le site a une adresse publique : la voix
       // n'invite à le scanner que dans ce cas.
       voiceText: source.joinUrl
-        ? "Adhérez, donnez un coup de main : rejoignez-nous ! Il suffit de scanner le code."
-        : "Adhérez, donnez un coup de main : rejoignez-nous !",
+        ? "Devenir membre, prêter main-forte : tout est sur notre site. Il suffit de scanner le code. Merci de votre attention !"
+        : "Devenir membre, prêter main-forte : tout est sur notre site. Merci de votre attention !",
     },
   };
 }
+
+/**
+ * Ce que financent les contributions, montré quand le bureau n'a pas (encore)
+ * mis de photos : les trois mots de la présentation.
+ */
+const BENEFIT_HIGHLIGHTS = [
+  "Des projets pour l'école",
+  "De l'équipement",
+  "Des souvenirs",
+];
 
 /** Une scène telle qu'elle sera jouée : textes du bureau, ou textes par défaut. */
 export function resolvedScene(
@@ -281,7 +310,7 @@ export function buildClassVideoProps(
     .filter(({ id, scene }) => {
       if (!scene.enabled) return false;
       // Une scène sans matière n'est pas jouée, plutôt que de montrer un écran vide.
-      if (id === "bienfaits") return benefits.length > 0 || source.recentEvents.length > 0;
+      if (id === "agenda") return source.agenda.total > 0 || source.agenda.next !== null;
       if (id === "chiffres") return figures.length > 0;
       if (id === "membres") return members.length > 0;
       return true;
@@ -313,7 +342,9 @@ export function buildClassVideoProps(
     palette: source.palette,
     scenes,
     benefits,
-    highlights: source.recentEvents.slice(0, 6),
+    highlights: BENEFIT_HIGHLIGHTS,
+    agenda: source.agenda,
+    siteLabel: source.siteLabel,
     figures,
     members,
     joinLabel: source.joinLabel,

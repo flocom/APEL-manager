@@ -15,6 +15,10 @@ import { seeded } from "./motion";
 export const EXPO_IN_OUT = Easing.bezier(0.87, 0, 0.13, 1);
 export const QUINT_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 
+/** Entrée feutrée (0 → 1) sur `duration` images à partir de `delay`, courbe quint. */
+export const glideIn = (frame: number, delay: number, duration: number) =>
+  interpolate(frame, [delay, delay + duration], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: QUINT_OUT });
+
 /**
  * Plan de profondeur : la « caméra » avance lentement pendant toute la
  * scène et dérive un peu ; un plan lointain (depth petit) bouge moins qu'un

@@ -3,7 +3,6 @@ import React, { useCallback, useMemo } from "react";
 import { AbsoluteFill, Sequence, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 
 import { darken } from "./colors";
-import { Grain } from "./components/finish";
 import { SceneLayer, Sfx, TRANSITION_ORDER, type SceneProps, type TransitionKind } from "./components/scene";
 import { ApelScene } from "./scenes/ApelScene";
 import { BienfaitsScene } from "./scenes/BienfaitsScene";
@@ -11,7 +10,11 @@ import { ChiffresScene } from "./scenes/ChiffresScene";
 import { FinScene } from "./scenes/FinScene";
 import { IntroScene } from "./scenes/IntroScene";
 import { MembresScene } from "./scenes/MembresScene";
-import { PillarScene } from "./scenes/PillarScene";
+import { AgendaScene } from "./scenes/AgendaScene";
+import { BenevolatScene } from "./scenes/BenevolatScene";
+import { DevenirMembreScene } from "./scenes/DevenirMembreScene";
+import { LienScene } from "./scenes/LienScene";
+import { SiteScene } from "./scenes/SiteScene";
 import { FONT_FAMILY, sceneTheme } from "./theme";
 import { computeClassVideoTimeline, transitionFrames, voiceOffsetFrames } from "./timeline";
 import {
@@ -36,13 +39,18 @@ const SceneContent: React.FC<SceneProps> = (props) => {
       return <IntroScene {...props} />;
     case "apel":
       return <ApelScene {...props} />;
-    case "vie":
-    case "sourire":
-    case "souvenirs":
-    case "rassembler":
-      return <PillarScene {...props} pillar={props.scene.id} />;
+    case "agenda":
+      return <AgendaScene {...props} />;
+    case "site":
+      return <SiteScene {...props} />;
+    case "benevolat":
+      return <BenevolatScene {...props} />;
     case "bienfaits":
       return <BienfaitsScene {...props} />;
+    case "lien":
+      return <LienScene {...props} />;
+    case "membre":
+      return <DevenirMembreScene {...props} />;
     case "chiffres":
       return <ChiffresScene {...props} />;
     case "membres":
@@ -51,6 +59,13 @@ const SceneContent: React.FC<SceneProps> = (props) => {
       return <FinScene {...props} />;
   }
 };
+
+/**
+ * Avance donnée à une scène qui entre (images) : quand la transition la
+ * dévoile, elle est déjà composée (décor et personnages en place), ses
+ * animations finissent de se jouer à l'écran.
+ */
+const SCENE_PREROLL = 9;
 
 /**
  * Niveau de la musique pour chaque image (0…1, avant le volume choisi).
@@ -123,7 +138,9 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
               durationInFrames={entry.durationInFrames}
               panelColors={panelColors(props.palette, scene.id)}
             >
-              <SceneContent scene={scene} video={props} durationInFrames={entry.durationInFrames} index={i} />
+              <Sequence from={i === 0 ? 0 : -SCENE_PREROLL} name={`Contenu ${entry.id}`}>
+                <SceneContent scene={scene} video={props} durationInFrames={entry.durationInFrames + (i === 0 ? 0 : SCENE_PREROLL)} index={i} />
+              </Sequence>
             </SceneLayer>
             {scene.voice ? (
               <Sequence
@@ -139,8 +156,6 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
           </Sequence>
         );
       })}
-      {/* Finition commune à toutes les scènes : grain très léger. */}
-      <Grain opacity={0.022} />
       {props.music && props.music.url ? (
         <Audio src={props.music.url} loop loopVolumeCurveBehavior="extend" volume={volumeAt} />
       ) : null}

@@ -31,16 +31,19 @@ export const BIENFAITS_ITEM_SECONDS = 2.2;
 /** Le titre de « bienfaits » occupe l'écran seul avant le premier élément. */
 export const BIENFAITS_INTRO_SECONDS = 1;
 /** Les temps forts arrivent en cartes, une toutes les… */
-export const BIENFAITS_CARD_STAGGER_SECONDS = 0.3;
+export const BIENFAITS_CARD_STAGGER_SECONDS = 0.35;
 /** …puis restent affichés ensemble le temps de les lire. */
-export const BIENFAITS_CARDS_HOLD_SECONDS = 2;
+export const BIENFAITS_CARDS_HOLD_SECONDS = 2.4;
 const BIENFAITS_MIN_SECONDS = 4;
 const BIENFAITS_MAX_SECONDS = 22;
 /** En dessous de ce nombre de photos, les temps forts complètent la scène. */
 export const BIENFAITS_MIN_PHOTOS = 3;
 const BIENFAITS_MAX_PHOTOS = 7;
-/** Nombre maximal de cartes « temps fort » (deux colonnes de trois). */
-export const BIENFAITS_MAX_CARDS = 6;
+/** Nombre maximal de cartes illustrées (une rangée). */
+export const BIENFAITS_MAX_CARDS = 4;
+
+/** Nombre maximal de rendez-vous suivants montrés dans « agenda ». */
+export const AGENDA_MAX_UPCOMING = 4;
 
 /** Nombre maximal de chiffres et de membres réellement montrés. */
 export const CHIFFRES_MAX = 3;
@@ -109,18 +112,23 @@ export function bienfaitsSchedule(items: BienfaitsItem[]): {
 export function sceneMinimumSeconds(id: ClassVideoSceneId, props: ClassVideoProps): number {
   switch (id) {
     case "intro":
-      return 4.4;
+      return 4.8;
     case "apel":
-      return 3;
-    case "vie":
-    case "sourire":
-    case "souvenirs":
-    case "rassembler":
-      return 2.8;
+      return 3.4;
+    case "agenda":
+      return 4.4 + Math.min(props.agenda.upcoming.length, AGENDA_MAX_UPCOMING) * 0.25;
+    case "site":
+      return 4.4;
+    case "benevolat":
+      return 4;
     case "bienfaits": {
       const { end } = bienfaitsSchedule(getBienfaitsItems(props));
       return Math.min(BIENFAITS_MAX_SECONDS, Math.max(BIENFAITS_MIN_SECONDS, end));
     }
+    case "lien":
+      return 4.2;
+    case "membre":
+      return 4.2;
     case "chiffres":
       return 3.6 + Math.min(props.figures.length, CHIFFRES_MAX) * 0.3;
     case "membres": {
@@ -128,7 +136,7 @@ export function sceneMinimumSeconds(id: ClassVideoSceneId, props: ClassVideoProp
       return Math.min(8, Math.max(3.6, 2.8 + count * 0.35));
     }
     case "fin":
-      return 7;
+      return 8;
   }
 }
 

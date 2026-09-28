@@ -4,7 +4,7 @@ import { AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame, useVideoC
 
 import type { SceneTheme } from "../theme";
 import type { ClassVideoProps, ClassVideoScene } from "../types";
-import { Camera, EXPO_IN_OUT, Glow, Particles, QUINT_OUT, Vignette } from "./finish";
+import { Camera, EXPO_IN_OUT, Glow, Grain, Particles, QUINT_OUT, Vignette } from "./finish";
 import { snap } from "./motion";
 
 /** Props communes à toutes les scènes. */
@@ -73,6 +73,8 @@ export const SceneBackdrop: React.FC<{
       </Camera>
       {children}
       <Vignette strength={theme.bold ? 0.16 : 0.045} />
+      {/* Grain de pellicule sur les scènes en couleur pleine seulement (sur fond clair, il se verrait trop). */}
+      {theme.bold ? <Grain opacity={0.022} /> : null}
     </AbsoluteFill>
   );
 };
@@ -93,7 +95,7 @@ export const Sfx: React.FC<{ src: string | null | undefined; at: number; volume?
 
 export type TransitionKind = "panel" | "slide" | "zoom" | "circle";
 /** Enchaînement des transitions, dans l'ordre des scènes. */
-export const TRANSITION_ORDER: TransitionKind[] = ["panel", "circle", "slide", "panel", "zoom", "slide", "circle", "panel", "zoom"];
+export const TRANSITION_ORDER: TransitionKind[] = ["panel", "circle", "slide", "panel", "zoom", "slide", "circle", "panel", "zoom", "panel"];
 
 /**
  * Enveloppe d'une scène : entrée soignée par-dessus la précédente — trois
