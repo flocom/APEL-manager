@@ -127,6 +127,8 @@ export type ClassVideoSource = {
   palette: VideoPalette;
   /** Adresse de la page « Nous rejoindre », sans schéma : « apel-ndf.fr/rejoindre ». */
   joinLabel: string;
+  /** La même, complète, pour le QR code de la fin ; vide si le site n'a pas d'adresse publique. */
+  joinUrl: string;
   /** Cotisation publiée, prête à afficher (« 23 € par famille »), ou null. */
   membershipFee: string | null;
   /** Événements publiés de l'année scolaire en cours, dans l'ordre du calendrier. */
@@ -150,8 +152,9 @@ function minusculeInitiale(titre: string): string {
 
 /**
  * Textes par défaut de chaque scène, écrits pour des parents : on les
- * vouvoie, on reste concret et sobre. La vidéo leur dit ce que fait l'APEL et
- * leur donne envie d'adhérer ou de donner un coup de main.
+ * vouvoie, et on fait court. La vidéo doit accrocher — une idée par scène,
+ * une phrase de voix off de deux ou trois secondes —, puis donner envie
+ * d'adhérer ou de donner un coup de main.
  */
 export function defaultSceneTexts(
   source: ClassVideoSource,
@@ -161,73 +164,73 @@ export function defaultSceneTexts(
   const figure = (key: ClassVideoSource["figures"][number]["key"]) =>
     source.figures.find((f) => f.key === key)?.value ?? 0;
   const chiffres = [
-    figure("familles") > 0 ? `${figure("familles")} familles adhérentes` : null,
+    figure("familles") > 0 ? `${figure("familles")} familles` : null,
     figure("benevoles") > 0 ? `${figure("benevoles")} bénévoles` : null,
     figure("evenements") > 0 ? `${figure("evenements")} rendez-vous` : null,
   ].filter((v): v is string => v !== null);
 
   return {
     intro: {
-      title: "Bienvenue à l'APEL",
+      title: "Et si l'école, c'était aussi vous ?",
       subtitle: source.associationName,
-      voiceText: `Chers parents, bienvenue. Voici l'APEL, l'association des parents d'élèves ${ecole}.`,
+      voiceText: `Et si l'école, c'était aussi vous ? Voici l'APEL ${ecole}.`,
     },
     apel: {
       title: "L'APEL, c'est vous",
-      subtitle: "Une association de parents bénévoles",
-      voiceText:
-        "L'APEL réunit des parents bénévoles qui, chacun selon ses disponibilités, s'engagent pour la vie de l'école et le bien-être des enfants.",
+      subtitle: "Des parents qui s'engagent",
+      voiceText: "Des parents bénévoles, qui s'engagent pour l'école et pour les enfants.",
     },
     vie: {
-      title: "Donner vie à l'école",
-      subtitle: "Des rendez-vous toute l'année",
+      title: "Des fêtes toute l'année",
+      // Les intitulés réels (« Gouter Post Matinée sportive ») sont souvent
+      // trop longs pour un sous-titre : ils ne sont cités que par la voix.
+      subtitle: "Fêtes, goûters, rendez-vous",
       voiceText:
         evenements.length > 0
-          ? `Tout au long de l'année, nous organisons des temps forts : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien d'autres.`
-          : "Tout au long de l'année, nous organisons des temps forts qui font vivre l'école.",
+          ? `Toute l'année : ${listeFrancaise(evenements.map(minusculeInitiale))}, et bien plus.`
+          : "Toute l'année, des temps forts qui font vivre l'école.",
     },
     sourire: {
-      title: "Faire sourire les enfants",
+      title: "Des sourires garantis",
       subtitle: "Goûters, fêtes et surprises",
-      voiceText:
-        "Goûters, fêtes, surprises : notre première motivation, ce sont les sourires des enfants.",
+      voiceText: "Goûters, fêtes, surprises : des sourires garantis.",
     },
     souvenirs: {
-      title: "Créer des souvenirs",
-      subtitle: "Sorties, voyages et projets financés",
-      voiceText:
-        "Les bénéfices de nos actions aident à financer des sorties, des voyages et du matériel pour les classes : autant de souvenirs pour vos enfants.",
+      title: "Des souvenirs plein la tête",
+      subtitle: "Sorties et voyages financés",
+      voiceText: "Nos actions financent sorties, voyages et projets de classe.",
     },
     rassembler: {
-      title: "Rassembler",
+      title: "Tous ensemble",
       subtitle: "Familles et équipe éducative",
-      voiceText:
-        "L'APEL fait aussi le lien entre les familles et l'équipe éducative, et offre l'occasion de se rencontrer entre parents.",
+      voiceText: "Et surtout, l'APEL rassemble les familles et toute l'équipe de l'école.",
     },
     bienfaits: {
       title: "Concrètement",
       subtitle: "Ce que nous réalisons ensemble",
-      voiceText: "Voici quelques exemples de ce que votre participation rend possible.",
+      voiceText: "Concrètement, voici ce que nous réalisons ensemble.",
     },
     chiffres: {
       title: "L'APEL en chiffres",
       subtitle: "",
       voiceText:
         chiffres.length > 0
-          ? `Cette année, l'APEL, c'est déjà ${listeFrancaise(chiffres)}.`
-          : "Chaque année, de nouvelles familles nous rejoignent.",
+          ? `Cette année, c'est déjà ${listeFrancaise(chiffres)} !`
+          : "Chaque année, de nouvelles familles nous rejoignent !",
     },
     membres: {
       title: "L'équipe",
       subtitle: "Des parents à votre écoute",
-      voiceText:
-        "Voici les parents qui animent l'association. N'hésitez pas à venir nous rencontrer : nous sommes à votre écoute.",
+      voiceText: "Une équipe de parents, à votre écoute.",
     },
     fin: {
-      title: "Rejoignez-nous",
+      title: "Rejoignez-nous !",
       subtitle: "Adhérez ou donnez un coup de main",
-      voiceText:
-        "Adhérer, c'est soutenir nos actions ; donner un peu de temps, c'est les faire vivre. Nous comptons sur vous !",
+      // Le QR code n'existe que si le site a une adresse publique : la voix
+      // n'invite à le scanner que dans ce cas.
+      voiceText: source.joinUrl
+        ? "Adhérez, donnez un coup de main : rejoignez-nous ! Il suffit de scanner le code."
+        : "Adhérez, donnez un coup de main : rejoignez-nous !",
     },
   };
 }
@@ -314,6 +317,7 @@ export function buildClassVideoProps(
     figures,
     members,
     joinLabel: source.joinLabel,
+    joinUrl: source.joinUrl,
     membershipFee: source.membershipFee,
     music,
     sfx: content.sfx ? audio.sfx : null,

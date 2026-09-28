@@ -4,6 +4,7 @@ import type {
   ClassVideoScene,
   ClassVideoSceneId,
 } from "./types";
+import { DEFAULT_MUSIC_BPM } from "./audio-synth";
 
 /**
  * Découpage temporel de la vidéo. Fonction pure et déterministe : l'éditeur,
@@ -12,28 +13,29 @@ import type {
  */
 
 /**
- * Rythme posé : la vidéo s'adresse à des parents qui lisent chaque écran.
- * Les durées minimales ci-dessous cèdent la place à la voix off quand elle
- * est plus longue.
+ * Rythme enlevé : la vidéo doit accrocher les parents dès les premières
+ * secondes. Les durées minimales ci-dessous cèdent la place à la voix off
+ * quand elle est plus longue, et chaque changement de scène tombe sur un
+ * temps de la musique générée (DEFAULT_MUSIC_BPM).
  */
 
-/** Chevauchement entre deux scènes : la suivante entre par-dessus la précédente. */
-export const CLASS_VIDEO_TRANSITION_SECONDS = 0.6;
+/** Chevauchement entre deux scènes (un temps à 120 bpm) : la suivante entre par-dessus la précédente. */
+export const CLASS_VIDEO_TRANSITION_SECONDS = 0.5;
 /** La voix démarre un peu après le début de la scène, une fois la transition passée. */
-export const CLASS_VIDEO_VOICE_OFFSET_SECONDS = 0.6;
+export const CLASS_VIDEO_VOICE_OFFSET_SECONDS = 0.5;
 /** Marge laissée après la voix avant la scène suivante. */
-export const CLASS_VIDEO_VOICE_TAIL_SECONDS = 0.9;
+export const CLASS_VIDEO_VOICE_TAIL_SECONDS = 0.6;
 
-/** Durée d'une photo de « bienfaits ». */
-export const BIENFAITS_ITEM_SECONDS = 3.4;
+/** Durée d'une photo de « bienfaits » (coupes franches, pas de fondu lent). */
+export const BIENFAITS_ITEM_SECONDS = 2.2;
 /** Le titre de « bienfaits » occupe l'écran seul avant le premier élément. */
-export const BIENFAITS_INTRO_SECONDS = 1.6;
+export const BIENFAITS_INTRO_SECONDS = 1;
 /** Les temps forts arrivent en cartes, une toutes les… */
-export const BIENFAITS_CARD_STAGGER_SECONDS = 0.7;
+export const BIENFAITS_CARD_STAGGER_SECONDS = 0.3;
 /** …puis restent affichés ensemble le temps de les lire. */
-export const BIENFAITS_CARDS_HOLD_SECONDS = 2.8;
-const BIENFAITS_MIN_SECONDS = 6;
-const BIENFAITS_MAX_SECONDS = 30;
+export const BIENFAITS_CARDS_HOLD_SECONDS = 2;
+const BIENFAITS_MIN_SECONDS = 4;
+const BIENFAITS_MAX_SECONDS = 22;
 /** En dessous de ce nombre de photos, les temps forts complètent la scène. */
 export const BIENFAITS_MIN_PHOTOS = 3;
 const BIENFAITS_MAX_PHOTOS = 7;
@@ -99,42 +101,51 @@ export function bienfaitsSchedule(items: BienfaitsItem[]): {
   }
   const cardCount = items.filter((item) => item.kind === "highlight").length;
   const cardsStart = cardCount > 0 ? cursor : null;
-  if (cardCount > 0) cursor += 0.4 + cardCount * BIENFAITS_CARD_STAGGER_SECONDS + BIENFAITS_CARDS_HOLD_SECONDS;
-  return { photoStarts, cardsStart, cardCount, end: cursor + 0.4 };
+  if (cardCount > 0) cursor += 0.3 + cardCount * BIENFAITS_CARD_STAGGER_SECONDS + BIENFAITS_CARDS_HOLD_SECONDS;
+  return { photoStarts, cardsStart, cardCount, end: cursor + 0.2 };
 }
 
 /** Durée minimale (en secondes) d'une scène, avant prise en compte de la voix. */
 export function sceneMinimumSeconds(id: ClassVideoSceneId, props: ClassVideoProps): number {
   switch (id) {
     case "intro":
-      return 5.4;
+      return 4.4;
     case "apel":
-      return 6;
+      return 3;
     case "vie":
     case "sourire":
     case "souvenirs":
     case "rassembler":
-      return 4.6;
+      return 2.8;
     case "bienfaits": {
       const { end } = bienfaitsSchedule(getBienfaitsItems(props));
       return Math.min(BIENFAITS_MAX_SECONDS, Math.max(BIENFAITS_MIN_SECONDS, end));
     }
     case "chiffres":
-      return 6.6 + Math.min(props.figures.length, CHIFFRES_MAX) * 0.4;
+      return 3.6 + Math.min(props.figures.length, CHIFFRES_MAX) * 0.3;
     case "membres": {
       const count = Math.min(props.members.length, MEMBRES_MAX);
-      return Math.min(12, Math.max(6, 4.2 + count * 0.6));
+      return Math.min(8, Math.max(3.6, 2.8 + count * 0.35));
     }
     case "fin":
-      return 7.5;
+      return 7;
   }
 }
+
+/** Nombre d'images d'un temps de la musique générée. */
+export const beatFrames = (fps: number) => Math.max(1, Math.round((60 / DEFAULT_MUSIC_BPM) * fps));
 
 export function sceneDurationInFrames(scene: ClassVideoScene, props: ClassVideoProps, fps: number): number {
   const voiceSeconds = scene.voice
     ? CLASS_VIDEO_VOICE_OFFSET_SECONDS + Math.max(0, scene.voice.durationInSeconds) + CLASS_VIDEO_VOICE_TAIL_SECONDS
     : 0;
-  return Math.ceil(Math.max(sceneMinimumSeconds(scene.id, props), voiceSeconds) * fps);
+  const raw = Math.ceil(Math.max(sceneMinimumSeconds(scene.id, props), voiceSeconds) * fps);
+  // Arrondi au temps supérieur : la scène suivante démarre (from + durée −
+  // chevauchement) pile sur un temps. On n'arrondit jamais vers le bas, la
+  // voix garde toujours la place dont elle a besoin.
+  const overlap = transitionFrames(fps);
+  const beat = beatFrames(fps);
+  return Math.ceil(Math.max(1, raw - overlap) / beat) * beat + overlap;
 }
 
 export const transitionFrames = (fps: number) => Math.round(CLASS_VIDEO_TRANSITION_SECONDS * fps);

@@ -4,13 +4,21 @@ import { Easing, interpolate, spring } from "remotion";
  * Petites courbes d'animation partagées. Tout dépend uniquement de l'image
  * courante : la vidéo reste identique entre le Player et l'export.
  *
- * Ton posé (public adulte) : sorties en douceur (cubique, quintique) et
- * ressorts très amortis, sans rebond marqué.
+ * Ton enlevé mais net : entrées rapides en ressort avec un léger
+ * dépassement (sans oscillation), sorties en douceur (cubique, quintique).
  */
 
 /** Entrée douce en ressort amorti (0 → 1, dépassement à peine perceptible). */
 export function pop(frame: number, fps: number, delay = 0, stiffness = 120, damping = 18): number {
   return spring({ frame: frame - delay, fps, config: { stiffness, damping, mass: 1 } });
+}
+
+/**
+ * Entrée « claquée » : ressort rapide qui dépasse d'environ 6 % puis se pose,
+ * sans rebondir plusieurs fois.
+ */
+export function snap(frame: number, fps: number, delay = 0, stiffness = 260, damping = 19): number {
+  return spring({ frame: frame - delay, fps, config: { stiffness, damping, mass: 0.7 } });
 }
 
 /** Entrée douce, sans rebond. */

@@ -1,12 +1,12 @@
 import React from "react";
-import { useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
-import { enter, seeded } from "./motion";
+import { enter, seeded, snap } from "./motion";
 
 /**
- * Accents décoratifs, volontairement discrets : quelques étincelles fines
- * et des pastilles. Plus de confettis ni d'arc-en-ciel : la vidéo s'adresse
- * aux parents.
+ * Accents décoratifs : formes géométriques franches (bandes obliques,
+ * disques, anneaux, trames de points) qui surgissent en rythme, et quelques
+ * étincelles fines. Graphique et moderne, sans confettis.
  */
 
 /** Étoile à quatre branches fines (points pour <polygon>, repère 100 × 100). */
@@ -82,5 +82,98 @@ export const Dot: React.FC<{ x: number; y: number; r: number; color: string; del
         transform: `scale(${p})`,
       }}
     />
+  );
+};
+
+export type GeoShape =
+  | { kind: "disc"; x: number; y: number; r: number; color: string; at?: number }
+  | { kind: "ring"; x: number; y: number; r: number; width: number; color: string; at?: number }
+  | { kind: "band"; x: number; y: number; w: number; h: number; angle: number; color: string; at?: number; from?: -1 | 1 }
+  | { kind: "dots"; x: number; y: number; cols: number; rows: number; gap: number; r: number; color: string; at?: number };
+
+/**
+ * Formes géométriques d'accompagnement. Disques et anneaux claquent en
+ * grossissant, les bandes obliques entrent en glissant sur leur axe, les
+ * points apparaissent en cascade ; puis tout dérive très légèrement.
+ */
+export const GeoShapes: React.FC<{ shapes: GeoShape[]; delay?: number }> = ({ shapes, delay = 0 }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame / fps;
+  return (
+    <>
+      {shapes.map((shape, i) => {
+        const at = delay + (shape.at ?? i * 3);
+        const drift = Math.sin(t * 0.9 + i * 1.3) * 8;
+        if (shape.kind === "disc" || shape.kind === "ring") {
+          const p = Math.max(0, snap(frame, fps, at, 220, 18));
+          const ring = shape.kind === "ring";
+          return (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                left: shape.x - shape.r,
+                top: shape.y - shape.r + drift,
+                width: shape.r * 2,
+                height: shape.r * 2,
+                borderRadius: "50%",
+                boxSizing: "border-box",
+                background: ring ? undefined : shape.color,
+                border: ring ? `${shape.width}px solid ${shape.color}` : undefined,
+                transform: `scale(${p})`,
+              }}
+            />
+          );
+        }
+        if (shape.kind === "band") {
+          const p = interpolate(frame, [at, at + 12], [0, 1], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+            easing: Easing.bezier(0.16, 1, 0.3, 1),
+          });
+          const dir = shape.from ?? 1;
+          return (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                left: shape.x - shape.w / 2,
+                top: shape.y - shape.h / 2,
+                width: shape.w,
+                height: shape.h,
+                borderRadius: shape.h / 2,
+                background: shape.color,
+                transform: `rotate(${shape.angle}deg) translateX(${(1 - p) * dir * (shape.w + 400)}px) translateY(${drift * 0.5}px)`,
+              }}
+            />
+          );
+        }
+        return (
+          <React.Fragment key={i}>
+            {Array.from({ length: shape.cols * shape.rows }, (_, k) => {
+              const cx = shape.x + (k % shape.cols) * shape.gap;
+              const cy = shape.y + Math.floor(k / shape.cols) * shape.gap;
+              const p = Math.max(0, snap(frame, fps, at + k * 0.8, 260, 20));
+              return (
+                <div
+                  key={k}
+                  style={{
+                    position: "absolute",
+                    left: cx - shape.r,
+                    top: cy - shape.r + drift * 0.6,
+                    width: shape.r * 2,
+                    height: shape.r * 2,
+                    borderRadius: "50%",
+                    background: shape.color,
+                    transform: `scale(${p})`,
+                  }}
+                />
+              );
+            })}
+          </React.Fragment>
+        );
+      })}
+    </>
   );
 };

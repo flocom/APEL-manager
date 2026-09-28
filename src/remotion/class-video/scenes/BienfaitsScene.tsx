@@ -1,13 +1,15 @@
 import React from "react";
-import { useCurrentFrame, useVideoConfig } from "remotion";
+import { Easing, useCurrentFrame, useVideoConfig } from "remotion";
 
 import { contrastRatio, mix, WHITE } from "../colors";
 import { Character, makeCast } from "../components/characters";
+import { GeoShapes } from "../components/decor";
+import { Camera, Sheen } from "../components/finish";
 import { BadgeIcon, iconForText } from "../components/illustrations";
 import { KenBurns, PhotoFrame } from "../components/media";
-import { enter, progress } from "../components/motion";
+import { progress, snap } from "../components/motion";
 import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
-import { BODY_CHAR, fitFontSize, frenchSpaces, TextBlock } from "../components/text";
+import { fitFontSize, frenchSpaces, TextBlock } from "../components/text";
 import {
   BIENFAITS_CARD_STAGGER_SECONDS,
   BIENFAITS_ITEM_SECONDS,
@@ -15,15 +17,15 @@ import {
   getBienfaitsItems,
 } from "../timeline";
 import { FONT_FAMILY, illuColors, sceneTheme } from "../theme";
-import { MARGIN_X } from "./common";
+import { chapter, MARGIN_X } from "./common";
 
-const AREA = { x: 780, y: 120, w: 1020, h: 720 };
+const AREA = { x: 770, y: 110, w: 1030, h: 740 };
 
 /**
  * « Concrètement » : les photos des réalisations (Ken Burns, cadre sobre,
  * légende), puis les temps forts en cartes. Une maman présente le tout.
  */
-export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
+export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video, durationInFrames, index }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "bienfaits");
@@ -42,11 +44,14 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
   const photoEls = photos.map((photo, i) => {
     const start = Math.round(schedule.photoStarts[i] * fps);
     const end = i < photos.length - 1 ? start + itemFrames : (cardsStart ?? Number.POSITIVE_INFINITY);
-    if (frame < start - 1 || frame > end + 16) return null;
-    const inK = enter(frame, start, 20);
-    const outK = Number.isFinite(end) ? progress(frame, end, end + 14) : 0;
+    // Coupe franche : la photo remplace la précédente d'un coup, avec un zoom qui claque.
+    if (frame < start || frame >= end) return null;
+    const first = i === 0;
+    const punch = first ? Math.max(0, snap(frame, fps, start, 240, 19)) : progress(frame, start, start + 8, Easing.bezier(0.16, 1, 0.3, 1));
+    const scale = first ? 0.6 + 0.4 * punch : 1.1 - 0.1 * punch;
     const caption = frenchSpaces(photo.caption.trim());
-    const captionSize = caption ? fitFontSize(caption, AREA.w - 70, 1, 40, 26, BODY_CHAR + 0.04) : 40;
+    const captionSize = caption ? fitFontSize(caption, AREA.w - 160, 1, 44, 26, 0.56) : 44;
+    const chipIn = progress(frame, start + 4, start + 14, Easing.bezier(0.16, 1, 0.3, 1));
     return (
       <div
         key={i}
@@ -56,13 +61,32 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
           top: AREA.y,
           width: AREA.w,
           height: AREA.h,
-          opacity: inK * (1 - outK),
-          transform: `translateX(${(1 - inK) * 60 - outK * 40}px)`,
+          transform: `perspective(1600px) rotateY(${first ? (1 - punch) * -28 : 0}deg) scale(${scale}) rotate(${i % 2 ? 1.4 : -1.4}deg)`,
         }}
       >
-        <PhotoFrame width={AREA.w} height={AREA.h} ink={theme.ink} caption={caption || undefined} captionSize={captionSize}>
-          <KenBurns src={photo.url} fallback={mix(video.palette.primary, WHITE, 0.6)} durationInFrames={itemFrames + 30} direction={i} delay={start} />
+        <PhotoFrame width={AREA.w} height={AREA.h} ink={theme.ink}>
+          <KenBurns src={photo.url} fallback={mix(video.palette.primary, WHITE, 0.6)} durationInFrames={itemFrames} direction={i} delay={start} />
+          <Sheen at={start + 3} width={200} opacity={0.35} />
         </PhotoFrame>
+        {caption ? (
+          <div style={{ position: "absolute", left: -24, bottom: 48, maxWidth: AREA.w - 40, overflow: "hidden", borderRadius: 16 }}>
+            <div
+              style={{
+                padding: "16px 30px",
+                background: theme.marker,
+                color: theme.markerInk,
+                fontFamily: FONT_FAMILY,
+                fontWeight: 800,
+                fontSize: captionSize,
+                letterSpacing: "-0.01em",
+                whiteSpace: "nowrap",
+                transform: `translateX(${(chipIn - 1) * 105}%)`,
+              }}
+            >
+              {caption}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   });
@@ -70,7 +94,7 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
   // Petits repères de progression sous les photos.
   const photosVisible = photos.length > 1 && frame < (cardsStart ?? Number.POSITIVE_INFINITY) + 10;
   const current = Math.max(0, Math.min(photos.length - 1, Math.floor((frame / fps - (schedule.photoStarts[0] ?? 0)) / BIENFAITS_ITEM_SECONDS)));
-  const dotsIn = photos.length ? enter(frame, Math.round((schedule.photoStarts[0] ?? 0) * fps), 20) : 0;
+  const dotsIn = photos.length ? progress(frame, Math.round((schedule.photoStarts[0] ?? 0) * fps), Math.round((schedule.photoStarts[0] ?? 0) * fps) + 8) : 0;
 
   let cardEls: React.ReactNode = null;
   if (cardsStart !== null && texts.length > 0) {
@@ -84,7 +108,7 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
     const top = AREA.y + (AREA.h - gridH) / 2 + 20;
     const stagger = BIENFAITS_CARD_STAGGER_SECONDS * fps;
     cardEls = texts.map((text, i) => {
-      const p = enter(frame, cardsStart + 8 + i * stagger, 20);
+      const p = Math.max(0, snap(frame, fps, cardsStart + 4 + i * stagger, 260, 18));
       const col = i % cols;
       const row = Math.floor(i / cols);
       const color = iconColors[i % iconColors.length];
@@ -108,8 +132,10 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
             gap: 28,
             padding: "0 30px",
             boxSizing: "border-box",
-            opacity: p,
-            transform: `translateY(${(1 - p) * 30}px)`,
+            opacity: Math.min(1, p * 3),
+            overflow: "hidden",
+            transformOrigin: "50% 100%",
+            transform: `perspective(1200px) rotateX(${(1 - p) * 55}deg) translateY(${(1 - p) * 40}px) scale(${0.85 + 0.15 * p})`,
           }}
         >
           <div
@@ -126,30 +152,44 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
             <BadgeIcon kind={iconForText(text, i)} color={color} accent={video.palette.accent === color ? video.palette.primary : video.palette.accent} size={62} />
           </div>
           <div style={{ flex: 1, fontFamily: FONT_FAMILY, fontWeight: 700, fontSize: size, lineHeight: 1.16, color: theme.ink, letterSpacing: "-0.01em" }}>{value}</div>
+          <Sheen at={cardsStart + 12 + i * stagger} width={120} opacity={0.6} />
         </div>
       );
     });
   }
 
   return (
-    <SceneBackdrop theme={theme} floorY={960}>
-      <div style={{ position: "absolute", left: MARGIN_X, top: 140, width: 600 }}>
-        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={600} maxLines={2} titleSize={100} subtitleSize={42} delay={6} />
-      </div>
-      <Character look={cast.claire} c={c} x={420} y={1015} height={480} gesture="present" gestureAt={26} gaze={0.6} tilt={2} seed={40} appear={4} shadow={theme.shadow} />
-      {photoEls}
-      {photosVisible ? (
-        <div style={{ position: "absolute", left: AREA.x, top: AREA.y + AREA.h + 30, width: AREA.w, display: "flex", justifyContent: "center", gap: 14, opacity: dotsIn }}>
-          {photos.map((_, i) => (
-            <div key={i} style={{ width: i === current ? 40 : 14, height: 14, borderRadius: 7, background: i === current ? theme.accent : mix(theme.bg, theme.ink, 0.18) }} />
-          ))}
+    <SceneBackdrop theme={theme} floorY={960} durationInFrames={durationInFrames}>
+      <Camera depth={0.6} durationInFrames={durationInFrames}>
+        <GeoShapes
+          shapes={[
+            { kind: "disc", x: 1840, y: 100, r: 120, color: theme.shapes[0], at: 0 },
+            { kind: "dots", x: 90, y: 560, cols: 2, rows: 4, gap: 30, r: 5, color: theme.shapes[2] ?? theme.shapes[0], at: 5 },
+            { kind: "ring", x: 740, y: 950, r: 44, width: 6, color: theme.shapes[1] ?? theme.shapes[0], at: 8 },
+          ]}
+        />
+      </Camera>
+      <Camera depth={0.3} durationInFrames={durationInFrames}>
+        <div style={{ position: "absolute", left: MARGIN_X, top: 130, width: 600 }}>
+          <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} marker={{ color: theme.marker, ink: theme.markerInk }} maxWidth={600} maxLines={2} titleSize={110} subtitleSize={42} delay={3} eyebrow={chapter(index, video.associationName)} />
         </div>
-      ) : null}
-      {cardEls}
+      </Camera>
+      <Camera depth={1} durationInFrames={durationInFrames}>
+        <Character look={cast.claire} c={c} x={420} y={1015} height={480} gesture="present" gestureAt={14} gaze={0.6} tilt={2} seed={40} appear={4} shadow={theme.shadow} />
+        {photoEls}
+        {photosVisible ? (
+          <div style={{ position: "absolute", left: AREA.x, top: AREA.y + AREA.h + 30, width: AREA.w, display: "flex", justifyContent: "center", gap: 14, opacity: dotsIn }}>
+            {photos.map((_, i) => (
+              <div key={i} style={{ width: i === current ? 40 : 14, height: 14, borderRadius: 7, background: i === current ? theme.accent : mix(theme.bg, theme.ink, 0.18) }} />
+            ))}
+          </div>
+        ) : null}
+        {cardEls}
+      </Camera>
       {schedule.photoStarts.slice(0, 8).map((s, i) => (
-        <Sfx key={i} src={video.sfx?.pop} at={Math.round(s * fps) + 2} volume={0.16} />
+        <Sfx key={i} src={video.sfx?.pop} at={Math.round(s * fps)} volume={0.28} />
       ))}
-      {cardsStart !== null ? <Sfx src={video.sfx?.pop} at={cardsStart + 8} volume={0.16} /> : null}
+      {cardsStart !== null ? <Sfx src={video.sfx?.pop} at={cardsStart + 4} volume={0.28} /> : null}
     </SceneBackdrop>
   );
 };

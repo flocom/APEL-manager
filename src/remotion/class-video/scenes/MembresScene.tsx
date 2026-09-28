@@ -1,15 +1,17 @@
 import React from "react";
-import { useCurrentFrame } from "remotion";
+import { useCurrentFrame, useVideoConfig } from "remotion";
 
 import { contrastRatio, mix, WHITE } from "../colors";
 import { initials, SafeImg } from "../components/media";
-import { enter } from "../components/motion";
+import { GeoShapes, type GeoShape } from "../components/decor";
+import { Camera } from "../components/finish";
+import { snap } from "../components/motion";
 import { SceneBackdrop, type SceneProps } from "../components/scene";
 import { BODY_CHAR, fitFontSize, TextBlock } from "../components/text";
 import { MEMBRES_MAX } from "../timeline";
 import { FONT_FAMILY, sceneTheme } from "../theme";
 import type { ClassVideoMember } from "../types";
-import { MARGIN_X, TextColumn } from "./common";
+import { chapter, MARGIN_X, TextColumn } from "./common";
 
 type Slot = { member: ClassVideoMember | null; extra: number };
 
@@ -18,8 +20,9 @@ type Slot = { member: ClassVideoMember | null; extra: number };
  * prénom et rôle. Jusqu'à trois à côté du titre, au-delà en grille sous le
  * titre ; après 12, la dernière pastille affiche « +N ».
  */
-export const MembresScene: React.FC<SceneProps> = ({ scene, video }) => {
+export const MembresScene: React.FC<SceneProps> = ({ scene, video, durationInFrames, index }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "membres");
   const all = video.members;
   const slots: Slot[] =
@@ -33,16 +36,16 @@ export const MembresScene: React.FC<SceneProps> = ({ scene, video }) => {
   const perRow = side ? slots.length : slots.length <= 4 ? slots.length : slots.length <= 8 ? Math.ceil(slots.length / 2) : 6;
   const avatar = side ? (slots.length <= 2 ? 270 : 230) : perRow <= 4 ? (slots.length <= 4 ? 230 : 180) : 150;
   const colW = side ? avatar + 90 : Math.min(360, 1640 / perRow);
-  const startOf = (i: number) => 18 + i * Math.max(3, Math.min(8, Math.round(36 / Math.max(1, slots.length))));
+  const startOf = (i: number) => 10 + i * Math.max(2, Math.min(5, Math.round(24 / Math.max(1, slots.length))));
 
   const portrait = (slot: Slot, i: number) => {
-    const p = enter(frame, startOf(i), 22);
+    const p = Math.max(0, snap(frame, fps, startOf(i), 260, 17));
     const color = tints[i % tints.length];
     const name = slot.member?.name.trim() ?? "";
     const role = slot.member?.role.trim() ?? "";
     const nameSize = fitFontSize(name, colW - 10, 1, avatar * 0.17 + 4, 22, 0.6);
     return (
-      <div key={i} style={{ width: colW, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, opacity: p, transform: `translateY(${(1 - p) * 30}px)` }}>
+      <div key={i} style={{ width: colW, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, opacity: Math.min(1, p * 3), transform: `translateY(${(1 - p) * 50}px) scale(${0.6 + 0.4 * p})` }}>
         <div
           style={{
             position: "relative",
@@ -98,11 +101,20 @@ export const MembresScene: React.FC<SceneProps> = ({ scene, video }) => {
     );
   };
 
+  const shapes: GeoShape[] = [
+    { kind: "disc", x: 1860, y: 110, r: 110, color: theme.shapes[0], at: 0 },
+    { kind: "dots", x: 1700, y: 930, cols: 4, rows: 2, gap: 30, r: 5, color: theme.shapes[2] ?? theme.shapes[0], at: 4 },
+    { kind: "ring", x: 80, y: 980, r: 50, width: 6, color: theme.shapes[1] ?? theme.shapes[0], at: 6 },
+  ];
+
   if (side) {
     return (
-      <SceneBackdrop theme={theme} blob={{ x: 1330, y: 540, r: 420 }}>
+      <SceneBackdrop theme={theme} blob={{ x: 1330, y: 540, r: 420 }} durationInFrames={durationInFrames}>
+        <Camera depth={0.6} durationInFrames={durationInFrames}>
+          <GeoShapes shapes={shapes} />
+        </Camera>
         <TextColumn width={640}>
-          <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={640} maxLines={3} delay={4} />
+          <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} marker={{ color: theme.marker, ink: theme.markerInk }} maxWidth={640} maxLines={3} titleSize={130} delay={3} eyebrow={chapter(index, video.associationName)} />
         </TextColumn>
         <div style={{ position: "absolute", left: 860, right: MARGIN_X - 40, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
           {slots.map(portrait)}
@@ -113,9 +125,12 @@ export const MembresScene: React.FC<SceneProps> = ({ scene, video }) => {
 
   const rows = [slots.slice(0, perRow), slots.slice(perRow)].filter((r) => r.length > 0);
   return (
-    <SceneBackdrop theme={theme}>
+    <SceneBackdrop theme={theme} durationInFrames={durationInFrames}>
+      <Camera depth={0.6} durationInFrames={durationInFrames}>
+        <GeoShapes shapes={shapes} />
+      </Camera>
       <div style={{ position: "absolute", left: MARGIN_X, top: 100, width: 1640 }}>
-        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={1400} maxLines={1} titleSize={96} subtitleSize={42} gap={22} delay={4} />
+        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} marker={{ color: theme.marker, ink: theme.markerInk }} maxWidth={1400} maxLines={1} titleSize={110} subtitleSize={42} gap={20} delay={3} eyebrow={chapter(index, video.associationName)} />
       </div>
       <div style={{ position: "absolute", left: MARGIN_X, right: MARGIN_X, top: 400, bottom: 50, display: "flex", flexDirection: "column", justifyContent: "center", gap: rows.length > 1 ? 34 : 0 }}>
         {rows.map((row, r) => (

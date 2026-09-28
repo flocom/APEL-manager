@@ -191,6 +191,7 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
     logoUrl: settings.logoUrl,
     palette,
     joinLabel: joinLabel(),
+    joinUrl: configuredBaseUrl() ? `${configuredBaseUrl()}/rejoindre` : "",
     membershipFee: cotisationAffichee(settings),
     recentEvents,
     figures: (

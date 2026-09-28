@@ -37,10 +37,10 @@ const Window: React.FC<{ x: number; y: number; w: number; h: number; c: IlluColo
 };
 
 /** Façade d'école : corps central à fronton, deux ailes, porte, drapeau. 900 × 560. */
-export const School: React.FC<Placed & { c: IlluColors }> = ({ c, ...placed }) => {
+export const School: React.FC<Placed & { c: IlluColors; roof?: string }> = ({ c, roof: roofColor, ...placed }) => {
   const wall = c.cream;
   const wallShade = mix(c.cream, c.ink, 0.06);
-  const roof = c.a;
+  const roof = roofColor ?? c.a;
   return (
     <Frame {...placed} vw={900} vh={560}>
       {/* Ailes */}
