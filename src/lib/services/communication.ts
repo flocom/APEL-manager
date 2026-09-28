@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fr } from "date-fns/locale";
+import { formatInTimeZone } from "date-fns-tz";
 import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 
 import { HttpError } from "@/lib/auth/guards";
@@ -18,6 +20,7 @@ import {
   type IntegratedVoiceId,
 } from "@/lib/communication/integrated-voice";
 import { paletteFromLogo } from "@/lib/communication/logo-palette";
+import { APP_TIMEZONE } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
   associationMembers,
@@ -79,6 +82,13 @@ function cotisationAffichee(settings: {
   return suffixe ? `${montant} ${suffixe}` : montant;
 }
 
+/** « apel-ndf.fr » : l'adresse du site telle qu'on l'affiche. */
+function siteLabel(): string {
+  const base = configuredBaseUrl();
+  if (!base) return "";
+  return base.replace(/^https?:\/\//, "").replace(/^www\./, "");
+}
+
 /** « apel-ndf.fr/rejoindre » : l'adresse telle qu'on la lit à voix haute. */
 function joinLabel(): string {
   const base = configuredBaseUrl();
@@ -115,7 +125,7 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
     await Promise.all([
       logoBytes(settings.logoUrl).then(paletteFromLogo),
       db
-        .select({ title: events.title })
+        .select({ title: events.title, startAt: events.startAt })
         .from(events)
         .where(
           and(
@@ -127,7 +137,7 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
           ),
         )
         .orderBy(asc(events.startAt))
-        .limit(12),
+        .limit(40),
       db
         .select({ value: count() })
         .from(events)
@@ -185,6 +195,22 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
   // Un même intitulé revient chaque année (« Kermesse ») : il n'est cité qu'une fois.
   const recentEvents = [...new Set(recent.map((e) => e.title.trim()))].filter(Boolean);
 
+  // Les rendez-vous à venir, le prochain en tête ; un intitulé qui revient
+  // (deux ventes de gâteaux) n'est cité qu'une fois.
+  const vus = new Set<string>();
+  const aVenir = recent
+    .filter((e) => e.startAt >= now)
+    .filter((e) => {
+      const cle = e.title.trim().toLowerCase();
+      if (!cle || vus.has(cle)) return false;
+      vus.add(cle);
+      return true;
+    })
+    .map((e) => ({
+      title: e.title.trim(),
+      dateLabel: formatInTimeZone(e.startAt, APP_TIMEZONE, "EEEE d MMMM", { locale: fr }),
+    }));
+
   return {
     associationName: settings.associationName,
     schoolName: settings.schoolName,
@@ -194,6 +220,12 @@ export async function getClassVideoSource(now = new Date()): Promise<ClassVideoS
     joinUrl: configuredBaseUrl() ? `${configuredBaseUrl()}/rejoindre` : "",
     membershipFee: cotisationAffichee(settings),
     recentEvents,
+    agenda: {
+      total: Number(eventCount[0]?.value ?? 0),
+      next: aVenir[0] ?? null,
+      upcoming: aVenir.slice(1, 5),
+    },
+    siteLabel: siteLabel(),
     figures: (
       [
         { key: "familles", value: Number(families), label: "familles adhérentes" },

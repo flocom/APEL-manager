@@ -7,7 +7,8 @@
  *   minute, grille vi–IV–I–V : montée d'ouverture, « drop » juste après
  *   l'accroche (grosse caisse sur chaque temps, claps sur 2 et 4, basse en
  *   octaves, accords « supersaw » à contretemps qui respirent avec la
- *   grosse caisse), pause au milieu, puis refrain avec mélodie pincée.
+ *   grosse caisse), pause au milieu, refrain avec mélodie pincée, puis
+ *   envolée finale.
  * - renderSfxWav : bruitages courts et nets (pop, whoosh, impact brillant).
  *
  * Le rendu est déterministe : même graine → mêmes octets.
@@ -534,18 +535,19 @@ const HOOK: Note[][] = [
 /** Tonalités possibles (décalage depuis do), choisies par la graine. */
 const KEYS = [0, 2, -3, -5, -2];
 
-/** Section d'une mesure : montée d'ouverture, couplet, pause (breakdown) ou refrain. */
-type Section = "build" | "verse" | "break" | "chorus";
+/** Section d'une mesure : montée d'ouverture, couplet, pause (breakdown), refrain, envolée finale. */
+type Section = "build" | "verse" | "break" | "chorus" | "lift";
 
 /**
  * Arrangement : une mesure de montée (la vidéo s'ouvre sur la signature du
- * logo), le « drop » juste après l'accroche, puis un cycle de 24 mesures —
- * 8 de couplet, 4 de pause, 12 de refrain avec la mélodie.
+ * logo), le « drop » juste après l'accroche, puis un cycle de 28 mesures —
+ * 8 de couplet, 4 de pause, 8 de refrain avec la mélodie, 8 d'envolée
+ * (mélodie doublée à l'octave, charleston plus dense) pour la fin.
  */
 function sectionOf(bar: number): Section {
   if (bar === 0) return "build";
-  const k = (bar - 1) % 24;
-  return k < 8 ? "verse" : k < 12 ? "break" : "chorus";
+  const k = (bar - 1) % 28;
+  return k < 8 ? "verse" : k < 12 ? "break" : k < 20 ? "chorus" : "lift";
 }
 
 /** Souffle qui monte (bruit filtré dont la fréquence grimpe) sur `seconds`. */
@@ -617,14 +619,15 @@ export function renderMusicWav({ seconds, seed = 1, bpm = DEFAULT_MUSIC_BPM }: M
     const next = sectionOf(b + 1);
     const chord = (b + 3) % 4;
     const voicing = CHORDS[chord].map((st) => midiToFreq(base + 12 + st));
-    const full = section === "verse" || section === "chorus";
+    const full = section === "verse" || section === "chorus" || section === "lift";
+    const sung = section === "chorus" || section === "lift";
 
     // Accords : contretemps sur les parties pleines, tenus (nappe) en montée et en pause.
     const stab = cached(`stab:${chord}`, () => sawChord(voicing, 0.2, mulberry32(chord * 97 + seed)));
     if (full) for (let q = 0; q < 4; q++) pump.add(stab, at(b, q + 0.5), 0.8, q % 2 ? 0.25 : -0.25, 0.3);
     if (section !== "verse") {
       const pad = cached(`pad:${chord}`, () => padChord(CHORDS[chord].map((st) => midiToFreq(base + st)), bar));
-      pump.add(pad, at(b, 0), section === "chorus" ? 0.05 : 0.09, 0, 0.45);
+      pump.add(pad, at(b, 0), section === "lift" ? 0.07 : sung ? 0.05 : 0.09, 0, 0.45);
     }
     if (section === "build") {
       // Accords égrenés en croches qui montent en intensité.
@@ -644,14 +647,19 @@ export function renderMusicWav({ seconds, seed = 1, bpm = DEFAULT_MUSIC_BPM }: M
     }
 
     // Mélodie pincée sur le refrain (et, plus douce, pendant la pause).
-    if (section === "chorus" || section === "break") {
-      const phrase = HOOK[((b - 1) % 24) % 8];
+    if (sung || section === "break") {
+      const phrase = HOOK[((b - 1) % 28) % 8];
       for (const [pos, semi, len] of phrase) {
         const midi = melodyBase + semi;
+        const ring = Math.round(Math.max(len * beat + 0.15, 0.3) * SR);
         const pl = cached(`pl:${midi}`, () => pluck(midiToFreq(midi), 1.0, 0.75, mulberry32(midi * 31 + seed)));
-        bus.add(pl, at(b, pos), section === "chorus" ? 0.24 : 0.14, 0.12, 0.35, Math.round(Math.max(len * beat + 0.15, 0.3) * SR));
+        bus.add(pl, at(b, pos), sung ? 0.24 : 0.14, 0.12, 0.35, ring);
+        if (section === "lift") {
+          const hi = cached(`pl:${midi + 12}`, () => pluck(midiToFreq(midi + 12), 1.0, 0.8, mulberry32(midi * 37 + seed)));
+          bus.add(hi, at(b, pos), 0.12, -0.2, 0.4, ring);
+        }
         const gl = cached(`gl:${midi + 12}`, () => glock(midiToFreq(midi + 12), 0.9, 0.8));
-        bus.add(gl, at(b, pos), section === "chorus" ? 0.035 : 0.05, 0.3, 0.45);
+        bus.add(gl, at(b, pos), sung ? 0.035 : 0.05, 0.3, 0.45);
       }
     }
 
@@ -667,13 +675,14 @@ export function renderMusicWav({ seconds, seed = 1, bpm = DEFAULT_MUSIC_BPM }: M
         if (st % 2 === 1) bus.add(openHat, at(b, st / 2), 0.045, 0.3, 0.1);
         else bus.add(closedHats[(st / 2) % 2], at(b, st / 2), 0.035, 0.35, 0.05);
       }
-      if (section === "chorus") for (let st = 0; st < 16; st++) bus.add(shakers[st % 2], at(b, st / 4), 0.035, -0.4, 0.05);
+      if (sung) for (let st = 0; st < 16; st++) bus.add(shakers[st % 2], at(b, st / 4), 0.035, -0.4, 0.05);
+      if (section === "lift") for (let st = 0; st < 8; st++) bus.add(openHat, at(b, st / 2), 0.03, -0.3, 0.1);
     } else if (section === "break") {
       for (let st = 0; st < 8; st++) bus.add(closedHats[st % 2], at(b, st / 2), 0.03, 0.35, 0.1);
     }
 
     // Transitions : roulement de claps et souffle montant avant une reprise, crash sur le temps fort.
-    const intoFull = (next === "verse" || next === "chorus") && !full;
+    const intoFull = (next === "verse" || next === "chorus" || next === "lift") && next !== section && (!full || next === "lift");
     if (section === "build" || (intoFull && b > 0)) {
       bus.add(section === "build" ? riseSample : halfRise, section === "build" ? at(b, 0) : at(b, 2), 0.16, 0, 0.2);
       for (let st = 0; st < 8; st++) bus.add(claps[st % 2], at(b, 2 + st / 4), 0.05 + 0.02 * st, st % 2 ? 0.2 : -0.2, 0.2);

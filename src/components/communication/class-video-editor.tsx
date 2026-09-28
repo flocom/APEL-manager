@@ -475,9 +475,10 @@ export function ClassVideoEditor({
         {/* Photos des bienfaits -------------------------------------- */}
         <Card className="p-5 sm:p-6">
           <SectionTitle icon={ImagePlus} title="Ce que l’APEL finance">
-            Photos des achats, sorties, voyages ou spectacles financés, avec
-            une légende courte. Sans photo, la vidéo montre les événements de
-            l’année.
+            Ce que les familles voient tous les jours et que l’APEL a financé :
+            les Legos géants de la cour, le baby-foot, une sortie… Une photo et
+            une légende courte suffisent. Sans photo, la vidéo montre trois
+            cartes illustrées : projets, équipement, souvenirs.
           </SectionTitle>
           {content.benefits.length > 0 && (
             <ul className="mb-4 space-y-3">
@@ -487,7 +488,7 @@ export function ClassVideoEditor({
                   <img src={photo.url} alt="" className="h-16 w-24 shrink-0 rounded-lg object-cover" />
                   <Input
                     aria-label={`Légende de la photo ${index + 1}`}
-                    placeholder="Ex. : le voyage des CM2 au Futuroscope"
+                    placeholder="Ex. : les Legos géants de la cour"
                     value={photo.caption}
                     maxLength={90}
                     onChange={(e) =>

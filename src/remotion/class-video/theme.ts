@@ -69,22 +69,28 @@ function secondaryBackground(palette: VideoPalette): string {
   return s;
 }
 
-/** Fond de chaque scène : principale, claire, seconde, claire… */
+/**
+ * Fond de chaque scène : couleur pleine (principale ou seconde) en alternance
+ * avec des fonds clairs teintés. « lien » reste doux et chaleureux : c'est le
+ * temps calme de la vidéo.
+ */
 function sceneBackground(palette: VideoPalette, id: ClassVideoSceneId): { bg: string; bold: boolean; tint: string } {
   const paper = mix(WHITE, palette.light, 0.55);
   switch (id) {
     case "intro":
-    case "souvenirs":
-    case "chiffres":
+    case "benevolat":
+    case "membre":
     case "fin":
       return { bg: palette.primary, bold: true, tint: WHITE };
-    case "vie":
-    case "rassembler":
+    case "agenda":
+    case "chiffres":
       return { bg: secondaryBackground(palette), bold: true, tint: WHITE };
-    case "sourire":
-      return { bg: mix(WHITE, palette.accent, 0.14), bold: false, tint: palette.accent };
-    case "apel":
     case "bienfaits":
+      return { bg: mix(WHITE, palette.accent, 0.13), bold: false, tint: palette.accent };
+    case "lien":
+      return { bg: mix(WHITE, palette.secondary, 0.07), bold: false, tint: palette.secondary };
+    case "apel":
+    case "site":
     case "membres":
       return { bg: paper, bold: false, tint: palette.primary };
   }

@@ -25,7 +25,13 @@ Rien n’est à écrire pour obtenir une première version :
   l’école, des événements publiés de l’année scolaire, du nombre de familles
   adhérentes, de bénévoles et de rendez-vous (un chiffre inférieur à 5 n’est
   pas montré). Tout est modifiable, scène par scène.
-- **Écran final** — la cotisation publiée et un QR code vers la page « Nous
+- **Fil de la vidéo** — celui d’une présentation de rentrée : l’accroche
+  (« L’APEL, c’est nous. Et ça peut être vous. »), qui nous sommes, les
+  rendez-vous de l’année (le prochain, avec sa date), le site où tout se
+  trouve, venir prêter main-forte, ce que les contributions financent, le
+  lien avec l’école (l’APEL aide les familles au besoin), devenir membre,
+  quelques chiffres, l’équipe, puis la fin.
+- **Écran final** — les deux portes (devenir membre, prêter main-forte), la cotisation publiée et un QR code vers la page « Nous
   rejoindre », lisible depuis le fond d’une salle. Il suppose que l’adresse
   publique du site (`APP_URL`) est configurée ; sans elle, pas de QR code.
 - **Équipe** — les prénoms des comptes administrateurs et organisateurs peuvent

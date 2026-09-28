@@ -1,11 +1,11 @@
 import React from "react";
 import { Easing, useCurrentFrame, useVideoConfig } from "remotion";
 
-import { contrastRatio, mix, WHITE } from "../colors";
+import { contrastRatio, mix, withAlpha, WHITE } from "../colors";
 import { Character, makeCast } from "../components/characters";
 import { GeoShapes } from "../components/decor";
 import { Camera, Sheen } from "../components/finish";
-import { BadgeIcon, iconForText } from "../components/illustrations";
+import { Blocks, CameraStack, Foosball } from "../components/objects";
 import { KenBurns, PhotoFrame } from "../components/media";
 import { progress, snap } from "../components/motion";
 import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
@@ -20,6 +20,14 @@ import { FONT_FAMILY, illuColors, sceneTheme } from "../theme";
 import { chapter, MARGIN_X } from "./common";
 
 const AREA = { x: 770, y: 110, w: 1030, h: 740 };
+
+/** Illustration d'une carte de bienfait, d'après son texte (sinon dans l'ordre). */
+function illustrationFor(text: string, index: number): React.FC<{ size: number; c: ReturnType<typeof illuColors> }> {
+  if (/projet|construi|cour/i.test(text)) return Blocks;
+  if (/[ée]quipement|mat[ée]riel|jeu|baby|sport/i.test(text)) return Foosball;
+  if (/souvenir|sortie|voyage|photo|spectacle/i.test(text)) return CameraStack;
+  return [Blocks, Foosball, CameraStack][index % 3];
+}
 
 /**
  * « Concrètement » : les photos des réalisations (Ken Burns, cadre sobre,
@@ -98,61 +106,50 @@ export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video, durationInF
 
   let cardEls: React.ReactNode = null;
   if (cardsStart !== null && texts.length > 0) {
-    const twoCols = texts.length > 3;
-    const cols = twoCols ? 2 : 1;
-    const gap = 24;
-    const cardW = twoCols ? (AREA.w - gap) / 2 : AREA.w;
-    const cardH = twoCols ? 186 : 170;
-    const rows = Math.ceil(texts.length / cols);
-    const gridH = rows * cardH + (rows - 1) * gap;
-    const top = AREA.y + (AREA.h - gridH) / 2 + 20;
+    // Cartes illustrées : un objet par bienfait (briques, baby-foot, souvenirs).
+    const gap = 26;
+    const n = texts.length;
+    const cardW = (AREA.w - gap * (n - 1)) / n;
+    const cardH = 600;
+    const top = AREA.y + (AREA.h - cardH) / 2 + 10;
     const stagger = BIENFAITS_CARD_STAGGER_SECONDS * fps;
     cardEls = texts.map((text, i) => {
-      const p = Math.max(0, snap(frame, fps, cardsStart + 4 + i * stagger, 260, 18));
-      const col = i % cols;
-      const row = Math.floor(i / cols);
+      const p = Math.max(0, snap(frame, fps, cardsStart + 4 + i * stagger, 220, 18));
       const color = iconColors[i % iconColors.length];
       const value = frenchSpaces(text);
-      const textW = cardW - 60 - 104 - 28;
-      const size = fitFontSize(value, textW, 2, twoCols ? 40 : 44, 26, 0.56);
+      const Illustration = illustrationFor(text, i);
+      const float = Math.sin((frame / fps) * 1.6 + i * 1.3) * 6;
       return (
         <div
           key={i}
           style={{
             position: "absolute",
-            left: AREA.x + col * (cardW + gap),
-            top: top + row * (cardH + gap),
+            left: AREA.x + i * (cardW + gap),
+            top,
             width: cardW,
             height: cardH,
-            borderRadius: 26,
+            borderRadius: 32,
             background: WHITE,
-            boxShadow: "0 18px 40px rgba(15, 25, 40, 0.10), 0 2px 8px rgba(15, 25, 40, 0.05)",
-            display: "flex",
-            alignItems: "center",
-            gap: 28,
-            padding: "0 30px",
-            boxSizing: "border-box",
-            opacity: Math.min(1, p * 3),
             overflow: "hidden",
+            boxShadow: "0 30px 60px rgba(15, 25, 40, 0.14), 0 3px 10px rgba(15, 25, 40, 0.06)",
+            display: "flex",
+            flexDirection: "column",
+            opacity: Math.min(1, p * 3),
             transformOrigin: "50% 100%",
-            transform: `perspective(1200px) rotateX(${(1 - p) * 55}deg) translateY(${(1 - p) * 40}px) scale(${0.85 + 0.15 * p})`,
+            transform: `perspective(1400px) rotateY(${(1 - p) * -35}deg) translateY(${(1 - p) * 80}px) scale(${0.85 + 0.15 * p})`,
           }}
         >
-          <div
-            style={{
-              flex: "0 0 104px",
-              height: 104,
-              borderRadius: "50%",
-              background: mix(color, WHITE, 0.86),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <BadgeIcon kind={iconForText(text, i)} color={color} accent={video.palette.accent === color ? video.palette.primary : video.palette.accent} size={62} />
+          <div style={{ position: "relative", flex: "0 0 380px", background: `linear-gradient(160deg, ${mix(color, WHITE, 0.8)}, ${mix(color, WHITE, 0.62)})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ position: "absolute", left: "50%", top: "50%", width: 250, height: 250, marginLeft: -125, marginTop: -125, borderRadius: "50%", background: withAlpha(WHITE, 0.5) }} />
+            <div style={{ position: "relative", transform: `translateY(${float}px) scale(${0.7 + 0.3 * p})` }}>
+              <Illustration size={Math.min(300, cardW - 40)} c={c} />
+            </div>
           </div>
-          <div style={{ flex: 1, fontFamily: FONT_FAMILY, fontWeight: 700, fontSize: size, lineHeight: 1.16, color: theme.ink, letterSpacing: "-0.01em" }}>{value}</div>
-          <Sheen at={cardsStart + 12 + i * stagger} width={120} opacity={0.6} />
+          <div style={{ flex: 1, padding: "28px 30px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 16 }}>
+            <div style={{ width: 54, height: 8, borderRadius: 4, background: color }} />
+            <div style={{ fontFamily: FONT_FAMILY, fontWeight: 800, fontSize: fitFontSize(value, cardW - 60, 3, 42, 26, 0.58), lineHeight: 1.1, letterSpacing: "-0.02em", color: theme.ink }}>{value}</div>
+          </div>
+          <Sheen at={cardsStart + 12 + i * stagger} width={130} opacity={0.6} />
         </div>
       );
     });

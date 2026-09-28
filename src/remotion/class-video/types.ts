@@ -33,18 +33,31 @@ export type VoiceClip = {
 };
 
 /**
- * Ordre et identité des scènes. Les quatre « piliers » disent ce que fait
- * l'APEL : donner vie à l'école, faire sourire, créer des souvenirs,
- * rassembler.
+ * Ordre et identité des scènes, sur le fil de la présentation qu'un parent du
+ * bureau fait en réunion de rentrée :
+ * - intro : l'accroche (« L'APEL, c'est nous. Et ça peut être vous. ») ;
+ * - apel : qui nous sommes (des parents bénévoles, des temps forts) ;
+ * - agenda : les rendez-vous de l'année, le prochain en tête ;
+ * - site : tout est sur le site ;
+ * - benevolat : venir prêter main-forte, à son rythme ;
+ * - bienfaits : ce que les contributions financent (projets, équipement,
+ *   souvenirs) ;
+ * - lien : l'APEL fait le lien avec l'école et aide au besoin ;
+ * - membre : devenir membre, participer aux décisions ;
+ * - chiffres : quelques chiffres (facultatif) ;
+ * - membres : l'équipe ;
+ * - fin : les deux portes (devenir membre, prêter main-forte), le site, le
+ *   QR code et la cotisation.
  */
 export const CLASS_VIDEO_SCENE_IDS = [
   "intro",
   "apel",
-  "vie",
-  "sourire",
-  "souvenirs",
-  "rassembler",
+  "agenda",
+  "site",
+  "benevolat",
   "bienfaits",
+  "lien",
+  "membre",
   "chiffres",
   "membres",
   "fin",
@@ -77,6 +90,21 @@ export type ClassVideoMember = {
   role: string;
 };
 
+export type ClassVideoEvent = {
+  title: string;
+  /** Date lisible : « samedi 18 octobre ». */
+  dateLabel: string;
+};
+
+export type ClassVideoAgenda = {
+  /** Nombre de rendez-vous publiés sur l'année scolaire. */
+  total: number;
+  /** Le prochain rendez-vous à venir, ou null s'il n'y en a plus. */
+  next: ClassVideoEvent | null;
+  /** Quelques rendez-vous suivants (4 au plus), après `next`. */
+  upcoming: ClassVideoEvent[];
+};
+
 export type ClassVideoFigure = {
   value: number;
   /** « familles adhérentes », « événements cette année », « € pour les sorties »… */
@@ -98,10 +126,19 @@ export type ClassVideoProps = {
   /** Photos des bienfaits (achats, voyages financés…), jouées dans « bienfaits ». */
   benefits: ClassVideoPhoto[];
   /**
-   * Temps forts tirés des données (noms d'événements passés, dépenses pour
-   * l'école), montrés dans « bienfaits » quand il n'y a pas assez de photos.
+   * Ce que financent les contributions, montré dans « bienfaits » quand il
+   * n'y a pas assez de photos : « Des projets pour l'école », « De
+   * l'équipement », « Des souvenirs ».
    */
   highlights: string[];
+  /** Rendez-vous de l'année scolaire, joués dans « agenda ». */
+  agenda: ClassVideoAgenda;
+  /**
+   * Adresse du site telle qu'on l'affiche, sans schéma ni chemin :
+   * « apel-ndf.fr ». Jouée dans « site » et à la fin ; vide sans adresse
+   * publique configurée.
+   */
+  siteLabel: string;
   /** Chiffres clés, joués dans « chiffres » (3 au plus sont montrés). */
   figures: ClassVideoFigure[];
   /** Membres du bureau et bénévoles, joués dans « membres ». */
