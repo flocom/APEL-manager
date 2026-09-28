@@ -7,6 +7,7 @@ import {
   accountingEntries,
   associationDocuments,
   associationSettings,
+  communicationSupports,
   eventAttachments,
 } from "@/lib/db/schema";
 
@@ -23,7 +24,7 @@ import {
 
 /** Identifiant de dépôt tel qu'il apparaît dans une URL `/api/uploads/<id>/…`. */
 const UPLOAD_ID_IN_TEXT =
-  "/api/uploads/((?:accounting|document|branding)-[0-9a-f-]{36})/";
+  "/api/uploads/((?:accounting|document|branding|media)-[0-9a-f-]{36})/";
 
 /**
  * Le journal d'audit conserve l'historique, pas des références : un fichier
@@ -40,7 +41,7 @@ const HISTORY_TABLES = ["audit_logs"];
  * base serait une perte de données.
  */
 async function knownReferencedIds(): Promise<Set<string>> {
-  const [entries, documents, attachments, settings] = await Promise.all([
+  const [entries, documents, attachments, settings, supports] = await Promise.all([
     db
       .select({ url: accountingEntries.attachmentUrl })
       .from(accountingEntries)
@@ -54,6 +55,7 @@ async function knownReferencedIds(): Promise<Set<string>> {
       .select({ url: associationSettings.logoUrl })
       .from(associationSettings)
       .where(isNotNull(associationSettings.logoUrl)),
+    db.select({ content: communicationSupports.content }).from(communicationSupports),
   ]);
 
   const ids = new Set<string>();
@@ -61,6 +63,14 @@ async function knownReferencedIds(): Promise<Set<string>> {
   for (const row of [...entries, ...documents, ...attachments, ...settings]) {
     const match = row.url ? pattern.exec(row.url) : null;
     if (match) ids.add(match[1]);
+  }
+  // Un support de communication cite plusieurs fichiers (photos, musique,
+  // voix de chaque scène) dans son document JSON.
+  const global = new RegExp(UPLOAD_ID_IN_TEXT, "g");
+  for (const row of supports) {
+    for (const match of JSON.stringify(row.content).matchAll(global)) {
+      ids.add(match[1]);
+    }
   }
   return ids;
 }

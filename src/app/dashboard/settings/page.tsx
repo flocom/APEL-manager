@@ -1,4 +1,5 @@
-import { SlidersHorizontal } from "lucide-react";
+import { ChevronRight, Clapperboard, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
 
 import {
   AssociationSettingsForm,
@@ -83,6 +84,28 @@ export default async function SettingsPage() {
       />
 
       <SecurityConfigWarnings warnings={securityConfigWarnings()} />
+
+      <Link
+        href="/dashboard/settings/communication"
+        className="group flex items-center gap-4 rounded-2xl border-2 border-slate-200 bg-white p-5 transition-colors hover:border-brand-300 hover:bg-brand-50/40 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+      >
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-coral-600 text-white">
+          <Clapperboard className="h-6 w-6" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-bold text-slate-950">
+            Supports de communication
+          </span>
+          <span className="mt-0.5 block text-sm text-slate-500">
+            Créez une vidéo pour présenter l’APEL aux classes, préparée à
+            partir des informations de l’association.
+          </span>
+        </span>
+        <ChevronRight
+          className="h-5 w-5 shrink-0 text-slate-400 transition-colors group-hover:text-brand-700"
+          aria-hidden="true"
+        />
+      </Link>
 
       <AssociationSettingsForm settings={associationSettings} />
 

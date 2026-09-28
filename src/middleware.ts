@@ -217,6 +217,16 @@ function estEnHttps(request: NextRequest): boolean {
  * pas. Images : le site, et `data:`/`blob:` pour les aperçus et les QR codes.
  * Le service worker des notifications est servi par le site (`worker-src`).
  *
+ * `blob:` en `connect-src` et `media-src` : la vidéo des supports de
+ * communication est composée dans le navigateur, avec une musique et des
+ * bruitages générés sur place (des `blob:`), que l'aperçu joue et que
+ * l'export relit. Une adresse `blob:` ne désigne qu'un contenu créé par la
+ * page elle-même. `data:` en `media-src` : le lecteur de l'aperçu amorce
+ * l'audio du navigateur avec un court silence encodé en ligne. La règle vaut
+ * pour tout le site : la navigation de Next
+ * garde la politique de la première page chargée, une exception limitée à
+ * l'écran de la vidéo n'y survivrait pas.
+ *
  * Cloudflare Web Analytics n'entre dans la politique que si l'exploitant l'a
  * configuré (lib/cloudflare-web-analytics.ts) : la page charge alors son
  * script, qui envoie ses mesures à cloudflareinsights.com.
@@ -230,8 +240,9 @@ function politiqueDeContenu(nonce: string, https: boolean): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${recaptcha}${statistiques ? ` ${SCRIPT_WEB_ANALYTICS}` : ""}${developpement ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    "media-src 'self' blob: data:",
     "font-src 'self' data:",
-    `connect-src 'self' https://www.google.com/recaptcha/${statistiques ? ` ${ENVOI_WEB_ANALYTICS}` : ""}${developpement ? " ws: wss:" : ""}`,
+    `connect-src 'self' blob: https://www.google.com/recaptcha/${statistiques ? ` ${ENVOI_WEB_ANALYTICS}` : ""}${developpement ? " ws: wss:" : ""}`,
     "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
     "worker-src 'self' blob:",
     "manifest-src 'self'",

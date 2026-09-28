@@ -15,18 +15,33 @@ import { HttpError } from "@/lib/auth/guards";
  * `accounting` et `document` sont privés : leur lecture exige un rôle.
  * `branding` est le seul scope public — il ne contient que le logo affiché sur
  * le site public, jamais de pièce justificative.
+ * `media` est privé lui aussi : photos, musiques et voix off des supports de
+ * communication. On y trouve des visages d'enfants et de parents, qui n'ont
+ * rien à faire sur une adresse publique.
  */
-export type UploadScope = "accounting" | "document" | "branding";
+export type UploadScope = "accounting" | "document" | "branding" | "media";
 
 const UPLOAD_ID_PATTERN =
-  /^(accounting|document|branding)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  /^(accounting|document|branding|media)-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** Scopes dont le contenu est servi sans authentification. */
 export function isPublicScope(scope: UploadScope | null) {
   return scope === "branding";
 }
 
-type FileKind = "pdf" | "jpeg" | "png" | "webp" | "text" | "zip" | "office";
+type FileKind =
+  | "pdf"
+  | "jpeg"
+  | "png"
+  | "webp"
+  | "text"
+  | "zip"
+  | "office"
+  | "mp3"
+  | "wav"
+  | "ogg"
+  | "webm"
+  | "m4a";
 
 /**
  * Le logo est servi en ligne depuis l'origine de l'application : on n'accepte
@@ -34,6 +49,22 @@ type FileKind = "pdf" | "jpeg" | "png" | "webp" | "text" | "zip" | "office";
  * est exclu, un fichier téléversé pouvant embarquer du script.
  */
 const BRANDING_KINDS: FileKind[] = ["png", "jpeg", "webp"];
+
+/**
+ * Les supports de communication n'embarquent que des images matricielles et
+ * de l'audio : ni PDF ni document bureautique, que la vidéo ne saurait pas
+ * montrer.
+ */
+const MEDIA_KINDS: FileKind[] = [
+  "png",
+  "jpeg",
+  "webp",
+  "mp3",
+  "wav",
+  "ogg",
+  "webm",
+  "m4a",
+];
 
 const FILE_POLICIES: Record<
   string,
@@ -44,6 +75,12 @@ const FILE_POLICIES: Record<
   ".jpeg": { contentType: "image/jpeg", kind: "jpeg", inline: true },
   ".png": { contentType: "image/png", kind: "png", inline: true },
   ".webp": { contentType: "image/webp", kind: "webp", inline: true },
+  ".mp3": { contentType: "audio/mpeg", kind: "mp3", inline: true },
+  ".wav": { contentType: "audio/wav", kind: "wav", inline: true },
+  ".ogg": { contentType: "audio/ogg", kind: "ogg", inline: true },
+  ".oga": { contentType: "audio/ogg", kind: "ogg", inline: true },
+  ".weba": { contentType: "audio/webm", kind: "webm", inline: true },
+  ".m4a": { contentType: "audio/mp4", kind: "m4a", inline: true },
   ".txt": { contentType: "text/plain; charset=utf-8", kind: "text", inline: true },
   ".csv": { contentType: "text/csv; charset=utf-8", kind: "text", inline: false },
   ".doc": { contentType: "application/msword", kind: "office", inline: false },
@@ -94,7 +131,7 @@ export function storedUploadIdFromUrl(
   expectedScope?: UploadScope,
 ) {
   const match =
-    /^\/api\/uploads\/((?:accounting|document|branding)-[0-9a-f-]{36})\/([A-Za-z0-9._-]+)$/.exec(
+    /^\/api\/uploads\/((?:accounting|document|branding|media)-[0-9a-f-]{36})\/([A-Za-z0-9._-]+)$/.exec(
       value,
     );
   if (!match) return null;
@@ -156,6 +193,24 @@ function hasExpectedSignature(buffer: Buffer, kind: FileKind) {
       return startsWith(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
     case "text":
       return !buffer.subarray(0, 8_192).includes(0);
+    case "mp3":
+      // Balise ID3 en tête, ou directement une trame MPEG (mot de synchro
+      // sur 11 bits).
+      return (
+        buffer.subarray(0, 3).toString("ascii") === "ID3" ||
+        (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)
+      );
+    case "wav":
+      return (
+        buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+        buffer.subarray(8, 12).toString("ascii") === "WAVE"
+      );
+    case "ogg":
+      return buffer.subarray(0, 4).toString("ascii") === "OggS";
+    case "webm":
+      return startsWith(buffer, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "m4a":
+      return buffer.subarray(4, 8).toString("ascii") === "ftyp";
   }
 }
 
@@ -184,6 +239,18 @@ export async function saveUpload(scope: UploadScope, file: File) {
     throw new HttpError(
       415,
       "Le logo doit être une image PNG, JPEG ou WebP.",
+    );
+  }
+  if (scope === "media" && !MEDIA_KINDS.includes(policy.kind)) {
+    throw new HttpError(
+      415,
+      "Utilisez une image (JPEG, PNG, WebP) ou un fichier audio (MP3, WAV, OGG, M4A).",
+    );
+  }
+  if (scope !== "media" && policy.contentType.startsWith("audio/")) {
+    throw new HttpError(
+      415,
+      "Format non pris en charge. Utilisez un PDF, une image ou un document bureautique.",
     );
   }
   if (file.size <= 0 || file.size > maxUploadBytes()) {
