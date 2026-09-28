@@ -1063,6 +1063,70 @@ export const associationSettings = pgTable(
 );
 
 /**
+ * Réglages des supports de communication, à part des réglages de
+ * l'association : la clé du service de voix de synthèse ne sert qu'ici, et
+ * l'écran qui la saisit aussi.
+ */
+export const communicationSettings = pgTable(
+  "communication_settings",
+  {
+    id: text("id").primaryKey().default("default"),
+    /**
+     * Service de voix de synthèse : `openai` (gpt-4o-mini-tts, qu'on guide sur
+     * le ton) ou `elevenlabs` (eleven_multilingual_v2). `null` : aucun, la
+     * vidéo reste sans voix off.
+     */
+    ttsProvider: text("tts_provider"),
+    /** Clé d'API chiffrée ; jamais exposée par une API de lecture. */
+    encryptedTtsApiKey: text("encrypted_tts_api_key"),
+    ttsApiKeyLastFour: text("tts_api_key_last_four"),
+    /** Identifiant de voix propre au service (« coral », un id ElevenLabs…). */
+    ttsVoice: text("tts_voice"),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    singletonCheck: check(
+      "communication_settings_singleton_check",
+      sql`${t.id} = 'default'`,
+    ),
+    providerCheck: check(
+      "communication_settings_tts_provider_check",
+      sql`${t.ttsProvider} is null or ${t.ttsProvider} in ('openai', 'elevenlabs')`,
+    ),
+  }),
+);
+
+/**
+ * Un support de communication préparé dans l'application — pour commencer,
+ * la vidéo présentée aux classes. Le contenu (textes, photos, musique, voix
+ * off) est un document JSON validé par l'application : il change de forme
+ * d'un support à l'autre, et aucune requête ne le fouille.
+ *
+ * Les fichiers qu'il cite (`/api/uploads/media-…`) sont retrouvés par le
+ * balayage général des références : le nettoyage des orphelins ne les
+ * supprime pas.
+ */
+export const communicationSupports = pgTable("communication_supports", {
+  /** Nature du support : `video_classes`. Un seul de chaque, pour l'instant. */
+  kind: text("kind").primaryKey(),
+  content: jsonb("content")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  updatedBy: uuid("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * Ce qu'une écriture comptable couvre en cotisations, adhérent par adhérent.
  *
  * Une table de liaison, et non une colonne `member_id` sur l'écriture, parce

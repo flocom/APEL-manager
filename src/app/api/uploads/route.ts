@@ -17,13 +17,18 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const scopeSchema = z.enum(["accounting", "document", "branding"]);
+const scopeSchema = z.enum(["accounting", "document", "branding", "media"]);
 
-/** Le logo est public : seul un administrateur peut le remplacer. */
+/**
+ * Le logo est public : seul un administrateur peut le remplacer. Les médias
+ * des supports de communication relèvent de la Configuration, réservée elle
+ * aussi aux administrateurs.
+ */
 const scopeRole = {
   accounting: "admin",
   branding: "admin",
   document: "manager",
+  media: "admin",
 } as const;
 
 export async function POST(req: Request) {

@@ -32,9 +32,16 @@ export async function GET(_req: Request, { params }: Params) {
         "Content-Disposition": `${file.inline ? "inline" : "attachment"}; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
         // L'identifiant change à chaque envoi : l'ancienne URL n'est jamais
         // réutilisée, le cache long est donc sans risque.
+        // Les médias de la vidéo (photos, musique, voix) sont relus à chaque
+        // lecture de l'aperçu et à chaque scène de l'export : une heure de
+        // cache dans le seul navigateur de l'administrateur évite de les
+        // retélécharger sans cesse. Les pièces comptables et documents
+        // restent hors cache.
         "Cache-Control": isPublic
           ? "public, max-age=31536000, immutable"
-          : "private, no-store",
+          : scope === "media"
+            ? "private, max-age=3600"
+            : "private, no-store",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "X-Content-Type-Options": "nosniff",
         ...(isPublic ? {} : { "X-Robots-Tag": "noindex, nofollow" }),

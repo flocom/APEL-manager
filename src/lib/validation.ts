@@ -421,7 +421,7 @@ const optionalEmail = z
   .nullable()
   .optional()
   .or(z.literal(""));
-type UploadScope = "accounting" | "document" | "branding";
+type UploadScope = "accounting" | "document" | "branding" | "media";
 
 function storedFilePattern(scope: UploadScope) {
   return new RegExp(
