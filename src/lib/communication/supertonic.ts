@@ -253,14 +253,14 @@ async function loadStyle(e: Engine, name: SupertonicStyle): Promise<Style> {
  */
 function prepareText(text: string): string {
   let t = text
-    .replace(/[  ]/g, " ")
+    .replace(/[\u00a0\u202f]/g, " ")
     .replace(/(\d)\s*€/g, "$1 euros")
     .replace(/€/g, " euros ")
     .replace(/(\d)\s*%/g, "$1 pour cent")
     .replace(/&/g, " et ")
     .replace(/[«»“”]/g, '"')
     .replace(/[‘’´`]/g, "'")
-    .replace(/‑/g, "-")
+    .replace(/\u2011/g, "-")
     .replace(/[–—]/g, ", ")
     .replace(/…/g, "...")
     .replace(/[_[\]|/#→←]/g, " ")
