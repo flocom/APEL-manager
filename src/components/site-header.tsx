@@ -1,7 +1,8 @@
-import { LayoutDashboard, MessagesSquare } from "lucide-react";
+import { HeartHandshake, LayoutDashboard, MessagesSquare } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { SiteHeaderMenu } from "@/components/site-header-menu";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
@@ -14,10 +15,9 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b-2 border-brand-100 bg-white">
       {/* Les boutons restent sur une seule ligne, quelle que soit la largeur :
-          c'est le logo qui cède la place. Un logo d'école est souvent large
-          (celui de Notre-Dame des Flots fait près de deux fois sa hauteur) et,
-          à 48 px de haut, il repoussait « Organisateurs » sur une deuxième
-          rangée dès 414 px. */}
+          si la place manque, c'est le logo qui la cède. Un logo d'école est
+          souvent large — celui de Notre-Dame des Flots fait près de deux fois
+          sa hauteur. */}
       <div className="mx-auto flex min-h-[64px] max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:min-h-[76px] sm:gap-4 sm:px-6">
         <Link
           href="/"
@@ -41,20 +41,18 @@ export async function SiteHeader() {
             </span>
           </span>
         </Link>
-        {/* Sous 375 px, le texte descend à 12 px : à 13 px, il ne resterait
-            plus rien du logo sur un écran de 320 px. */}
-        <nav className="flex shrink-0 items-center justify-end gap-1 text-xs min-[375px]:text-[13px] sm:gap-2 sm:text-sm">
+        <nav className="flex shrink-0 items-center justify-end gap-1 text-sm sm:gap-2">
           {/* Le rouge est réservé à ce bouton : il n'est ni une alerte ni une
               promotion, c'est la porte qu'un parent doit trouver sans chercher
-              le jour où quelque chose ne va pas. */}
+              le jour où quelque chose ne va pas. Sur téléphone, l'icône seule
+              suffit à la signaler ; le libellé reste lu par les lecteurs
+              d'écran. */}
           <Link
             href="/contact"
-            className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-coral-600 px-2 py-2 font-bold text-white transition-colors hover:bg-coral-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-coral-200 sm:px-4"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-coral-600 px-2.5 py-2 font-bold text-white transition-colors hover:bg-coral-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-coral-200 sm:px-4"
           >
-            {/* L'icône ne réapparaît qu'à partir de sm : sur téléphone, ces
-                22 pixels sont pris au logo. */}
-            <MessagesSquare className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
-            Un souci ?
+            <MessagesSquare className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="sr-only sm:not-sr-only">Un souci ?</span>
           </Link>
           {user ? (
             <Link
@@ -66,22 +64,35 @@ export async function SiteHeader() {
             </Link>
           ) : (
             <>
+              {/* La porte des parents qui veulent adhérer ou donner un coup de
+                  main : elle reste sur la ligne à toutes les largeurs. Un
+                  membre connecté fait déjà partie de l'équipe, d'où son
+                  absence de ce côté-là. */}
+              <Link
+                href="/rejoindre"
+                className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-sea-300 px-3 py-2 font-extrabold text-brand-950 transition-colors hover:bg-sea-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-sea-200 sm:px-4"
+              >
+                <HeartHandshake className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
+                Nous rejoindre
+              </Link>
               <Link
                 href="/login"
-                className="inline-flex min-h-10 items-center whitespace-nowrap rounded-lg px-1.5 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-3"
+                className="hidden min-h-10 items-center whitespace-nowrap rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
               >
                 Connexion
               </Link>
               <Link
                 href="/register"
-                className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-2 py-2 font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
+                className="hidden min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-4 py-2 font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
               >
                 {/* « Créer un compte » attirait les parents venus adhérer :
-                    c'est le seul bouton foncé permanent du site, et il mène à
-                    l'espace de gestion, pas à l'adhésion. */}
-                <span className="sm:hidden">Organisateurs</span>
-                <span className="hidden sm:inline">Espace organisateurs</span>
+                    ce bouton mène à l'espace de gestion, pas à l'adhésion. */}
+                Espace organisateurs
               </Link>
+              {/* Sous lg, Connexion et Espace organisateurs passent dans un
+                  menu : quatre boutons ne tiennent pas sur une ligne de
+                  téléphone. */}
+              <SiteHeaderMenu />
             </>
           )}
         </nav>
