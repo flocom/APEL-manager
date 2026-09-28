@@ -1,5 +1,5 @@
 /**
- * API publique de la vidéo présentée aux classes : composition Remotion,
+ * API publique de la vidéo de présentation de l'APEL aux parents : composition Remotion,
  * découpage temporel, synthèse de la musique et des bruitages, couleurs.
  */
 export { ClassVideo, calculateClassVideoMetadata } from "./ClassVideo";

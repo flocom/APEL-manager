@@ -1,132 +1,99 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { useCurrentFrame } from "remotion";
 
-import { contrastRatio, readableOn, WHITE } from "../colors";
-import { ConfettiRain } from "../components/decor";
-import { heartPath } from "../components/illustrations";
-import { bob, pop, seeded } from "../components/motion";
+import { contrastRatio, readableOn, withAlpha, WHITE } from "../colors";
+import { Character, handMeetPoint, makeCast } from "../components/characters";
+import { Sparkles } from "../components/decor";
+import { enter } from "../components/motion";
 import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
-import { fitFontSize, KineticTitle, Pill } from "../components/text";
+import { BODY_CHAR, fitFontSize, frenchSpaces, TextBlock } from "../components/text";
 import { FONT_FAMILY, illuColors, sceneTheme } from "../theme";
-import { LogoCard } from "./IntroScene";
+import { LogoCard, MARGIN_X } from "./common";
 
-/** Cœurs qui montent doucement depuis le bas de l'écran. */
-const RisingHearts: React.FC<{ colors: string[]; count?: number }> = ({ colors, count = 9 }) => {
+/**
+ * Fin : l'appel à rejoindre l'association. Titre, sous-titre, l'adresse en
+ * bouton, la cotisation si elle est publiée, et des familles qui saluent.
+ */
+export const FinScene: React.FC<SceneProps> = ({ scene, video }) => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
-  const rand = seeded(77);
-  return (
-    <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {Array.from({ length: count }, (_, i) => {
-        const x = 80 + rand() * (width - 160);
-        const size = 50 + rand() * 60;
-        const speed = 2.2 + rand() * 2;
-        const delay = rand() * 60;
-        const color = colors[i % colors.length];
-        const travelled = (frame - delay) * speed;
-        if (travelled < 0) return null;
-        const y = height + 60 - (travelled % (height + 200));
-        return (
-          <div
-            key={i}
-            style={{
-              position: "absolute",
-              left: x + bob(frame, fps, 24, 2.4, i),
-              top: y,
-              width: size,
-              height: size,
-              transform: `rotate(${bob(frame, fps, 12, 3, i)}deg)`,
-              opacity: 0.9,
-            }}
-          >
-            <svg width={size} height={size} viewBox="0 0 100 100">
-              <path d={heartPath(50, 50, 40)} fill={color} />
-            </svg>
-          </div>
-        );
-      })}
-    </AbsoluteFill>
-  );
-};
-
-/** Fin : « Merci ! », confettis, et l'adresse pour nous rejoindre. */
-export const FinScene: React.FC<SceneProps> = ({ scene, video, index }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "fin");
-  const colors = illuColors(video.palette);
-  const ctaIn = pop(frame, fps, 34, 140, 10);
-  const pulse = 1 + 0.035 * Math.max(0, Math.sin(((frame - 50) / fps) * Math.PI * 1.6));
-  const ctaBg = WHITE;
-  const ctaInk = contrastRatio(video.palette.primary, ctaBg) >= 4.5 ? video.palette.primary : video.palette.dark;
+  const c = illuColors(video.palette);
+  const cast = makeCast(c, theme.bold ? theme.bg : undefined);
   const join = video.joinLabel.trim();
-  const logoIn = pop(frame, fps, 2, 160, 12);
+  const fee = video.membershipFee?.trim() ?? "";
+  const ctaAt = 34;
+  const ctaIn = enter(frame, ctaAt, 22);
+  const feeIn = enter(frame, ctaAt + 12, 22);
+  const logoIn = enter(frame, 2, 22);
+  // Bouton blanc : texte dans la couleur principale si elle se lit dessus.
+  const ctaInk = contrastRatio(video.palette.primary, WHITE) >= 4.5 ? video.palette.primary : video.palette.dark;
+  const lightInk = theme.ink === WHITE;
+  const joinSize = fitFontSize(join, 700, 1, 50, 28, 0.56);
+  const hands = handMeetPoint({ look: cast.jade, height: 300, x: 1350 }, { look: cast.claire, height: 440, x: 1510 }, 1005);
 
   return (
-    <SceneBackdrop theme={theme} seed={709 + index} shapeCount={10}>
-      <RisingHearts colors={[colors.c, colors.b, WHITE]} />
-      <ConfettiRain colors={[...theme.shapes, WHITE]} count={70} delay={6} />
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", gap: 36 }}>
+    <SceneBackdrop theme={theme} floorY={900} blob={{ x: 1440, y: 560, r: 400 }}>
+      <Sparkles color={theme.accent} seed={71} count={4} delay={30} box={{ x: 1120, y: 150, w: 640, h: 220 }} size={32} opacity={0.85} />
+      <Character look={cast.awa} c={c} x={1180} y={1000} height={450} gesture="wave" gestureAt={20} side="left" gaze={-0.3} seed={60} appear={4} shadow={theme.shadow} />
+      <Character look={cast.jade} c={c} x={1350} y={1005} height={300} mood="laugh" reachRight={hands} gaze={0.2} seed={61} appear={8} shadow={theme.shadow} />
+      <Character look={cast.claire} c={c} x={1510} y={1005} height={440} reachLeft={hands} gesture="wave" gestureAt={28} gaze={0} seed={62} appear={10} shadow={theme.shadow} />
+      <Character look={cast.karim} c={c} x={1700} y={1000} height={460} gesture="wave" gestureAt={36} side="right" gaze={-0.4} seed={63} appear={14} shadow={theme.shadow} />
+
+      <div style={{ position: "absolute", left: MARGIN_X, top: 0, bottom: 0, width: 860, display: "flex", flexDirection: "column", justifyContent: "center", gap: 0 }}>
         {video.logoUrl ? (
-          <div style={{ transform: `scale(${logoIn})`, marginBottom: 6 }}>
-            <LogoCard
-              logoUrl={video.logoUrl}
-              fallbackText={video.associationName}
-              width={330}
-              height={186}
-              ink={video.palette.primary}
-              fallbackBg={video.palette.light}
-            />
+          <div style={{ opacity: logoIn, marginBottom: 48, alignSelf: "flex-start" }}>
+            <LogoCard logoUrl={video.logoUrl} fallbackText={video.associationName} width={250} height={140} ink={video.palette.primary} fallbackBg={video.palette.light} />
           </div>
         ) : null}
-        <KineticTitle text={scene.title} color={theme.ink} shadow={theme.inkShadow} maxWidth={1600} maxSize={190} maxLines={1} delay={8} stagger={4} />
-        <Pill text={scene.subtitle} bg={theme.pill} color={theme.pillInk} delay={20} fontSize={50} />
+        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={860} maxLines={2} titleSize={120} delay={6} />
         {join ? (
           <div
             style={{
-              marginTop: 18,
+              marginTop: 56,
+              alignSelf: "flex-start",
               display: "flex",
               alignItems: "center",
-              gap: 28,
-              padding: "26px 56px 26px 34px",
+              gap: 22,
+              padding: "22px 40px 22px 24px",
               borderRadius: 999,
-              background: ctaBg,
-              boxShadow: "0 14px 0 rgba(0, 0, 0, 0.16)",
-              transform: `scale(${ctaIn * pulse}) rotate(${(1 - ctaIn) * -8}deg)`,
-              opacity: Math.min(1, ctaIn * 2),
+              background: WHITE,
+              boxShadow: "0 18px 40px rgba(0, 0, 0, 0.18)",
+              opacity: ctaIn,
+              transform: `translateY(${(1 - ctaIn) * 24}px)`,
             }}
           >
-            <div
-              style={{
-                width: 92,
-                height: 92,
-                borderRadius: "50%",
-                background: video.palette.primary,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg width={62} height={62} viewBox="0 0 100 100">
-                <path d={heartPath(50, 50, 38)} fill={readableOn(video.palette.primary, video.palette.dark)} />
+            <div style={{ width: joinSize * 1.5, height: joinSize * 1.5, borderRadius: "50%", background: video.palette.primary, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width={joinSize * 0.8} height={joinSize * 0.8} viewBox="0 0 24 24" style={{ display: "block" }}>
+                <path d="M4 12 H19 M13 6 L19 12 L13 18" stroke={readableOn(video.palette.primary, video.palette.dark)} strokeWidth={2.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <div
-              style={{
-                fontFamily: FONT_FAMILY,
-                fontWeight: 900,
-                fontSize: fitFontSize(join, 1300, 1, 72, 36),
-                color: ctaInk,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {join}
-            </div>
+            <div style={{ fontFamily: FONT_FAMILY, fontWeight: 700, fontSize: joinSize, color: ctaInk, whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{join}</div>
           </div>
         ) : null}
-      </AbsoluteFill>
-      <Sfx src={video.sfx?.sparkle} at={10} volume={0.45} />
-      {join ? <Sfx src={video.sfx?.pop} at={35} volume={0.45} /> : null}
+        {fee ? (
+          <div
+            style={{
+              marginTop: 26,
+              alignSelf: "flex-start",
+              padding: "14px 30px",
+              borderRadius: 999,
+              border: `3px solid ${lightInk ? withAlpha(WHITE, 0.6) : withAlpha(theme.ink, 0.4)}`,
+              fontFamily: FONT_FAMILY,
+              fontWeight: 500,
+              fontSize: fitFontSize(`Adhésion : ${fee}`, 760, 1, 36, 24, BODY_CHAR),
+              color: theme.ink,
+              whiteSpace: "nowrap",
+              opacity: feeIn,
+              transform: `translateY(${(1 - feeIn) * 18}px)`,
+            }}
+          >
+            {/* Seul libellé écrit en dur : le reste vient des réglages. */}
+            <span style={{ fontWeight: 700 }}>Adhésion :</span> {frenchSpaces(fee)}
+          </div>
+        ) : null}
+      </div>
+      <Sfx src={video.sfx?.pop} at={ctaAt + 1} volume={0.22} />
+      <Sfx src={video.sfx?.sparkle} at={ctaAt + 14} volume={0.35} />
     </SceneBackdrop>
   );
 };

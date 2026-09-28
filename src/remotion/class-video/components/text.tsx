@@ -1,16 +1,20 @@
 import React from "react";
-import { useCurrentFrame, useVideoConfig } from "remotion";
+import { useCurrentFrame } from "remotion";
 
 import { FONT_FAMILY } from "../theme";
-import { pop } from "./motion";
+import { enter } from "./motion";
 
 /**
- * Typographie de la vidéo : très gros, très gras, arrondi, qui rebondit
- * mot par mot. Pensé pour des enfants qui lisent peu ou pas encore.
+ * Typographie de la vidéo : hiérarchie nette (titre 800, sous-titre 500),
+ * alignée à gauche le plus souvent, qui apparaît en fondu montant, mot par
+ * mot pour le titre. Pensée pour être lue par des parents, sans effet
+ * appuyé.
  */
 
-/** Largeur moyenne d'un caractère en Inter 900, en fraction de la taille. */
-const CHAR_WIDTH = 0.64;
+/** Largeur moyenne d'un caractère en Inter 800, en fraction de la taille. */
+const TITLE_CHAR = 0.6;
+/** Idem pour le texte courant (Inter 500, minuscules surtout). */
+export const BODY_CHAR = 0.52;
 const SPACE_WIDTH = 0.28;
 
 /**
@@ -18,7 +22,7 @@ const SPACE_WIDTH = 0.28;
  * ponctuation ne part jamais seule à la ligne.
  */
 export function frenchSpaces(text: string): string {
-  return text.replace(/\s+([?!:;»])/g, " $1").replace(/([«])\s+/g, "$1 ");
+  return text.replace(/\s+([?!:;»])/g, " $1").replace(/([«])\s+/g, "$1 ");
 }
 
 export function splitWords(text: string): string[] {
@@ -47,8 +51,8 @@ export function fitFontSize(
   maxWidth: number,
   maxLines: number,
   maxSize: number,
-  minSize = 36,
-  charWidth = CHAR_WIDTH,
+  minSize = 30,
+  charWidth = TITLE_CHAR,
 ): number {
   const words = splitWords(text);
   if (words.length === 0) return maxSize;
@@ -58,23 +62,22 @@ export function fitFontSize(
   return Math.max(minSize, Math.floor(size));
 }
 
-export const KineticTitle: React.FC<{
+/** Grand titre : mots qui montent en fondu, l'un après l'autre. */
+export const Title: React.FC<{
   text: string;
   color: string;
-  shadow: string;
   maxWidth: number;
-  maxSize: number;
+  maxSize?: number;
+  minSize?: number;
   maxLines?: number;
   delay?: number;
-  align?: "center" | "left";
-  stagger?: number;
+  align?: "left" | "center";
   style?: React.CSSProperties;
-}> = ({ text, color, shadow, maxWidth, maxSize, maxLines = 2, delay = 0, align = "center", stagger = 3, style }) => {
+}> = ({ text, color, maxWidth, maxSize = 112, minSize = 56, maxLines = 2, delay = 0, align = "left", style }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const words = splitWords(text);
   if (words.length === 0) return null;
-  const size = fitFontSize(text, maxWidth, maxLines, maxSize);
+  const size = fitFontSize(text, maxWidth, maxLines, maxSize, minSize);
   return (
     <div
       style={{
@@ -82,29 +85,26 @@ export const KineticTitle: React.FC<{
         flexWrap: "wrap",
         justifyContent: align === "center" ? "center" : "flex-start",
         columnGap: size * SPACE_WIDTH,
-        rowGap: 0,
         maxWidth,
         fontFamily: FONT_FAMILY,
-        fontWeight: 900,
+        fontWeight: 800,
         fontSize: size,
-        lineHeight: 1.08,
-        letterSpacing: "-0.01em",
+        lineHeight: 1.06,
+        letterSpacing: "-0.025em",
         color,
         ...style,
       }}
     >
       {words.map((word, i) => {
-        const p = pop(frame, fps, delay + i * stagger, 190, 10);
-        const tilt = (i % 2 === 0 ? -1 : 1) * 4 * (1 - Math.min(1, p));
+        const p = enter(frame, delay + i * 2.5, 22);
         return (
           <span
             key={`${word}-${i}`}
             style={{
               display: "inline-block",
               whiteSpace: "pre",
-              opacity: Math.min(1, p * 1.6),
-              transform: `translateY(${(1 - p) * size * 0.6}px) scale(${0.4 + 0.6 * p}) rotate(${tilt}deg)`,
-              textShadow: `0 ${Math.round(size * 0.07)}px 0 ${shadow}`,
+              opacity: p,
+              transform: `translateY(${(1 - p) * size * 0.32}px)`,
             }}
           >
             {word}
@@ -115,44 +115,35 @@ export const KineticTitle: React.FC<{
   );
 };
 
-/** Pastille arrondie pour le sous-titre ou une étiquette. */
-export const Pill: React.FC<{
+/** Ligne secondaire sous le titre. */
+export const Subtitle: React.FC<{
   text: string;
-  bg: string;
   color: string;
+  maxWidth: number;
+  size?: number;
   delay?: number;
-  fontSize?: number;
-  maxWidth?: number;
-  rotate?: number;
+  align?: "left" | "center";
+  weight?: number;
   style?: React.CSSProperties;
-}> = ({ text, bg, color, delay = 0, fontSize = 50, maxWidth = 1400, rotate = 0, style }) => {
+}> = ({ text, color, maxWidth, size = 46, delay = 0, align = "left", weight = 500, style }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const value = frenchSpaces(text.trim());
   if (!value) return null;
-  // Une seule ligne si possible (quitte à réduire un peu), sinon deux.
-  const avail = maxWidth - fontSize * 1.6;
-  // Graisse 800 en minuscules : caractères plus étroits que le titre.
-  const oneLine = fitFontSize(value, avail, 1, fontSize, 20, 0.56);
-  const size = oneLine >= fontSize * 0.74 ? oneLine : fitFontSize(value, avail, 2, fontSize, 30, 0.56);
-  const p = pop(frame, fps, delay, 160, 12);
+  const fitted = fitFontSize(value, maxWidth, 2, size, 30, BODY_CHAR);
+  const p = enter(frame, delay, 22);
   return (
     <div
       style={{
-        display: "inline-block",
         maxWidth,
-        padding: `${size * 0.32}px ${size * 0.8}px`,
-        borderRadius: size * 1.2,
-        background: bg,
-        color,
         fontFamily: FONT_FAMILY,
-        fontWeight: 800,
-        fontSize: size,
-        lineHeight: 1.18,
-        textAlign: "center",
-        boxShadow: `0 ${size * 0.16}px 0 rgba(0, 0, 0, 0.14)`,
-        opacity: Math.min(1, p * 1.5),
-        transform: `translateY(${(1 - p) * 40}px) scale(${0.6 + 0.4 * p}) rotate(${rotate}deg)`,
+        fontWeight: weight,
+        fontSize: fitted,
+        lineHeight: 1.25,
+        letterSpacing: "-0.005em",
+        color,
+        textAlign: align,
+        opacity: p,
+        transform: `translateY(${(1 - p) * 16}px)`,
         ...style,
       }}
     >
@@ -160,3 +151,49 @@ export const Pill: React.FC<{
     </div>
   );
 };
+
+/** Filet d'accent au-dessus du titre, qui s'allonge à l'entrée. */
+export const AccentBar: React.FC<{ color: string; delay?: number; width?: number; align?: "left" | "center" }> = ({
+  color,
+  delay = 0,
+  width = 88,
+  align = "left",
+}) => {
+  const frame = useCurrentFrame();
+  const p = enter(frame, delay, 24);
+  return (
+    <div
+      style={{
+        width,
+        height: 10,
+        borderRadius: 5,
+        background: color,
+        transform: `scaleX(${p})`,
+        transformOrigin: align === "left" ? "0% 50%" : "50% 50%",
+        alignSelf: align === "left" ? "flex-start" : "center",
+      }}
+    />
+  );
+};
+
+/** Bloc titre complet : filet, titre, sous-titre. */
+export const TextBlock: React.FC<{
+  title: string;
+  subtitle: string;
+  ink: string;
+  muted: string;
+  accent: string;
+  maxWidth: number;
+  delay?: number;
+  titleSize?: number;
+  subtitleSize?: number;
+  maxLines?: number;
+  align?: "left" | "center";
+  gap?: number;
+}> = ({ title, subtitle, ink, muted, accent, maxWidth, delay = 6, titleSize = 112, subtitleSize = 46, maxLines = 2, align = "left", gap = 30 }) => (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "center", gap }}>
+    <AccentBar color={accent} delay={delay} align={align} />
+    <Title text={title} color={ink} maxWidth={maxWidth} maxSize={titleSize} maxLines={maxLines} delay={delay + 4} align={align} />
+    <Subtitle text={subtitle} color={muted} maxWidth={maxWidth} size={subtitleSize} delay={delay + 14} align={align} />
+  </div>
+);

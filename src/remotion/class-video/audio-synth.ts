@@ -3,9 +3,11 @@
  * pareil dans le navigateur (éditeur) et sous Node (tests). Tout est généré
  * par le code, donc libre de droits.
  *
- * - renderMusicWav : petite boucle joyeuse (ukulélé, basse douce, marimba,
- *   glockenspiel, claps et shaker) sur la grille I–V–vi–IV.
- * - renderSfxWav : bruitages courts (pop, whoosh, étincelle).
+ * - renderMusicWav : boucle calme et chaleureuse, pour un public adulte
+ *   (piano doux, arpège de cordes pincées, nappe, basse ronde, percussions
+ *   légères) sur la grille I–V–vi–IV, vers 92 battements par minute.
+ * - renderSfxWav : bruitages courts et discrets (clic doux, souffle,
+ *   carillon).
  *
  * Le rendu est déterministe : même graine → mêmes octets.
  */
@@ -20,7 +22,7 @@ export type MusicOptions = {
   seconds: number;
   /** Graine : change la tonalité et quelques variations. */
   seed?: number;
-  /** Tempo, 112 par défaut (entraînant sans être speed). */
+  /** Tempo, 92 par défaut (posé, sans traîner). */
   bpm?: number;
 };
 
@@ -197,26 +199,45 @@ function pluck(freq: number, seconds: number, brightness: number, rng: Rng): Flo
   return out;
 }
 
-/** Marimba en FM : attaque boisée qui s'éteint vite, corps sinusoïdal. */
-function marimba(freq: number, seconds: number): Float32Array {
+/**
+ * Piano doux en synthèse additive : partiels légèrement inharmoniques qui
+ * s'éteignent d'autant plus vite qu'ils sont aigus, doublure désaccordée
+ * pour la chaleur, petit bruit de marteau feutré.
+ */
+function piano(freq: number, seconds: number, velocity: number, rng: Rng): Float32Array {
   const len = Math.floor(seconds * SR);
   const out = new Float32Array(len);
-  const dc = freq / SR;
-  const dm = (freq * 4) / SR;
-  const decay = Math.exp(-1 / (SR * (0.35 + 60 / freq)));
-  const idxDecay = Math.exp(-1 / (SR * 0.018));
-  let pc = 0;
-  let pm = 0;
-  let amp = 1;
-  let index = 2.2;
+  const amps = [1, 0.46, 0.24, 0.13, 0.07, 0.04];
+  const baseT = 2.6 * Math.pow(220 / freq, 0.35);
+  const bright = 0.55 + 0.45 * velocity;
+  for (let k = 1; k <= amps.length; k++) {
+    const f = k * freq * Math.sqrt(1 + 0.0004 * k * k);
+    if (f > SR * 0.45) break;
+    const amp = amps[k - 1] * Math.pow(bright, k - 1);
+    const decay = Math.exp(-1 / (SR * (baseT / (1 + 0.6 * (k - 1)))));
+    const d1 = f / SR;
+    const d2 = (f * 1.0016) / SR;
+    let p1 = rng();
+    let p2 = rng();
+    let env = amp;
+    for (let n = 0; n < len; n++) {
+      out[n] += (sinTurns(p1) + (k <= 2 ? sinTurns(p2) * 0.5 : 0)) * env;
+      p1 += d1;
+      p2 += d2;
+      env *= decay;
+    }
+  }
+  // Attaque feutrée et marteau (bruit filtré très court).
+  const lp = new Biquad("lowpass", 1800, 0.7);
+  const attack = Math.floor(0.004 * SR);
+  const hammer = Math.floor(0.012 * SR);
+  const release = Math.floor(0.08 * SR);
   for (let n = 0; n < len; n++) {
-    const attack = n < 88 ? n / 88 : 1;
-    const mod = sinTurns(pm) * index;
-    out[n] = (sinTurns(pc + mod / (2 * Math.PI)) * 0.8 + sinTurns(pc * 2) * 0.12 * amp) * amp * attack;
-    pc += dc;
-    pm += dm;
-    amp *= decay;
-    index *= idxDecay;
+    let x = out[n] * 0.5 * velocity;
+    if (n < attack) x *= n / attack;
+    if (n < hammer) x += lp.process((rng() * 2 - 1) * (1 - n / hammer)) * 0.05 * velocity;
+    if (n > len - release) x *= (len - n) / release;
+    out[n] = x;
   }
   return out;
 }
@@ -285,30 +306,30 @@ function padChord(freqs: number[], seconds: number): Float32Array {
 }
 
 function kick(): Float32Array {
-  const len = Math.floor(0.22 * SR);
+  const len = Math.floor(0.3 * SR);
   const out = new Float32Array(len);
   let p = 0;
   for (let n = 0; n < len; n++) {
     const t = n / SR;
-    const f = 48 + 70 * Math.exp(-t * 40);
-    const amp = Math.exp(-t * 18) * (n < 30 ? n / 30 : 1);
+    const f = 52 + 40 * Math.exp(-t * 30);
+    const amp = Math.exp(-t * 11) * (n < 60 ? n / 60 : 1);
     out[n] = sinTurns(p) * amp;
     p += f / SR;
   }
   return out;
 }
 
-function clap(rng: Rng): Float32Array {
-  const len = Math.floor(0.2 * SR);
+/** Coup de baguette sur le cercle (rim), très court et boisé. */
+function rim(rng: Rng): Float32Array {
+  const len = Math.floor(0.09 * SR);
   const out = new Float32Array(len);
-  const bp = new Biquad("bandpass", 1500, 0.9);
-  const hp = new Biquad("highpass", 500, 0.7);
-  const bursts = [0, 0.009, 0.019];
+  const bp = new Biquad("bandpass", 1900, 3);
+  let p = 0;
   for (let n = 0; n < len; n++) {
     const t = n / SR;
-    let env = Math.exp(-(t - 0.025) * 28) * 0.7;
-    for (const b of bursts) if (t >= b && t < b + 0.009) env = Math.max(env, Math.exp(-(t - b) * 250));
-    out[n] = hp.process(bp.process((rng() * 2 - 1) * env)) * 2.2;
+    const env = Math.exp(-t * 70);
+    out[n] = (bp.process((rng() * 2 - 1) * env) * 1.6 + sinTurns(p) * env * 0.5) * (n < 20 ? n / 20 : 1);
+    p += 820 / SR;
   }
   return out;
 }
@@ -473,41 +494,23 @@ export function encodeWav(channels: Float32Array[], sampleRate = SR): Uint8Array
 
 type Note = [beat: number, semitone: number, beats: number];
 
-/*
- * Mélodie écrite à la main (demi-tons au-dessus de la tonique, octave 5),
- * une mesure par ligne, sur la grille I–V–vi–IV répétée.
- * Partie A : chantonnante ; partie B : plus haute, doublée au glockenspiel.
- */
-const MELODY_A: Note[][] = [
-  [[0, 4, 0.5], [0.5, 7, 0.5], [1, 12, 1], [2, 11, 0.5], [2.5, 12, 0.5], [3, 7, 1]],
-  [[0, 2, 0.5], [0.5, 7, 0.5], [1, 11, 1], [2, 9, 0.5], [2.5, 11, 0.5], [3, 14, 1]],
-  [[0, 12, 0.5], [0.5, 11, 0.5], [1, 9, 1], [2, 4, 1], [3, 9, 0.5], [3.5, 7, 0.5]],
-  [[0, 5, 1], [1, 9, 0.5], [1.5, 7, 0.5], [2, 5, 0.5], [2.5, 4, 0.5], [3, 2, 1]],
-  [[0, 4, 0.5], [0.5, 7, 0.5], [1, 12, 1], [2, 11, 0.5], [2.5, 12, 0.5], [3, 7, 1]],
-  [[0, 2, 0.5], [0.5, 7, 0.5], [1, 11, 1], [2, 9, 0.5], [2.5, 11, 0.5], [3, 14, 1]],
-  [[0, 9, 0.5], [0.5, 12, 0.5], [1, 16, 1], [2, 12, 1], [3, 9, 1]],
-  [[0, 12, 1.5], [1.5, 9, 0.5], [2, 9, 1], [3, 7, 1]],
+/** Voicings du piano (demi-tons au-dessus de do 4) : I(add9) – V – vi7 – IV(maj7). */
+const PIANO_CHORDS: number[][] = [
+  [-12, 4, 7, 14],
+  [-5, 2, 7, 11],
+  [-3, 4, 7, 9],
+  [-7, 5, 9, 16],
 ];
-
-const MELODY_B: Note[][] = [
-  [[0, 16, 1.5], [1.5, 14, 0.5], [2, 12, 1], [3, 7, 1]],
-  [[0, 14, 1.5], [1.5, 12, 0.5], [2, 11, 1], [3, 7, 1]],
-  [[0, 12, 1], [1, 11, 0.5], [1.5, 12, 0.5], [2, 16, 1], [3, 14, 1]],
-  [[0, 12, 1.5], [1.5, 9, 0.5], [2, 5, 1], [3, 9, 1]],
-  [[0, 16, 1.5], [1.5, 14, 0.5], [2, 12, 1], [3, 16, 1]],
-  [[0, 19, 1.5], [1.5, 17, 0.5], [2, 14, 1], [3, 11, 1]],
-  [[0, 12, 1], [1, 11, 0.5], [1.5, 9, 0.5], [2, 4, 1], [3, 9, 1]],
-  [[0, 9, 1], [1, 7, 1], [2, 5, 0.5], [2.5, 4, 0.5], [3, 2, 1]],
+/** Notes de l'arpège pincé, un peu plus haut (demi-tons au-dessus de do 4). */
+const ARP_CHORDS: number[][] = [
+  [0, 7, 12, 16],
+  [-5, 2, 7, 11],
+  [-3, 4, 9, 12],
+  [-7, 0, 5, 9],
 ];
-
-/** Accords de ukulélé (cordes sol-do-mi-la), en demi-tons au-dessus de do 4. */
-const UKE_CHORDS: number[][] = [
-  [7, 0, 4, 12], // I   (do)
-  [7, 2, 7, 11], // V   (sol)
-  [9, 0, 4, 9], // vi  (la mineur)
-  [9, 0, 5, 9], // IV  (fa)
-];
-/** Fondamentale de chaque accord (demi-tons) et sa quinte, pour la basse. */
+/** Ordre de l'arpège sur huit croches, façon guitare en picking. */
+const ARP_ORDER = [0, 2, 1, 3, 2, 1, 3, 2];
+/** Fondamentale de chaque accord (demi-tons), pour la basse. */
 const BASS_ROOTS = [0, 7, 9, 5];
 const PAD_CHORDS = [
   [0, 4, 7],
@@ -516,20 +519,22 @@ const PAD_CHORDS = [
   [0, 5, 9],
 ];
 
-/** Coup de gratte « île » : bas, bas-haut, haut-bas-haut (en temps). */
-const STRUM: [beat: number, down: boolean, velocity: number][] = [
-  [0, true, 1],
-  [1, true, 0.8],
-  [1.5, false, 0.55],
-  [2.5, false, 0.6],
-  [3, true, 0.85],
-  [3.5, false, 0.55],
+/** Mélodie de la seconde moitié (demi-tons au-dessus de do 5), sobre et chantante. */
+const MELODY: Note[][] = [
+  [[0, 7, 1.5], [1.5, 4, 0.5], [2, 2, 2]],
+  [[0, 2, 1], [1, 4, 1], [2, 7, 2]],
+  [[0, 9, 1.5], [1.5, 7, 0.5], [2, 4, 2]],
+  [[0, 5, 1], [1, 4, 1], [2, 0, 2]],
+  [[0, 7, 1.5], [1.5, 9, 0.5], [2, 12, 2]],
+  [[0, 11, 1.5], [1.5, 9, 0.5], [2, 7, 2]],
+  [[0, 9, 1], [1, 12, 1], [2, 11, 1], [3, 9, 1]],
+  [[0, 7, 2], [2, 5, 1], [3, 4, 1]],
 ];
 
 /** Tonalités possibles (décalage depuis do), choisies par la graine. */
 const KEYS = [0, 2, -3, -5, -2];
 
-export function renderMusicWav({ seconds, seed = 1, bpm = 112 }: MusicOptions): Uint8Array {
+export function renderMusicWav({ seconds, seed = 1, bpm = 92 }: MusicOptions): Uint8Array {
   const rng = mulberry32(seed * 7919 + 13);
   const key = KEYS[(Math.abs(Math.floor(seed)) + KEYS.length - 1) % KEYS.length];
   const beat = 60 / Math.max(60, Math.min(160, bpm));
@@ -537,25 +542,9 @@ export function renderMusicWav({ seconds, seed = 1, bpm = 112 }: MusicOptions): 
   const patternBars = 16;
   const patternLength = Math.round(patternBars * bar * SR);
   const bus = new LoopBus(patternLength);
-  // Léger swing sur les croches : c'est ce qui rend la boucle sautillante.
-  const swing = 0.08 * beat;
-  const at = (barIndex: number, beatPos: number) => {
-    const frac = beatPos % 1;
-    const swung = Math.abs(frac - 0.5) < 1e-6 ? swing : 0;
-    return Math.round((barIndex * bar + beatPos * beat + swung) * SR);
-  };
+  const at = (barIndex: number, beatPos: number) => Math.round((barIndex * bar + beatPos * beat) * SR);
 
-  // Caches de notes : une corde pincée coûte cher, on la réutilise.
-  const pluckCache = new Map<string, Float32Array>();
-  const getPluck = (midi: number, variant: number) => {
-    const k = `${midi}:${variant}`;
-    let p = pluckCache.get(k);
-    if (!p) {
-      p = pluck(midiToFreq(midi), 1.4, 0.55 + variant * 0.12, mulberry32(midi * 31 + variant * 977 + seed));
-      pluckCache.set(k, p);
-    }
-    return p;
-  };
+  // Caches de notes : une note synthétisée est réutilisée d'une mesure à l'autre.
   const noteCache = new Map<string, Float32Array>();
   const cached = (k: string, make: () => Float32Array) => {
     let v = noteCache.get(k);
@@ -565,11 +554,13 @@ export function renderMusicWav({ seconds, seed = 1, bpm = 112 }: MusicOptions): 
     }
     return v;
   };
+  const pianoNote = (midi: number, vel: number, len: number) =>
+    cached(`pno:${midi}:${vel}:${len}`, () => piano(midiToFreq(midi), len, vel, mulberry32(midi * 131 + seed)));
 
   const kickSample = kick();
-  const claps = [clap(rng), clap(rng)];
-  const shakers = [shaker(rng, 1), shaker(rng, 0.55), shaker(rng, 0.4)];
-  const ukeBase = 60 + key;
+  const rims = [rim(rng), rim(rng)];
+  const shakers = [shaker(rng, 0.7), shaker(rng, 0.45)];
+  const base = 60 + key;
   const melodyBase = 72 + key;
   const bassBase = 36 + key + (key < 0 ? 12 : 0);
 
@@ -577,74 +568,62 @@ export function renderMusicWav({ seconds, seed = 1, bpm = 112 }: MusicOptions): 
     const chord = b % 4;
     const sectionB = b >= 8;
 
-    // Ukulélé : chaque coup étouffe le précédent.
-    STRUM.forEach(([pos, down, vel], si) => {
-      const start = at(b, pos);
-      const nextPos = si + 1 < STRUM.length ? STRUM[si + 1][0] : 4;
-      const ring = at(b, nextPos) - start + Math.round(0.06 * SR);
-      const strings = UKE_CHORDS[chord].map((s) => ukeBase + s);
-      const order = down ? strings : [...strings].reverse().slice(0, 3);
-      order.forEach((midi, i) => {
-        const offset = Math.round(i * (down ? 0.011 : 0.008) * SR);
-        const human = 0.9 + rng() * 0.2;
-        bus.add(getPluck(midi, down ? 0 : 1), start + offset, 0.2 * vel * human, -0.25 + i * 0.05, 0.12, ring + (down ? 0 : -offset));
-      });
+    // Piano : accord posé (légèrement égrené) sur le 1, rappel plus doux sur le 3.
+    PIANO_CHORDS[chord].forEach((semi, i) => {
+      const midi = base + semi;
+      const roll = Math.round(i * 0.018 * SR);
+      bus.add(pianoNote(midi, 0.6, bar * 0.55 + 0.4), at(b, 0) + roll, 0.2, -0.2 + i * 0.12, 0.35);
+      if (i > 0) bus.add(pianoNote(midi, 0.35, bar * 0.5 + 0.3), at(b, 2) + roll, 0.13, -0.1 + i * 0.1, 0.35);
     });
 
-    // Basse : fondamentale, rebond, quinte.
+    // Arpège pincé en croches (plus présent dans la seconde moitié).
+    ARP_ORDER.forEach((idx, step) => {
+      const midi = base + 12 + ARP_CHORDS[chord][idx];
+      const pl = cached(`pl:${midi}`, () => pluck(midiToFreq(midi), 1.2, 0.35, mulberry32(midi * 31 + seed)));
+      const human = 0.85 + rng() * 0.25;
+      const vel = (step % 2 === 0 ? 1 : 0.7) * human * (sectionB ? 0.11 : 0.08);
+      bus.add(pl, at(b, step / 2), vel, 0.3, 0.25, Math.round(beat * SR * 1.2));
+    });
+
+    // Nappe très discrète.
+    const pad = cached(`pad:${chord}`, () => padChord(PAD_CHORDS[chord].map((st) => midiToFreq(base + st)), bar));
+    bus.add(pad, at(b, 0), 0.028, 0, 0.4);
+
+    // Basse ronde : note tenue, puis rebond dans la seconde moitié.
     const root = bassBase + BASS_ROOTS[chord];
-    const bassNotes: [number, number, number][] = [
-      [0, root, 1.4],
-      [1.5, root, 0.45],
-      [2, root + 7 > bassBase + 14 ? root - 5 : root + 7, 0.9],
-      [3, root, 0.9],
-    ];
-    for (const [pos, midi, len] of bassNotes) {
-      const s = cached(`bass:${midi}:${len}`, () => softBass(midiToFreq(midi), len * beat));
-      bus.add(s, at(b, pos), pos === 0 ? 0.42 : 0.3, 0, 0);
+    if (sectionB) {
+      bus.add(cached(`bass:${root}:2.5`, () => softBass(midiToFreq(root), 2.5 * beat)), at(b, 0), 0.36, 0, 0);
+      bus.add(cached(`bass:${root}:1.5`, () => softBass(midiToFreq(root), 1.5 * beat)), at(b, 2.5), 0.26, 0, 0);
+    } else {
+      bus.add(cached(`bass:${root}:4`, () => softBass(midiToFreq(root), 3.9 * beat)), at(b, 0), 0.32, 0, 0);
     }
 
-    // Nappe discrète.
-    const pad = cached(`pad:${chord}`, () => padChord(PAD_CHORDS[chord].map((s) => midiToFreq(60 + key + s)), bar));
-    bus.add(pad, at(b, 0), 0.035, 0, 0.3);
-
-    // Mélodie.
-    const phrase = sectionB ? MELODY_B[b - 8] : MELODY_A[b];
-    for (const [pos, semi, len] of phrase) {
-      const midi = melodyBase + semi;
-      const m = cached(`mar:${midi}`, () => marimba(midiToFreq(midi), 1.2));
-      const ring = Math.round(Math.max(len * beat + 0.25, 0.4) * SR);
-      bus.add(m, at(b, pos), sectionB ? 0.2 : 0.24, 0.2, 0.3, ring);
-      if (sectionB) {
-        const gl = cached(`gl:${midi + 12}`, () => glock(midiToFreq(midi + 12), 1.6));
-        bus.add(gl, at(b, pos), 0.07, 0.35, 0.45);
+    // Mélodie (seconde moitié), au piano, doublée d'une clochette très douce.
+    if (sectionB) {
+      for (const [pos, semi, len] of MELODY[b - 8]) {
+        const midi = melodyBase + semi;
+        bus.add(pianoNote(midi, 0.5, Math.max(1, len * beat + 0.8)), at(b, pos), 0.2, 0.15, 0.45);
+        const gl = cached(`gl:${midi + 12}`, () => glock(midiToFreq(midi + 12), 1.4, 0.6));
+        bus.add(gl, at(b, pos), 0.025, 0.35, 0.5);
       }
     }
-    // Petites clochettes en fin de phrase (partie A), pour l'étincelle.
-    if (!sectionB && b % 4 === 3) {
-      [0, 4, 7].forEach((s, i) => {
-        const midi = melodyBase + 12 + s + (b === 7 ? 5 : 0);
-        const gl = cached(`gl:${midi}`, () => glock(midiToFreq(midi), 1.6));
-        bus.add(gl, at(b, 3.5) + Math.round(i * 0.07 * SR), 0.045, 0.5 - i * 0.25, 0.5);
-      });
-    }
 
-    // Percussions douces.
-    bus.add(kickSample, at(b, 0), 0.45, 0, 0);
-    bus.add(kickSample, at(b, 2), 0.36, 0, 0);
-    if (sectionB) bus.add(kickSample, at(b, 3.5), 0.18, 0, 0);
-    bus.add(claps[b % 2], at(b, 1), 0.13, 0.05, 0.25);
-    bus.add(claps[(b + 1) % 2], at(b, 3), 0.15, -0.05, 0.25);
-    for (let s = 0; s < 16; s++) {
-      const pos = s / 4;
-      if (!sectionB && s % 2 === 1) continue;
-      const accent = s % 4 === 2 ? 0 : s % 2 === 0 ? 1 : 2;
-      bus.add(shakers[accent], at(b, pos), 0.06, 0.45, 0.05);
+    // Percussions légères : shaker partout, pulsation et rim dans la seconde moitié.
+    for (let st = 0; st < 8; st++) {
+      bus.add(shakers[st % 2], at(b, st / 2), sectionB ? 0.05 : 0.035, 0.4, 0.1);
+    }
+    if (sectionB || b % 4 === 3) {
+      bus.add(kickSample, at(b, 0), 0.3, 0, 0);
+      if (sectionB) bus.add(kickSample, at(b, 2), 0.24, 0, 0);
+    }
+    if (sectionB) {
+      bus.add(rims[0], at(b, 1), 0.07, -0.1, 0.3);
+      bus.add(rims[1], at(b, 3), 0.08, 0.1, 0.3);
     }
   }
 
-  applyLoopReverb(bus.left, bus.right, bus.send, 0.28);
-  master(bus.left, bus.right, 0.89);
+  applyLoopReverb(bus.left, bus.right, bus.send, 0.34);
+  master(bus.left, bus.right, 0.85);
 
   // On répète la boucle pour couvrir la durée demandée, arrondie à 4 mesures.
   const unit = Math.round(4 * bar * SR);
@@ -663,67 +642,67 @@ export function renderMusicWav({ seconds, seed = 1, bpm = 112 }: MusicOptions): 
 // ---------------------------------------------------------------------------
 // Bruitages
 
+/** Clic doux et boisé : petite note qui retombe, attaque feutrée. */
 function renderPop(): Float32Array[] {
-  const len = Math.floor(0.2 * SR);
+  const len = Math.floor(0.16 * SR);
   const out = new Float32Array(len);
+  const rng = mulberry32(99);
+  const lp = new Biquad("lowpass", 3000, 0.7);
   let p = 0;
   for (let n = 0; n < len; n++) {
     const t = n / SR;
-    // « Bloup » : glissando rapide vers l'aigu, enveloppe très courte.
-    const f = 380 + 720 * (1 - Math.exp(-t * 55));
-    const amp = Math.min(1, t / 0.003) * Math.exp(-t * 26);
-    out[n] = (sinTurns(p) * 0.85 + sinTurns(p * 2) * 0.12) * amp;
+    const f = 620 + 280 * Math.exp(-t * 60);
+    const amp = Math.min(1, t / 0.002) * Math.exp(-t * 38);
+    const click = n < 120 ? lp.process(rng() * 2 - 1) * (1 - n / 120) * 0.25 : 0;
+    out[n] = (sinTurns(p) * 0.9 + sinTurns(p * 2.01) * 0.12) * amp + click;
     p += f / SR;
   }
   return [out, out];
 }
 
+/** Souffle feutré qui traverse de gauche à droite. */
 function renderWhoosh(): Float32Array[] {
-  const seconds = 0.7;
+  const seconds = 0.6;
   const len = Math.floor(seconds * SR);
   const left = new Float32Array(len);
   const right = new Float32Array(len);
   const rng = mulberry32(4242);
-  const bl = new Biquad("bandpass", 400, 0.8);
-  const br = new Biquad("bandpass", 400, 0.8);
+  const bl = new Biquad("bandpass", 300, 0.7);
+  const br = new Biquad("bandpass", 300, 0.7);
   let lp = 0;
   for (let n = 0; n < len; n++) {
     const x = n / len;
-    // Filtre qui monte puis redescend, volume en cloche, passage gauche → droite.
-    const f = 350 + 2600 * Math.sin(Math.PI * Math.min(1, x * 1.15)) ** 1.5;
+    const f = 280 + 1100 * Math.sin(Math.PI * Math.min(1, x * 1.1)) ** 1.6;
     if (n % 32 === 0) {
-      bl.set("bandpass", f, 0.9);
-      br.set("bandpass", f * 1.06, 0.9);
+      bl.set("bandpass", f, 0.7);
+      br.set("bandpass", f * 1.05, 0.7);
     }
-    const env = Math.sin(Math.PI * x) ** 2 * (1 - x * 0.3);
-    const noise = rng() * 2 - 1;
-    lp += (noise - lp) * 0.5;
-    const pan = x;
-    left[n] = bl.process(lp) * env * Math.cos((pan * Math.PI) / 2) * 3.2;
-    right[n] = br.process(lp) * env * Math.sin((pan * Math.PI) / 2) * 3.2;
+    const env = Math.sin(Math.PI * x) ** 2.2;
+    lp += (rng() * 2 - 1 - lp) * 0.35;
+    left[n] = bl.process(lp) * env * Math.cos((x * Math.PI) / 2) * 3;
+    right[n] = br.process(lp) * env * Math.sin((x * Math.PI) / 2) * 3;
   }
   return [left, right];
 }
 
+/** Carillon discret : quatre notes d'un accord majeur, égrenées, avec réverbération. */
 function renderSparkle(): Float32Array[] {
-  const seconds = 1.5;
+  const seconds = 2;
   const len = Math.floor(seconds * SR);
   const bus = new LoopBus(len + Math.floor(0.5 * SR));
-  // Arpège pentatonique aigu, chaque clochette un peu ailleurs dans l'espace.
-  const notes = [84, 88, 91, 96, 100, 103, 108];
+  const notes = [84, 88, 91, 96];
   notes.forEach((midi, i) => {
-    const s = glock(midiToFreq(midi), 1.0, 1.1);
-    bus.add(s, Math.round(i * 0.048 * SR), 0.55 - i * 0.04, i % 2 === 0 ? -0.5 : 0.5, 0.6);
+    const s = glock(midiToFreq(midi), 1.6, 0.55);
+    bus.add(s, Math.round(i * 0.1 * SR), 0.5 - i * 0.05, i % 2 === 0 ? -0.35 : 0.35, 0.6);
   });
-  const send = bus.send;
-  // Réverbération non circulaire ici : on veut une vraie queue.
   const l = bus.left.slice(0, len);
   const r = bus.right.slice(0, len);
   const tmpL = new Float32Array(bus.length);
   const tmpR = new Float32Array(bus.length);
-  applyLoopReverb(tmpL, tmpR, send, 0.5, false);
+  // Réverbération non circulaire ici : on veut une vraie queue.
+  applyLoopReverb(tmpL, tmpR, bus.send, 0.5, false);
   for (let i = 0; i < len; i++) {
-    const fade = i > len - 4000 ? (len - i) / 4000 : 1;
+    const fade = i > len - 6000 ? (len - i) / 6000 : 1;
     l[i] = (l[i] + tmpL[i]) * fade;
     r[i] = (r[i] + tmpR[i]) * fade;
   }
@@ -740,7 +719,8 @@ function normalize(channels: Float32Array[], peakTarget: number) {
 
 export function renderSfxWav(kind: SfxKind): Uint8Array {
   const channels = kind === "pop" ? renderPop() : kind === "whoosh" ? renderWhoosh() : renderSparkle();
-  return encodeWav(normalize(channels, 0.8));
+  // Crêtes volontairement basses : des bruitages qui accompagnent sans s'imposer.
+  return encodeWav(normalize(channels, kind === "sparkle" ? 0.6 : 0.5));
 }
 
 // ---------------------------------------------------------------------------

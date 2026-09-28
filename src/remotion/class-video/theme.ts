@@ -1,25 +1,31 @@
-import { darken, lighten, mix, readableOn, tooClose, withAlpha, WHITE } from "./colors";
+import { contrastRatio, darken, lighten, mix, readableOn, tooClose, withAlpha, WHITE } from "./colors";
 import type { ClassVideoSceneId, VideoPalette } from "./types";
 
 /** Police de l'app (Inter via next/font), avec replis locaux : aucun téléchargement. */
 export const FONT_FAMILY = "var(--font-sans), Inter, system-ui, sans-serif";
 
+/**
+ * Habillage d'une scène. La vidéo s'adresse aux parents : fonds clairs et
+ * calmes la plupart du temps, la palette du logo en touches, et deux scènes
+ * franches (« rassembler », « fin ») sur la couleur principale.
+ */
 export type SceneTheme = {
-  /** Couleur de fond principale. */
+  /** Aplat de fond. */
   bg: string;
-  /** Dégradé de fond (du haut vers le bas). */
-  gradient: string;
-  /** Couleur du grand texte posé sur le fond. */
+  /** Vrai sur les scènes en couleur pleine (texte clair en général). */
+  bold: boolean;
+  /** Titre. */
   ink: string;
-  /** Ombre portée « dure » sous le grand texte. */
-  inkShadow: string;
-  /** Couleurs des formes décoratives, choisies pour se voir sur le fond. */
-  shapes: string[];
-  /** Pastille de sous-titre : fond et texte. */
-  pill: string;
-  pillInk: string;
-  /** Couleur vive qui ressort sur le fond (rubans, étoiles). */
-  pop: string;
+  /** Sous-titre et textes secondaires. */
+  muted: string;
+  /** Couleur d'accent lisible sur le fond (filet sous le titre, chiffres). */
+  accent: string;
+  /** Grande forme douce derrière l'illustration. */
+  soft: string;
+  /** Sol sous les personnages. */
+  floor: string;
+  /** Ombre portée des personnages et objets. */
+  shadow: string;
 };
 
 /** Couleur de la palette qui se distingue le mieux de `bg` parmi les candidates. */
@@ -28,45 +34,48 @@ export function pickContrasting(bg: string, candidates: string[]): string {
   return usable[0] ?? (readableOn(bg) === WHITE ? lighten(bg, 0.55) : darken(bg, 0.35));
 }
 
-/** Fond de chaque scène : on alterne les couleurs du logo pour rythmer la vidéo. */
-function sceneBackground(palette: VideoPalette, id: ClassVideoSceneId): string {
+/** Première candidate assez contrastée pour du texte (≥ `min`), sinon texte lisible. */
+function legible(bg: string, candidates: string[], min: number, fallback: string): string {
+  return candidates.find((c) => contrastRatio(c, bg) >= min) ?? fallback;
+}
+
+/** Fond de chaque scène : clair, teinté tour à tour par les couleurs du logo. */
+function sceneBackground(palette: VideoPalette, id: ClassVideoSceneId): { bg: string; bold: boolean; tint: string } {
+  const paper = mix(WHITE, palette.light, 0.55);
   switch (id) {
     case "intro":
-    case "sourire":
-    case "membres":
-      return palette.primary;
-    case "vie":
-    case "bienfaits":
-      return palette.secondary;
-    case "rassembler":
-      return palette.accent;
-    case "apel":
     case "souvenirs":
+      return { bg: mix(WHITE, palette.light, 0.9), bold: false, tint: palette.primary };
+    case "vie":
     case "chiffres":
-      return palette.light;
+      return { bg: mix(WHITE, palette.accent, 0.1), bold: false, tint: palette.accent };
+    case "sourire":
+      return { bg: mix(WHITE, palette.secondary, 0.07), bold: false, tint: palette.secondary };
+    case "rassembler":
     case "fin":
-      return palette.primary;
+      return { bg: palette.primary, bold: true, tint: WHITE };
+    case "apel":
+    case "bienfaits":
+    case "membres":
+      return { bg: paper, bold: false, tint: palette.primary };
   }
 }
 
 export function sceneTheme(palette: VideoPalette, id: ClassVideoSceneId): SceneTheme {
-  const bg = sceneBackground(palette, id);
-  const ink = readableOn(bg, palette.dark);
-  const light = ink === WHITE;
-  const others = [palette.secondary, palette.accent, palette.primary, WHITE, palette.light].filter(
-    (c) => !tooClose(c, bg),
-  );
-  const shapes = others.length >= 2 ? others.slice(0, 4) : [lighten(bg, 0.4), darken(bg, 0.2)];
-  const pill = light ? WHITE : palette.dark;
+  const { bg, bold, tint } = sceneBackground(palette, id);
+  const ink = bold ? readableOn(bg, palette.dark) : legible(bg, [palette.dark], 7, readableOn(bg, palette.dark));
+  const inkIsLight = ink === WHITE;
   return {
     bg,
-    gradient: `linear-gradient(165deg, ${lighten(bg, 0.12)} 0%, ${bg} 55%, ${darken(bg, 0.1)} 100%)`,
+    bold,
     ink,
-    inkShadow: light ? withAlpha(darken(bg, 0.55), 0.45) : withAlpha(darken(bg, 0.35), 0.35),
-    shapes,
-    pill,
-    pillInk: readableOn(pill, palette.dark) === WHITE ? WHITE : pill === WHITE ? palette.dark : WHITE,
-    pop: pickContrasting(bg, [palette.secondary, palette.accent, palette.primary]),
+    muted: inkIsLight ? withAlpha(WHITE, 0.86) : mix(ink, bg, 0.28),
+    accent: bold
+      ? legible(bg, [palette.accent, WHITE], 1.8, ink)
+      : legible(bg, [palette.primary, palette.secondary, palette.dark], 3, palette.dark),
+    soft: bold ? mix(bg, WHITE, 0.1) : mix(bg, tint, 0.09),
+    floor: bold ? darken(bg, 0.1) : mix(bg, palette.dark, 0.05),
+    shadow: withAlpha(darken(bold ? bg : palette.dark, 0.5), bold ? 0.28 : 0.13),
   };
 }
 
@@ -83,23 +92,34 @@ export type IlluColors = {
   cLight: string;
   ink: string;
   white: string;
-  blush: string;
+  /** Crème chaude des murs, nappes, cartons. */
+  cream: string;
+  /** Neutres pour les vêtements et le mobilier (gris chaud, bois). */
+  stone: string;
+  wood: string;
+  /** Verdure (arbres, haies), désaturée pour rester discrète. */
+  leaf: string;
+  leafDark: string;
 };
 
 export function illuColors(palette: VideoPalette): IlluColors {
   const accent = palette.accent;
   return {
     a: palette.primary,
-    aDark: darken(palette.primary, 0.25),
-    aLight: lighten(palette.primary, 0.55),
+    aDark: darken(palette.primary, 0.22),
+    aLight: lighten(palette.primary, 0.6),
     b: palette.secondary,
-    bDark: darken(palette.secondary, 0.22),
-    bLight: lighten(palette.secondary, 0.5),
+    bDark: darken(palette.secondary, 0.2),
+    bLight: lighten(palette.secondary, 0.6),
     c: accent,
-    cDark: darken(accent, 0.22),
-    cLight: lighten(accent, 0.5),
+    cDark: darken(accent, 0.18),
+    cLight: lighten(accent, 0.55),
     ink: darken(palette.dark, 0.1),
     white: WHITE,
-    blush: withAlpha(mix(accent, "#ff5a7a", 0.5), 0.45),
+    cream: mix("#fbf6ec", palette.light, 0.25),
+    stone: mix("#8e959c", palette.dark, 0.15),
+    wood: "#c99a6b",
+    leaf: "#8fbf95",
+    leafDark: "#6a9f76",
   };
 }

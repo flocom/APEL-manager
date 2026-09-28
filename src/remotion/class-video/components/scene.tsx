@@ -1,10 +1,10 @@
 import { Audio } from "@remotion/media";
 import React from "react";
-import { AbsoluteFill, Easing, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 
 import type { SceneTheme } from "../theme";
 import type { ClassVideoProps, ClassVideoScene } from "../types";
-import { FloatingShapes } from "./decor";
+import { glide } from "./motion";
 
 /** Props communes à toutes les scènes. */
 export type SceneProps = {
@@ -12,59 +12,79 @@ export type SceneProps = {
   video: ClassVideoProps;
   /** Durée de la scène (images), transition de sortie comprise. */
   durationInFrames: number;
-  /** Position de la scène dans la vidéo (sert de graine au décor). */
+  /** Position de la scène dans la vidéo. */
   index: number;
 };
 
-/** Fond dégradé + formes flottantes. */
+/**
+ * Fond de scène : aplat, grande forme douce derrière l'illustration et sol
+ * sous les personnages. Rien ne bouge beaucoup : la forme respire à peine.
+ */
 export const SceneBackdrop: React.FC<{
   theme: SceneTheme;
-  seed: number;
-  shapeCount?: number;
+  /** Grande forme douce (cercle) : centre et rayon en px. */
+  blob?: { x: number; y: number; r: number };
+  /** Ordonnée (px) où commence le sol ; sans valeur, pas de sol. */
+  floorY?: number;
   children?: React.ReactNode;
-}> = ({ theme, seed, shapeCount = 14, children }) => (
-  <AbsoluteFill style={{ background: theme.gradient, overflow: "hidden" }}>
-    <FloatingShapes colors={theme.shapes} seed={seed} count={shapeCount} opacity={0.75} />
-    {children}
-  </AbsoluteFill>
-);
+}> = ({ theme, blob, floorY, children }) => {
+  const frame = useCurrentFrame();
+  const blobIn = glide(frame, 0, 40);
+  return (
+    <AbsoluteFill style={{ background: theme.bg, overflow: "hidden" }}>
+      {blob ? (
+        <div
+          style={{
+            position: "absolute",
+            left: blob.x - blob.r,
+            top: blob.y - blob.r,
+            width: blob.r * 2,
+            height: blob.r * 2,
+            borderRadius: "50%",
+            background: theme.soft,
+            transform: `scale(${0.85 + 0.15 * blobIn})`,
+            opacity: blobIn,
+          }}
+        />
+      ) : null}
+      {floorY !== undefined ? (
+        <div style={{ position: "absolute", left: 0, right: 0, top: floorY, bottom: 0, background: theme.floor }} />
+      ) : null}
+      {children}
+    </AbsoluteFill>
+  );
+};
 
 /**
  * Bruitage ponctuel. Sans URL (bruitages désactivés), ne rend rien.
  * `at` est relatif à la scène.
  */
-export const Sfx: React.FC<{ src: string | null | undefined; at: number; volume?: number }> = ({
-  src,
-  at,
-  volume = 0.5,
-}) => {
+export const Sfx: React.FC<{ src: string | null | undefined; at: number; volume?: number }> = ({ src, at, volume = 0.3 }) => {
   const { fps } = useVideoConfig();
   if (!src) return null;
   return (
-    <Sequence from={Math.max(0, Math.round(at))} durationInFrames={Math.round(fps * 1.6)} layout="none" name="Bruitage">
+    <Sequence from={Math.max(0, Math.round(at))} durationInFrames={Math.round(fps * 2)} layout="none" name="Bruitage">
       <Audio src={src} volume={volume} />
     </Sequence>
   );
 };
 
-export type TransitionKind = "circle" | "slide" | "wipe" | "drop";
-export const TRANSITION_ORDER: TransitionKind[] = ["circle", "slide", "drop", "wipe"];
+export type TransitionKind = "fade" | "wipe";
+export const TRANSITION_ORDER: TransitionKind[] = ["fade", "wipe"];
 
 /**
- * Enveloppe d'une scène : entrée par-dessus la scène précédente (cercle qui
- * s'ouvre, glissé avec un ruban coloré, chute rebondie, balayage oblique) et
- * léger recul pendant que la suivante arrive.
+ * Enveloppe d'une scène : entrée par-dessus la précédente, en fondu enchaîné
+ * (léger glissé) ou en volet net depuis la droite pour les scènes en couleur
+ * pleine. La scène qui part glisse à peine vers la gauche.
  */
 export const SceneLayer: React.FC<{
   kind: TransitionKind | null;
   transitionFrames: number;
   durationInFrames: number;
   exits: boolean;
-  bandColor: string;
   children: React.ReactNode;
-}> = ({ kind, transitionFrames, durationInFrames, exits, bandColor, children }) => {
+}> = ({ kind, transitionFrames, durationInFrames, exits, children }) => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
   const t = interpolate(frame, [0, transitionFrames], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -77,51 +97,24 @@ export const SceneLayer: React.FC<{
         easing: Easing.in(Easing.cubic),
       })
     : 0;
-  const exitStyle: React.CSSProperties =
-    exitT > 0 ? { transform: `scale(${1 - 0.08 * exitT})`, transformOrigin: "50% 50%" } : {};
+  const exitStyle: React.CSSProperties = exitT > 0 ? { transform: `translateX(${-40 * exitT}px)` } : {};
 
   if (!kind || t >= 1) {
     return <AbsoluteFill style={exitStyle}>{children}</AbsoluteFill>;
   }
 
-  if (kind === "circle") {
-    const radius = Math.hypot(width, height) * 0.62 * t;
+  if (kind === "fade") {
     return (
-      <AbsoluteFill style={{ clipPath: `circle(${radius.toFixed(1)}px at ${width * 0.5}px ${height * 0.55}px)` }}>
-        {children}
+      <AbsoluteFill style={{ opacity: t }}>
+        <AbsoluteFill style={{ transform: `translateX(${(1 - t) * 50}px)` }}>{children}</AbsoluteFill>
       </AbsoluteFill>
     );
   }
 
-  if (kind === "slide") {
-    // Le ruban coloré passe devant, la scène le suit.
-    const band = interpolate(frame, [0, transitionFrames * 0.75], [1, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.out(Easing.cubic),
-    });
-    return (
-      <AbsoluteFill>
-        <AbsoluteFill style={{ background: bandColor, transform: `translateX(${band * 100}%)` }} />
-        <AbsoluteFill style={{ transform: `translateX(${(1 - t) * 100}%)` }}>{children}</AbsoluteFill>
-      </AbsoluteFill>
-    );
-  }
-
-  if (kind === "drop") {
-    const s = spring({ frame, fps, durationInFrames: transitionFrames, config: { damping: 14, stiffness: 120 } });
-    return <AbsoluteFill style={{ transform: `translateY(${(1 - s) * -100}%)` }}>{children}</AbsoluteFill>;
-  }
-
-  // Balayage oblique.
-  const edge = -35 + t * 170;
+  const edge = (1 - t) * 100;
   return (
-    <AbsoluteFill
-      style={{
-        clipPath: `polygon(0% 0%, ${edge.toFixed(1)}% 0%, ${(edge - 35).toFixed(1)}% 100%, 0% 100%)`,
-      }}
-    >
-      {children}
+    <AbsoluteFill style={{ clipPath: `polygon(${edge.toFixed(2)}% 0%, 100% 0%, 100% 100%, ${edge.toFixed(2)}% 100%)` }}>
+      <AbsoluteFill style={{ transform: `translateX(${(1 - t) * 160}px)` }}>{children}</AbsoluteFill>
     </AbsoluteFill>
   );
 };

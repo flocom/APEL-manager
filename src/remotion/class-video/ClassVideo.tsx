@@ -2,7 +2,7 @@ import { Audio } from "@remotion/media";
 import React, { useCallback, useMemo } from "react";
 import { AbsoluteFill, Sequence, useVideoConfig, type CalculateMetadataFunction } from "remotion";
 
-import { SceneLayer, Sfx, TRANSITION_ORDER, type SceneProps } from "./components/scene";
+import { SceneLayer, Sfx, type SceneProps, type TransitionKind } from "./components/scene";
 import { ApelScene } from "./scenes/ApelScene";
 import { BienfaitsScene } from "./scenes/BienfaitsScene";
 import { ChiffresScene } from "./scenes/ChiffresScene";
@@ -98,11 +98,17 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
   );
 
   return (
-    <AbsoluteFill style={{ background: props.palette.primary, fontFamily: FONT_FAMILY, overflow: "hidden" }}>
+    <AbsoluteFill style={{ background: "#ffffff", fontFamily: FONT_FAMILY, overflow: "hidden" }}>
       {timeline.scenes.map((entry, i) => {
         const scene = props.scenes[i];
         const next = props.scenes[i + 1];
-        const kind = i === 0 ? null : TRANSITION_ORDER[(i - 1) % TRANSITION_ORDER.length];
+        // Volet net vers ou depuis une scène en couleur pleine, fondu enchaîné sinon.
+        const prev = props.scenes[i - 1];
+        const kind: TransitionKind | null = !prev
+          ? null
+          : sceneTheme(props.palette, scene.id).bold || sceneTheme(props.palette, prev.id).bold
+            ? "wipe"
+            : "fade";
         return (
           <Sequence
             key={`${entry.id}-${i}`}
@@ -116,7 +122,6 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
               transitionFrames={overlap}
               durationInFrames={entry.durationInFrames}
               exits={Boolean(next)}
-              bandColor={sceneTheme(props.palette, scene.id).pop}
             >
               <SceneContent scene={scene} video={props} durationInFrames={entry.durationInFrames} index={i} />
             </SceneLayer>
@@ -130,7 +135,7 @@ export const ClassVideo: React.FC<ClassVideoProps> = (props) => {
                 <Audio src={scene.voice.url} />
               </Sequence>
             ) : null}
-            {i > 0 ? <Sfx src={props.sfx?.whoosh} at={0} volume={0.35} /> : null}
+            {i > 0 ? <Sfx src={props.sfx?.whoosh} at={0} volume={0.22} /> : null}
           </Sequence>
         );
       })}

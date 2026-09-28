@@ -1,203 +1,155 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { useCurrentFrame, useVideoConfig } from "remotion";
 
-import { lighten, readableOn, tooClose, WHITE } from "../colors";
+import { contrastRatio, mix, WHITE } from "../colors";
+import { Character, makeCast } from "../components/characters";
 import { BadgeIcon, iconForText } from "../components/illustrations";
-import { KenBurns, Polaroid } from "../components/media";
-import { ease, pop } from "../components/motion";
+import { KenBurns, PhotoFrame } from "../components/media";
+import { enter, progress } from "../components/motion";
 import { SceneBackdrop, Sfx, type SceneProps } from "../components/scene";
-import { fitFontSize, frenchSpaces, KineticTitle, Pill } from "../components/text";
-import { BIENFAITS_INTRO_SECONDS, BIENFAITS_ITEM_SECONDS, getBienfaitsItems, type BienfaitsItem } from "../timeline";
-import { FONT_FAMILY, illuColors, pickContrasting, sceneTheme } from "../theme";
+import { BODY_CHAR, fitFontSize, frenchSpaces, TextBlock } from "../components/text";
+import {
+  BIENFAITS_CARD_STAGGER_SECONDS,
+  BIENFAITS_ITEM_SECONDS,
+  bienfaitsSchedule,
+  getBienfaitsItems,
+} from "../timeline";
+import { FONT_FAMILY, illuColors, sceneTheme } from "../theme";
+import { MARGIN_X } from "./common";
 
-/** Position de repos de chaque carte : légèrement décalée et penchée, comme une pile. */
-const RESTING = [
-  { x: 0, y: 0, r: -3 },
-  { x: 36, y: -14, r: 2.6 },
-  { x: -30, y: 10, r: -1.4 },
-  { x: 22, y: 16, r: 3.4 },
-];
+const AREA = { x: 780, y: 120, w: 1020, h: 720 };
 
-/** Carte « temps fort » : icône dans une pastille, texte en gros. */
-const HighlightCard: React.FC<{ text: string; bg: string; ink: string; index: number; video: SceneProps["video"] }> = ({
-  text,
-  bg,
-  ink,
-  index,
-  video,
-}) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const colors = illuColors(video.palette);
-  const value = frenchSpaces(text);
-  const size = fitFontSize(value, 640, 3, 92, 44);
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        borderRadius: 56,
-        background: `linear-gradient(160deg, ${lighten(bg, 0.12)}, ${bg})`,
-        boxShadow: "0 22px 44px rgba(0, 0, 0, 0.25)",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 70px",
-        gap: 60,
-        boxSizing: "border-box",
-        border: "10px solid #ffffff",
-      }}
-    >
-      <div
-        style={{
-          flex: "0 0 300px",
-          height: 300,
-          borderRadius: "50%",
-          background: "#ffffff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 10px 0 rgba(0, 0, 0, 0.1)",
-        }}
-      >
-        <BadgeIcon kind={iconForText(text, index)} c={colors} size={210} t={frame / fps} />
-      </div>
-      <div
-        style={{
-          flex: 1,
-          fontFamily: FONT_FAMILY,
-          fontWeight: 900,
-          fontSize: size,
-          lineHeight: 1.08,
-          color: ink,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-};
-
-export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video, index }) => {
+/**
+ * « Concrètement » : les photos des réalisations (Ken Burns, cadre sobre,
+ * légende), puis les temps forts en cartes. Une maman présente le tout.
+ */
+export const BienfaitsScene: React.FC<SceneProps> = ({ scene, video }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const theme = sceneTheme(video.palette, "bienfaits");
+  const c = illuColors(video.palette);
+  const cast = makeCast(c, theme.bold ? theme.bg : undefined);
   const items = getBienfaitsItems(video);
-  const introFrames = Math.round(BIENFAITS_INTRO_SECONDS * fps);
+  const schedule = bienfaitsSchedule(items);
+  const photos = items.flatMap((item) => (item.kind === "photo" ? [item.photo] : []));
+  const texts = items.flatMap((item) => (item.kind === "highlight" ? [item.text] : []));
   const itemFrames = Math.round(BIENFAITS_ITEM_SECONDS * fps);
-  const hasItems = items.length > 0;
-
-  // Le titre commence en grand au centre puis se range en bandeau en haut.
-  const dock = hasItems ? ease(frame, fps, introFrames - 10, 20) : 0;
-  const titleScale = 1 - 0.5 * dock;
-  const titleY = (1 - dock) * 360 + 34;
-
-  // Couleurs des cartes « temps fort », qui doivent trancher sur le fond.
-  const cardColors = [video.palette.primary, video.palette.accent, WHITE, video.palette.secondary].filter(
-    (c) => !tooClose(c, theme.bg),
+  const cardsStart = schedule.cardsStart === null ? null : Math.round(schedule.cardsStart * fps);
+  const iconColors = [video.palette.primary, video.palette.secondary, video.palette.accent].map((col) =>
+    contrastRatio(col, WHITE) >= 2 ? col : mix(col, video.palette.dark, 0.35),
   );
-  const cardW = 1180;
-  const cardH = 720;
-  const centerY = 600;
 
-  const renderItem = (item: BienfaitsItem, i: number) => {
-    const start = introFrames + i * itemFrames;
-    const local = frame - start;
-    if (local < -2) return null;
-    // Seules les trois dernières cartes restent dessinées (les autres sont cachées dessous).
-    const current = Math.floor((frame - introFrames) / itemFrames);
-    if (i < current - 2) return null;
-    const land = pop(frame, fps, start, 120, 13);
-    const rest = RESTING[i % RESTING.length];
-    const fromLeft = i % 2 === 0;
-    const x = rest.x + (1 - land) * (fromLeft ? -1500 : 1500);
-    const y = rest.y + (1 - land) * -120;
-    const r = rest.r + (1 - land) * (fromLeft ? -22 : 22);
-    // La légende s'efface quand la carte suivante arrive par-dessus.
-    const nextStart = start + itemFrames;
-    const captionOut = i < items.length - 1 ? Math.max(0, Math.min(1, (frame - nextStart) / 6)) : 0;
-    const captionIn = pop(frame, fps, start + 12, 170, 11) * (1 - captionOut);
-    const caption = item.kind === "photo" ? item.photo.caption.trim() : "";
+  const photoEls = photos.map((photo, i) => {
+    const start = Math.round(schedule.photoStarts[i] * fps);
+    const end = i < photos.length - 1 ? start + itemFrames : (cardsStart ?? Number.POSITIVE_INFINITY);
+    if (frame < start - 1 || frame > end + 16) return null;
+    const inK = enter(frame, start, 20);
+    const outK = Number.isFinite(end) ? progress(frame, end, end + 14) : 0;
+    const caption = frenchSpaces(photo.caption.trim());
+    const captionSize = caption ? fitFontSize(caption, AREA.w - 70, 1, 40, 26, BODY_CHAR + 0.04) : 40;
     return (
       <div
         key={i}
         style={{
           position: "absolute",
-          left: 960 - cardW / 2,
-          top: centerY - cardH / 2,
-          width: cardW,
-          height: cardH,
-          transform: `translate(${x}px, ${y}px) rotate(${r}deg)`,
+          left: AREA.x,
+          top: AREA.y,
+          width: AREA.w,
+          height: AREA.h,
+          opacity: inK * (1 - outK),
+          transform: `translateX(${(1 - inK) * 60 - outK * 40}px)`,
         }}
       >
-        {item.kind === "photo" ? (
-          <Polaroid width={cardW} height={cardH} tint={video.palette.secondary} ink={video.palette.dark}>
-            <KenBurns src={item.photo.url} fallback={lighten(video.palette.primary, 0.5)} durationInFrames={itemFrames + 30} direction={i} delay={start} />
-          </Polaroid>
-        ) : (
-          (() => {
-            const bg = cardColors[i % Math.max(1, cardColors.length)] ?? video.palette.primary;
-            return <HighlightCard text={item.text} bg={bg} ink={readableOn(bg, video.palette.dark)} index={i} video={video} />;
-          })()
-        )}
-        {caption ? (
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: -44,
-              display: "flex",
-              justifyContent: "center",
-              transform: `scale(${captionIn}) rotate(${fromLeft ? -3 : 3}deg)`,
-              opacity: Math.min(1, captionIn * 2),
-            }}
-          >
-            <div
-              style={{
-                maxWidth: cardW - 160,
-                padding: "18px 44px",
-                borderRadius: 26,
-                background: pickContrasting(WHITE, [video.palette.primary, video.palette.accent, video.palette.dark]),
-                color: readableOn(pickContrasting(WHITE, [video.palette.primary, video.palette.accent, video.palette.dark]), video.palette.dark),
-                fontFamily: FONT_FAMILY,
-                fontWeight: 900,
-                fontSize: fitFontSize(frenchSpaces(caption), cardW - 250, 2, 60, 34),
-                lineHeight: 1.1,
-                textAlign: "center",
-                boxShadow: "0 10px 0 rgba(0, 0, 0, 0.15)",
-              }}
-            >
-              {frenchSpaces(caption)}
-            </div>
-          </div>
-        ) : null}
+        <PhotoFrame width={AREA.w} height={AREA.h} ink={theme.ink} caption={caption || undefined} captionSize={captionSize}>
+          <KenBurns src={photo.url} fallback={mix(video.palette.primary, WHITE, 0.6)} durationInFrames={itemFrames + 30} direction={i} delay={start} />
+        </PhotoFrame>
       </div>
     );
-  };
+  });
 
-  return (
-    <SceneBackdrop theme={theme} seed={401 + index} shapeCount={12}>
-      {items.map(renderItem)}
-      <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-start" }}>
+  // Petits repères de progression sous les photos.
+  const photosVisible = photos.length > 1 && frame < (cardsStart ?? Number.POSITIVE_INFINITY) + 10;
+  const current = Math.max(0, Math.min(photos.length - 1, Math.floor((frame / fps - (schedule.photoStarts[0] ?? 0)) / BIENFAITS_ITEM_SECONDS)));
+  const dotsIn = photos.length ? enter(frame, Math.round((schedule.photoStarts[0] ?? 0) * fps), 20) : 0;
+
+  let cardEls: React.ReactNode = null;
+  if (cardsStart !== null && texts.length > 0) {
+    const twoCols = texts.length > 3;
+    const cols = twoCols ? 2 : 1;
+    const gap = 24;
+    const cardW = twoCols ? (AREA.w - gap) / 2 : AREA.w;
+    const cardH = twoCols ? 186 : 170;
+    const rows = Math.ceil(texts.length / cols);
+    const gridH = rows * cardH + (rows - 1) * gap;
+    const top = AREA.y + (AREA.h - gridH) / 2 + 20;
+    const stagger = BIENFAITS_CARD_STAGGER_SECONDS * fps;
+    cardEls = texts.map((text, i) => {
+      const p = enter(frame, cardsStart + 8 + i * stagger, 20);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const color = iconColors[i % iconColors.length];
+      const value = frenchSpaces(text);
+      const textW = cardW - 60 - 104 - 28;
+      const size = fitFontSize(value, textW, 2, twoCols ? 40 : 44, 26, 0.56);
+      return (
         <div
+          key={i}
           style={{
+            position: "absolute",
+            left: AREA.x + col * (cardW + gap),
+            top: top + row * (cardH + gap),
+            width: cardW,
+            height: cardH,
+            borderRadius: 26,
+            background: WHITE,
+            boxShadow: "0 18px 40px rgba(15, 25, 40, 0.10), 0 2px 8px rgba(15, 25, 40, 0.05)",
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
-            gap: 30,
-            transform: `translateY(${titleY}px) scale(${titleScale})`,
-            transformOrigin: "50% 0%",
+            gap: 28,
+            padding: "0 30px",
+            boxSizing: "border-box",
+            opacity: p,
+            transform: `translateY(${(1 - p) * 30}px)`,
           }}
         >
-          <KineticTitle text={scene.title} color={theme.ink} shadow={theme.inkShadow} maxWidth={1500} maxSize={140} maxLines={1} delay={4} />
-          <div style={{ opacity: 1 - dock }}>
-            <Pill text={scene.subtitle} bg={theme.pill} color={theme.pillInk} delay={14} fontSize={50} />
+          <div
+            style={{
+              flex: "0 0 104px",
+              height: 104,
+              borderRadius: "50%",
+              background: mix(color, WHITE, 0.86),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <BadgeIcon kind={iconForText(text, i)} color={color} accent={video.palette.accent === color ? video.palette.primary : video.palette.accent} size={62} />
           </div>
+          <div style={{ flex: 1, fontFamily: FONT_FAMILY, fontWeight: 700, fontSize: size, lineHeight: 1.16, color: theme.ink, letterSpacing: "-0.01em" }}>{value}</div>
         </div>
-      </AbsoluteFill>
-      {items.slice(0, 8).map((_, i) => (
-        <Sfx key={i} src={video.sfx?.pop} at={introFrames + i * itemFrames + 6} volume={0.4} />
+      );
+    });
+  }
+
+  return (
+    <SceneBackdrop theme={theme} floorY={960}>
+      <div style={{ position: "absolute", left: MARGIN_X, top: 140, width: 600 }}>
+        <TextBlock title={scene.title} subtitle={scene.subtitle} ink={theme.ink} muted={theme.muted} accent={theme.accent} maxWidth={600} maxLines={2} titleSize={100} subtitleSize={42} delay={6} />
+      </div>
+      <Character look={cast.claire} c={c} x={420} y={1015} height={480} gesture="present" gestureAt={26} gaze={0.6} tilt={2} seed={40} appear={4} shadow={theme.shadow} />
+      {photoEls}
+      {photosVisible ? (
+        <div style={{ position: "absolute", left: AREA.x, top: AREA.y + AREA.h + 30, width: AREA.w, display: "flex", justifyContent: "center", gap: 14, opacity: dotsIn }}>
+          {photos.map((_, i) => (
+            <div key={i} style={{ width: i === current ? 40 : 14, height: 14, borderRadius: 7, background: i === current ? theme.accent : mix(theme.bg, theme.ink, 0.18) }} />
+          ))}
+        </div>
+      ) : null}
+      {cardEls}
+      {schedule.photoStarts.slice(0, 8).map((s, i) => (
+        <Sfx key={i} src={video.sfx?.pop} at={Math.round(s * fps) + 2} volume={0.16} />
       ))}
+      {cardsStart !== null ? <Sfx src={video.sfx?.pop} at={cardsStart + 8} volume={0.16} /> : null}
     </SceneBackdrop>
   );
 };
