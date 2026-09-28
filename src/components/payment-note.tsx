@@ -61,26 +61,36 @@ export function PaymentNote({
   const firstLink = segments.find(
     (segment): segment is { href: string; label: string } => "href" in segment,
   );
+  // Une phrase réduite à son lien — le cas le plus courant : on colle
+  // l'adresse HelloAsso et c'est tout — n'a rien à dire que le bouton ne dise
+  // déjà. Répéter « helloasso.com » au-dessus ferait doublon.
+  const linkOnly =
+    firstLink !== undefined &&
+    segments.every((segment) =>
+      "href" in segment ? segment === firstLink : segment.text.trim() === "",
+    );
 
   return (
     <>
-      <p className={cn("break-words", className)}>
-        {segments.map((segment, index) =>
-          "href" in segment ? (
-            <a
-              key={index}
-              href={segment.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-bold text-brand-700 underline underline-offset-2 hover:text-brand-900"
-            >
-              {segment.label}
-            </a>
-          ) : (
-            <span key={index}>{segment.text}</span>
-          ),
-        )}
-      </p>
+      {!linkOnly && (
+        <p className={cn("break-words", className)}>
+          {segments.map((segment, index) =>
+            "href" in segment ? (
+              <a
+                key={index}
+                href={segment.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-brand-700 underline underline-offset-2 hover:text-brand-900"
+              >
+                {segment.label}
+              </a>
+            ) : (
+              <span key={index}>{segment.text}</span>
+            ),
+          )}
+        </p>
+      )}
       {firstLink && (
         <a
           href={firstLink.href}
