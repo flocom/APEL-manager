@@ -170,6 +170,49 @@ banque/caisse, les catégories et les justificatifs. Les écritures peuvent êtr
 préparées en brouillon puis validées. Sauvegarder régulièrement la base et
 réserver les accès aux responsables autorisés.
 
+Les **catégories** de recettes et de dépenses se gèrent dans l'onglet
+« Catégories » ou directement depuis une écriture (« Nouvelle catégorie… »).
+Deux catégories du même sens ne peuvent pas porter le même nom (casse et
+accents ignorés). Une catégorie déjà utilisée ne change plus de sens et ne se
+supprime pas : elle se désactive, l'historique reste classé.
+
+#### Import des relevés bancaires (Crédit Mutuel)
+
+« Importer un relevé » transforme les relevés de compte PDF du Crédit Mutuel
+(« Extrait de comptes », téléchargés depuis l'espace en ligne de la banque) en
+écritures. Seul le Crédit Mutuel est pris en charge pour l'instant.
+
+- **Contrôle du relevé** : un PDF qui n'est pas un relevé Crédit Mutuel, ou dont
+  les opérations lues ne retombent pas au centime près sur les soldes et totaux
+  imprimés, est refusé sans rien importer.
+- **Compte** : le numéro imprimé sur le relevé (« N° 00020911101 ») est retenu
+  sur le compte de trésorerie au premier import. Un relevé d'un autre numéro est
+  ensuite refusé pour ce compte. Le numéro peut aussi être saisi sur la fiche du
+  compte ; ce n'est pas une donnée sensible.
+- **Doublons** : chaque opération importée, rattachée ou écartée est mémorisée
+  par une empreinte unique. Redéposer un relevé, ou deux relevés qui se
+  chevauchent, n'importe jamais deux fois la même opération. Quand une écriture
+  existante lui ressemble (même sens, même montant, date à trois jours près, même
+  compte ou sans compte), l'écran demande de trancher : c'est la même opération
+  (rattachement, l'écriture existante n'est pas modifiée), importer quand même,
+  ou ne pas importer. Rien n'est enregistré tant qu'un doute reste ouvert.
+- **Enregistrement** : les écritures sont créées en brouillon (ou validées si
+  on le choisit), avec le libellé, les détails bancaires et la date de valeur en
+  notes. Un retrait ou un versement d'espèces peut passer une écriture miroir en
+  caisse. Si les écritures ont changé entre l'analyse et l'enregistrement (autre
+  import, saisie manuelle), l'enregistrement est refusé et l'analyse doit être
+  relancée.
+- **Annulation** : un import s'annule tant que toutes ses écritures sont au
+  brouillon ; ses brouillons sont supprimés et ses opérations redeviennent
+  importables. Les écritures seulement rattachées ne sont pas touchées.
+- **Fichiers** : les PDF restent dans les pièces privées de la comptabilité
+  (volume des fichiers téléversés, lecture réservée aux administrateurs) comme
+  preuve de ce qui a été importé. Un relevé téléversé mais jamais importé est
+  effacé par le nettoyage des fichiers orphelins
+  (`UPLOAD_ORPHAN_MAX_AGE_HOURS`, 24 h par défaut).
+- **Plafonds** : 60 analyses et 30 enregistrements par heure et par
+  administrateur, 12 relevés par envoi.
+
 ### Documents
 
 Le volet **Documents** centralise les procès-verbaux d'assemblée générale, les

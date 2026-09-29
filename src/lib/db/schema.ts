@@ -746,6 +746,14 @@ export const financialAccounts = pgTable(
     name: text("name").notNull(),
     type: financialAccountTypeEnum("type").notNull(),
     description: text("description"),
+    /**
+     * Numéro du compte tel qu'il figure sur les relevés de la banque (onze
+     * chiffres au Crédit Mutuel, « N° 00020911101 »). Renseigné au premier
+     * relevé importé, il permet ensuite de refuser un relevé qui concerne un
+     * autre compte, et de choisir le bon compte sans rien demander. Ce n'est
+     * pas un secret : il figure aussi sur un RIB.
+     */
+    bankAccountNumber: text("bank_account_number"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -759,6 +767,10 @@ export const financialAccounts = pgTable(
       t.type,
       t.isActive,
     ),
+    /** Un numéro de compte bancaire ne désigne qu'un compte de trésorerie. */
+    bankAccountNumberIdx: uniqueIndex("financial_accounts_bank_account_number_idx")
+      .on(t.bankAccountNumber)
+      .where(sql`${t.bankAccountNumber} is not null`),
   }),
 );
 
@@ -839,6 +851,129 @@ export const accountingEntries = pgTable(
     amountCheck: check(
       "accounting_entries_amount_cents_check",
       sql`${t.amountCents} > 0`,
+    ),
+  }),
+);
+
+/**
+ * Relevé bancaire importé, pour un compte : un PDF peut en décrire plusieurs
+ * (compte courant et livret), chacun devient une ligne ici.
+ *
+ * Le fichier reste dans les pièces de la comptabilité : c'est la preuve de ce
+ * qui a été importé. Les soldes lus sont gardés tels qu'imprimés : l'import
+ * n'a été accepté que parce qu'ils concordaient avec les opérations.
+ */
+export const bankStatementImports = pgTable(
+  "bank_statement_imports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Banque émettrice (format du relevé). Texte plutôt qu'énumération : la liste grandira. */
+    bank: text("bank").notNull(),
+    accountId: uuid("account_id").references(() => financialAccounts.id, {
+      onDelete: "set null",
+    }),
+    /** Numéro du compte imprimé sur le relevé, voir `financialAccounts.bankAccountNumber`. */
+    accountNumber: text("account_number").notNull(),
+    accountLabel: text("account_label"),
+    iban: text("iban"),
+    statementDate: timestamp("statement_date", { withTimezone: true }),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    openingBalanceCents: integer("opening_balance_cents").notNull(),
+    closingBalanceCents: integer("closing_balance_cents").notNull(),
+    totalDebitCents: integer("total_debit_cents").notNull(),
+    totalCreditCents: integer("total_credit_cents").notNull(),
+    fileUrl: text("file_url").notNull(),
+    fileName: text("file_name"),
+    /** Empreinte SHA-256 du PDF : le même fichier ne s'importe qu'une fois par compte. */
+    fileSha256: text("file_sha256").notNull(),
+    importedCount: integer("imported_count").notNull().default(0),
+    linkedCount: integer("linked_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    fileAccountIdx: uniqueIndex("bank_statement_imports_file_account_idx").on(
+      t.fileSha256,
+      t.accountNumber,
+    ),
+    accountIdx: index("bank_statement_imports_account_idx").on(
+      t.accountId,
+      t.periodEnd,
+    ),
+    bankCheck: check(
+      "bank_statement_imports_bank_check",
+      sql`${t.bank} in ('credit_mutuel')`,
+    ),
+  }),
+);
+
+/**
+ * Opération lue sur un relevé, et ce qu'on en a fait : une écriture créée
+ * (`imported`), rattachée à une écriture qui existait déjà (`linked`), ou
+ * écartée (`skipped`).
+ *
+ * L'empreinte (banque, compte, dates, sens, montant, libellé complet, rang
+ * parmi les opérations identiques du relevé) est unique : une opération déjà
+ * traitée n'est jamais importée deux fois, même si le relevé est redéposé.
+ * Garder aussi les lignes écartées, c'est ne pas reposer la question.
+ *
+ * L'écriture n'est jamais modifiée par ce rattachement : une écriture validée
+ * est immuable. La suppression d'un brouillon importé laisse la ligne, sans
+ * écriture.
+ */
+export const bankStatementLines = pgTable(
+  "bank_statement_lines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => bankStatementImports.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint").notNull(),
+    operationDate: timestamp("operation_date", { withTimezone: true }).notNull(),
+    valueDate: timestamp("value_date", { withTimezone: true }),
+    label: text("label").notNull(),
+    details: text("details"),
+    amountCents: integer("amount_cents").notNull(),
+    direction: text("direction").notNull(),
+    decision: text("decision").notNull(),
+    entryId: uuid("entry_id").references(() => accountingEntries.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Retrait ou versement d'espèces : l'écriture miroir passée en caisse, pour
+     * que le mouvement interne s'annule dans le résultat, et qu'annuler l'import
+     * la retire aussi.
+     */
+    cashEntryId: uuid("cash_entry_id").references(() => accountingEntries.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    fingerprintIdx: uniqueIndex("bank_statement_lines_fingerprint_idx").on(
+      t.fingerprint,
+    ),
+    importIdx: index("bank_statement_lines_import_idx").on(t.importId),
+    entryIdx: index("bank_statement_lines_entry_idx").on(t.entryId),
+    amountCheck: check(
+      "bank_statement_lines_amount_cents_check",
+      sql`${t.amountCents} > 0`,
+    ),
+    directionCheck: check(
+      "bank_statement_lines_direction_check",
+      sql`${t.direction} in ('debit', 'credit')`,
+    ),
+    decisionCheck: check(
+      "bank_statement_lines_decision_check",
+      sql`${t.decision} in ('imported', 'linked', 'skipped')`,
     ),
   }),
 );
@@ -1590,6 +1725,36 @@ export const financialAccountsRelations = relations(
   financialAccounts,
   ({ many }) => ({
     entries: many(accountingEntries),
+    statementImports: many(bankStatementImports),
+  }),
+);
+
+export const bankStatementImportsRelations = relations(
+  bankStatementImports,
+  ({ one, many }) => ({
+    account: one(financialAccounts, {
+      fields: [bankStatementImports.accountId],
+      references: [financialAccounts.id],
+    }),
+    creator: one(users, {
+      fields: [bankStatementImports.createdBy],
+      references: [users.id],
+    }),
+    lines: many(bankStatementLines),
+  }),
+);
+
+export const bankStatementLinesRelations = relations(
+  bankStatementLines,
+  ({ one }) => ({
+    import: one(bankStatementImports, {
+      fields: [bankStatementLines.importId],
+      references: [bankStatementImports.id],
+    }),
+    entry: one(accountingEntries, {
+      fields: [bankStatementLines.entryId],
+      references: [accountingEntries.id],
+    }),
   }),
 );
 
@@ -1732,6 +1897,8 @@ export type AccountingCategory = typeof accountingCategories.$inferSelect;
 export type NewAccountingCategory = typeof accountingCategories.$inferInsert;
 export type AccountingEntry = typeof accountingEntries.$inferSelect;
 export type NewAccountingEntry = typeof accountingEntries.$inferInsert;
+export type BankStatementImport = typeof bankStatementImports.$inferSelect;
+export type BankStatementLine = typeof bankStatementLines.$inferSelect;
 export type AssociationDocument = typeof associationDocuments.$inferSelect;
 export type NewAssociationDocument = typeof associationDocuments.$inferInsert;
 export type AssociationSettings = typeof associationSettings.$inferSelect;

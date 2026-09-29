@@ -39,9 +39,12 @@ la base de l’instance déployée et se saisissent depuis l’application.
   glisser-déposer.
 - **Membres et adhérents** — rôles administrateur, organisateur et membre,
   coordonnées, année scolaire, statut et suivi des cotisations.
-- **Comptabilité associative** — recettes, dépenses, comptes, catégories,
-  validation des écritures et justificatifs privés. Chaque écriture peut être
-  rattachée à un événement, qui affiche alors son bilan.
+- **Comptabilité associative** — recettes, dépenses, comptes, catégories
+  (créées à la volée, renommées, désactivées), validation des écritures et
+  justificatifs privés. Chaque écriture peut être rattachée à un événement, qui
+  affiche alors son bilan. Les relevés PDF du Crédit Mutuel s’importent en
+  écritures : soldes vérifiés, opérations déjà importées écartées d’office, et
+  chaque doublon possible soumis au trésorier avant l’enregistrement.
 - **Documents officiels** — procès-verbaux d’AG, attestations et archives avec
   pièces jointes protégées. Les événements ont leurs propres pièces jointes :
   devis, affiches, attestations, plans de salle.

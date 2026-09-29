@@ -132,6 +132,15 @@ export const PLAFONDS = {
   diffusionCompte: { bucket: "diffusion:compte", limit: 20, windowSeconds: JOUR },
   diffusionEquipe: { bucket: "diffusion:equipe", limit: 5, windowSeconds: JOUR },
   notificationAppareil: { bucket: "diffusion:appareil", limit: 30, windowSeconds: JOUR },
+
+  /**
+   * Import des relevés bancaires, par administrateur. Chaque analyse relit
+   * jusqu'à douze PDF : le trésorier en relance quelques-unes en corrigeant
+   * sa sélection, pas soixante dans l'heure. Le plafond protège le serveur
+   * d'une boucle, pas des personnes.
+   */
+  analyseReleves: { bucket: "releves:analyse", limit: 60, windowSeconds: HEURE },
+  enregistrementReleves: { bucket: "releves:enregistrement", limit: 30, windowSeconds: HEURE },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitVerdict =

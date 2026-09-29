@@ -7,6 +7,7 @@ import {
   accountingEntries,
   associationDocuments,
   associationSettings,
+  bankStatementImports,
   communicationSupports,
   eventAttachments,
 } from "@/lib/db/schema";
@@ -41,7 +42,7 @@ const HISTORY_TABLES = ["audit_logs"];
  * base serait une perte de données.
  */
 async function knownReferencedIds(): Promise<Set<string>> {
-  const [entries, documents, attachments, settings, supports] = await Promise.all([
+  const [entries, documents, attachments, settings, supports, statements] = await Promise.all([
     db
       .select({ url: accountingEntries.attachmentUrl })
       .from(accountingEntries)
@@ -56,11 +57,18 @@ async function knownReferencedIds(): Promise<Set<string>> {
       .from(associationSettings)
       .where(isNotNull(associationSettings.logoUrl)),
     db.select({ content: communicationSupports.content }).from(communicationSupports),
+    db.select({ url: bankStatementImports.fileUrl }).from(bankStatementImports),
   ]);
 
   const ids = new Set<string>();
   const pattern = new RegExp(UPLOAD_ID_IN_TEXT);
-  for (const row of [...entries, ...documents, ...attachments, ...settings]) {
+  for (const row of [
+    ...entries,
+    ...documents,
+    ...attachments,
+    ...settings,
+    ...statements,
+  ]) {
     const match = row.url ? pattern.exec(row.url) : null;
     if (match) ids.add(match[1]);
   }

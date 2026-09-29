@@ -531,10 +531,32 @@ export const associationMemberSchema = z.object({
 
 export const associationMemberUpdateSchema = associationMemberSchema.partial();
 
+/**
+ * Numéro de compte tel qu'imprimé sur les relevés (« N° 00020911101 » au
+ * Crédit Mutuel), ou un IBAN. Espaces retirés et majuscules : c'est la forme
+ * sous laquelle l'import le compare, « 0002 0911 101 » doit désigner le même
+ * compte. Vide : aucun numéro.
+ */
+const bankAccountNumber = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, "").toUpperCase())
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^(?:[A-Z0-9]{5,34})?$/,
+        "Numéro de compte invalide : de 5 à 34 chiffres ou lettres, tel qu’il figure sur le relevé.",
+      ),
+  )
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .optional();
+
 export const financialAccountSchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
   type: z.enum(["bank", "cash"]),
   description: optionalText(1000),
+  bankAccountNumber,
   isActive: z.boolean().default(true),
 });
 
@@ -579,6 +601,95 @@ export const accountingEntrySchema = z.object({
 });
 
 export const accountingEntryUpdateSchema = accountingEntrySchema.partial();
+
+/**
+ * Relevé déjà téléversé dans les pièces de la comptabilité. Seule une adresse
+ * `/api/uploads/accounting-…` est admise : le serveur relit le fichier sur son
+ * propre disque, jamais à une adresse fournie par le client.
+ */
+const bankStatementFile = z.object({
+  fileUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .regex(
+      storedFilePattern("accounting"),
+      "Relevé introuvable : téléversez-le de nouveau.",
+    ),
+  fileName: z.string().trim().min(1).max(300),
+}).strict();
+
+const bankImportBank = z.enum(["credit_mutuel"]);
+
+/** Assez pour une année de relevés mensuels, sans laisser lire un disque entier. */
+const BANK_IMPORT_MAX_FILES = 12;
+
+export const bankImportAnalyzeSchema = z
+  .object({
+    bank: bankImportBank,
+    files: z
+      .array(bankStatementFile)
+      .min(1, "Ajoutez au moins un relevé.")
+      .max(
+        BANK_IMPORT_MAX_FILES,
+        `Au plus ${BANK_IMPORT_MAX_FILES} relevés à la fois.`,
+      ),
+  })
+  .strict();
+
+const bankLineDecision = z.discriminatedUnion("action", [
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("import"),
+      label: z.string().trim().min(1, "Libellé requis").max(300),
+      categoryId: z.string().uuid().nullable(),
+      eventId: z.string().uuid().nullable(),
+      cashAccountId: z.string().uuid().nullable().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("skip"),
+    })
+    .strict(),
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("link"),
+      entryId: z.string().uuid(),
+    })
+    .strict(),
+]);
+
+export const bankImportCommitSchema = z
+  .object({
+    bank: bankImportBank,
+    token: z.string().regex(/^[0-9a-f]{64}$/, "Analyse invalide : relancez-la."),
+    status: z.enum(["draft", "posted"]),
+    statements: z
+      .array(
+        bankStatementFile
+          .extend({
+            sections: z
+              .array(
+                z
+                  .object({
+                    key: z.string().min(1).max(200),
+                    accountId: z.string().uuid().nullable(),
+                  })
+                  .strict(),
+              )
+              .max(20),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(BANK_IMPORT_MAX_FILES),
+    decisions: z.array(bankLineDecision).max(2000),
+  })
+  .strict();
 
 export const associationDocumentSchema = z.object({
   type: z.enum(ASSOCIATION_DOCUMENT_TYPES),

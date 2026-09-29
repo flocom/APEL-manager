@@ -1,22 +1,20 @@
-import { asc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { handleApiError, requireApiRole } from "@/lib/auth/guards";
-import { db } from "@/lib/db";
-import { accountingCategories } from "@/lib/db/schema";
-import { createAccountingCategory } from "@/lib/services/accounting";
 import { webAuditActor } from "@/lib/services/audit";
+import {
+  commitBankImport,
+  listBankStatementImports,
+} from "@/lib/services/bank-imports";
 
+// L'enregistrement relit les PDF (pdfjs) : il a besoin de Node.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     await requireApiRole("admin");
-    const items = await db
-      .select()
-      .from(accountingCategories)
-      .orderBy(asc(accountingCategories.name));
+    const items = await listBankStatementImports();
     return NextResponse.json({ items });
   } catch (error) {
     return handleApiError(error);
@@ -26,11 +24,11 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const user = await requireApiRole("admin");
-    const category = await createAccountingCategory(
+    const result = await commitBankImport(
       await req.json(),
       webAuditActor(user.id, req),
     );
-    return NextResponse.json({ ok: true, category }, { status: 201 });
+    return NextResponse.json({ ok: true, result }, { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }

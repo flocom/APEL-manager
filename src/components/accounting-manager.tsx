@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BookOpenText,
   CircleDollarSign,
+  FileUp,
   FileWarning,
   Landmark,
   LockKeyhole,
@@ -13,14 +14,24 @@ import {
   Pencil,
   Plus,
   Search,
+  Tags,
   Trash2,
   type LucideIcon,
   WalletCards,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
+import { CategorySelect } from "@/components/accounting/category-picker";
+import {
+  type AccountingCategoryPayload,
+  type AccountingCategoryView,
+  type AccountingEventView,
+  upsertCategory,
+} from "@/components/accounting/types";
+import { AccountingCategoriesManager } from "@/components/accounting-categories-manager";
+import { BankStatementImport } from "@/components/bank-statement-import";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FileUploadField } from "@/components/file-upload-field";
 import {
@@ -39,24 +50,14 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+import type { BankImportSummary } from "@/lib/banking/import-types";
 import { api } from "@/lib/client";
 import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export type AccountingAccountView = FinancialAccountView;
-
-export interface AccountingCategoryView {
-  id: string;
-  name: string;
-  type: "income" | "expense";
-}
-
-export interface AccountingEventView {
-  id: string;
-  title: string;
-  startAt: string;
-}
+export type { AccountingCategoryView, AccountingEventView };
 
 export interface AccountingEntryView {
   id: string;
@@ -86,11 +87,13 @@ export function AccountingManager({
   accounts,
   categories,
   events,
+  imports,
 }: {
   entries: AccountingEntryView[];
   accounts: AccountingAccountView[];
   categories: AccountingCategoryView[];
   events: AccountingEventView[];
+  imports: BankImportSummary[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -99,25 +102,66 @@ export function AccountingManager({
   const [status, setStatus] = useState<
     "all" | AccountingEntryView["status"]
   >("all");
-  const [workspace, setWorkspace] = useState<"entries" | "accounts">(
-    "entries",
-  );
-  const [editor, setEditor] = useState<"new" | AccountingEntryView | null>(
-    null,
-  );
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [workspace, setWorkspace] = useState<
+    "entries" | "accounts" | "categories"
+  >("entries");
+  const [editor, setEditorState] = useState<
+    "new" | AccountingEntryView | null
+  >(null);
+  const [importing, setImportingState] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pendingDelete, setPendingDelete] =
     useState<AccountingEntryView | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Copie locale des catégories : une catégorie créée depuis le formulaire,
+  // l'import ou l'onglet Catégories apparaît aussitôt partout, sans attendre
+  // le rechargement de la page. Chaque nouvelle liste venue du serveur
+  // remplace la copie (c'est la référence).
+  const [localCategories, setLocalCategories] = useState(categories);
+  const [serverCategories, setServerCategories] = useState(categories);
+  if (categories !== serverCategories) {
+    setServerCategories(categories);
+    setLocalCategories(categories);
+  }
+  const saveCategory = useCallback(
+    (category: AccountingCategoryPayload) =>
+      setLocalCategories((current) => upsertCategory(current, category)),
+    [],
+  );
+  const createdCategory = useCallback(
+    (category: AccountingCategoryPayload) => {
+      saveCategory(category);
+      toast(`Catégorie « ${category.name} » créée.`);
+      router.refresh();
+    },
+    [router, saveCategory, toast],
+  );
+
+  // Formulaire d'écriture et import partagent la même place au-dessus de la
+  // liste : ouvrir l'un referme l'autre.
+  function setEditor(next: "new" | AccountingEntryView | null) {
+    setEditorState(next);
+    if (next) setImportingState(false);
+  }
+  function setImporting(next: boolean) {
+    setImportingState(next);
+    if (next) setEditorState(null);
+  }
 
   const accountNames = useMemo(
     () => new Map(accounts.map((account) => [account.id, account.name])),
     [accounts],
   );
   const categoryNames = useMemo(
-    () => new Map(categories.map((category) => [category.id, category.name])),
-    [categories],
+    () =>
+      new Map(localCategories.map((category) => [category.id, category.name])),
+    [localCategories],
   );
+  const activeCategoryCount = localCategories.filter(
+    (category) => category.isActive,
+  ).length;
 
   const posted = entries.filter((entry) => entry.status === "posted");
   const incomeCents = posted
@@ -147,10 +191,22 @@ export function AccountingManager({
       return (
         (!normalizedQuery || searchContent.includes(normalizedQuery)) &&
         (type === "all" || entry.type === type) &&
-        (status === "all" || entry.status === status)
+        (status === "all" || entry.status === status) &&
+        (categoryFilter === "all" ||
+          (categoryFilter === "none"
+            ? !entry.categoryId
+            : entry.categoryId === categoryFilter))
       );
     });
-  }, [accountNames, categoryNames, entries, query, status, type]);
+  }, [
+    accountNames,
+    categoryFilter,
+    categoryNames,
+    entries,
+    query,
+    status,
+    type,
+  ]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -217,7 +273,7 @@ export function AccountingManager({
         <div
           role="tablist"
           aria-label="Navigation de la comptabilité"
-          className="grid grid-cols-2 gap-1.5"
+          className="grid grid-cols-3 gap-1.5"
         >
           <AccountingWorkspaceTab
             active={workspace === "entries"}
@@ -233,11 +289,28 @@ export function AccountingManager({
             helper={`${activeAccountCount} actif${activeAccountCount > 1 ? "s" : ""}`}
             onClick={() => setWorkspace("accounts")}
           />
+          <AccountingWorkspaceTab
+            active={workspace === "categories"}
+            icon={Tags}
+            label="Catégories"
+            helper={`${activeCategoryCount} active${activeCategoryCount > 1 ? "s" : ""}`}
+            onClick={() => setWorkspace("categories")}
+          />
         </div>
       </Card>
 
       {workspace === "accounts" ? (
         <FinancialAccountsManager accounts={accounts} entries={entries} />
+      ) : workspace === "categories" ? (
+        <AccountingCategoriesManager
+          categories={localCategories}
+          onCategorySaved={saveCategory}
+          onCategoryRemoved={(id) =>
+            setLocalCategories((current) =>
+              current.filter((category) => category.id !== id),
+            )
+          }
+        />
       ) : (
         <>
           <section
@@ -298,15 +371,28 @@ export function AccountingManager({
             </button>
           </div>
           <AccountingEntryForm
+            key={editor === "new" ? "new" : editor.id}
             entry={editor === "new" ? null : editor}
             accounts={accounts}
-            categories={categories}
+            categories={localCategories}
+            onCategoryCreated={createdCategory}
             events={events}
             loading={submitting}
             onSubmit={save}
             onCancel={() => setEditor(null)}
           />
         </Card>
+      )}
+
+      {importing && (
+        <BankStatementImport
+          accounts={accounts}
+          categories={localCategories}
+          events={events}
+          imports={imports}
+          onCategoryCreated={createdCategory}
+          onClose={() => setImporting(false)}
+        />
       )}
 
       <Card className="p-4">
@@ -328,7 +414,7 @@ export function AccountingManager({
               className="pl-10"
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+          <div className="grid gap-3 sm:grid-cols-3 lg:flex">
             <label className="sr-only" htmlFor="accounting-type">
               Filtrer par type
             </label>
@@ -367,15 +453,58 @@ export function AccountingManager({
               <option value="posted">Validées</option>
               <option value="draft">Brouillons</option>
             </Select>
+            <label className="sr-only" htmlFor="accounting-category">
+              Filtrer par catégorie
+            </label>
+            <Select
+              id="accounting-category"
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+              className="lg:w-48"
+            >
+              <option value="all">Toutes les catégories</option>
+              <option value="none">Sans catégorie</option>
+              {(["income", "expense"] as const).map((group) => {
+                const groupCategories = localCategories.filter(
+                  (category) => category.type === group,
+                );
+                if (groupCategories.length === 0) return null;
+                return (
+                  <optgroup
+                    key={group}
+                    label={group === "income" ? "Recettes" : "Dépenses"}
+                  >
+                    {groupCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                        {!category.isActive ? " · désactivée" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </Select>
           </div>
-          <Button
-            type="button"
-            icon={Plus}
-            onClick={() => setEditor("new")}
-            className="w-full lg:w-auto"
-          >
-            Nouvelle écriture
-          </Button>
+          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              icon={FileUp}
+              onClick={() => setImporting(true)}
+              aria-expanded={importing}
+              className="w-full lg:w-auto"
+            >
+              Importer un relevé
+            </Button>
+            <Button
+              type="button"
+              icon={Plus}
+              onClick={() => setEditor("new")}
+              className="w-full lg:w-auto"
+            >
+              Nouvelle écriture
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -383,16 +512,27 @@ export function AccountingManager({
         <EmptyState
           icon={Landmark}
           title="Aucune écriture comptable"
-          description="Ajoutez votre première recette ou dépense pour démarrer le suivi financier."
+          description="Ajoutez votre première recette ou dépense, ou importez un relevé bancaire pour démarrer le suivi financier."
           action={
-            <Button
-              type="button"
-              size="sm"
-              icon={Plus}
-              onClick={() => setEditor("new")}
-            >
-              Ajouter la première écriture
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                icon={Plus}
+                onClick={() => setEditor("new")}
+              >
+                Ajouter la première écriture
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={FileUp}
+                onClick={() => setImporting(true)}
+              >
+                Importer un relevé
+              </Button>
+            </div>
           }
         />
       ) : filtered.length === 0 ? (
@@ -601,7 +741,7 @@ function AccountingWorkspaceTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 sm:px-4",
+        "flex min-w-0 items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 sm:px-4 sm:py-3",
         active
           ? "bg-brand-950 text-white"
           : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
@@ -609,17 +749,21 @@ function AccountingWorkspaceTab({
     >
       <span
         className={cn(
-          "grid h-9 w-9 shrink-0 place-items-center rounded-lg",
+          // Masquée sur téléphone : trois onglets côte à côte n'y laissent
+          // la place que du libellé.
+          "hidden h-9 w-9 shrink-0 place-items-center rounded-lg sm:grid",
           active ? "bg-white/10 text-brand-100" : "bg-slate-100 text-slate-500",
         )}
       >
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <span className="min-w-0">
-        <span className="block font-bold">{label}</span>
+        <span className="block truncate text-sm font-bold sm:text-base">
+          {label}
+        </span>
         <span
           className={cn(
-            "block text-xs",
+            "block truncate text-xs",
             active ? "text-brand-200" : "text-slate-500",
           )}
         >
@@ -725,6 +869,7 @@ function AccountingEntryForm({
   entry,
   accounts,
   categories,
+  onCategoryCreated,
   events,
   loading,
   onSubmit,
@@ -733,6 +878,7 @@ function AccountingEntryForm({
   entry: AccountingEntryView | null;
   accounts: AccountingAccountView[];
   categories: AccountingCategoryView[];
+  onCategoryCreated: (category: AccountingCategoryPayload) => void;
   events: AccountingEventView[];
   loading: boolean;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -741,6 +887,18 @@ function AccountingEntryForm({
   const availableAccounts = accounts.filter(
     (account) => account.isActive || account.id === entry?.accountId,
   );
+  // Sens et catégorie sont liés : le serveur refuse une catégorie de
+  // dépenses sur une recette. Le sens est donc contrôlé, et la liste des
+  // catégories suit.
+  const [entryType, setEntryType] = useState<AccountingEntryView["type"]>(
+    entry?.type ?? "expense",
+  );
+  const [categoryId, setCategoryId] = useState(() => {
+    const current = categories.find((c) => c.id === entry?.categoryId);
+    return current && current.type === (entry?.type ?? "expense")
+      ? current.id
+      : "";
+  });
 
   return (
     <form onSubmit={onSubmit} className="space-y-6 p-5 sm:p-6">
@@ -749,7 +907,14 @@ function AccountingEntryForm({
           <Select
             id="entry-type"
             name="type"
-            defaultValue={entry?.type ?? "expense"}
+            value={entryType}
+            onChange={(event) => {
+              const next = event.currentTarget
+                .value as AccountingEntryView["type"];
+              setEntryType(next);
+              const chosen = categories.find((c) => c.id === categoryId);
+              if (chosen && chosen.type !== next) setCategoryId("");
+            }}
           >
             <option value="income">Recette</option>
             <option value="expense">Dépense</option>
@@ -824,32 +989,22 @@ function AccountingEntryForm({
             ))}
           </Select>
         </Field>
-        <Field label="Catégorie" htmlFor="categoryId" className="sm:col-span-2">
-          <Select
+        <Field
+          label="Catégorie"
+          htmlFor="categoryId"
+          className="sm:col-span-2"
+          hint={`Catégories de ${entryType === "income" ? "recettes" : "dépenses"}.`}
+        >
+          <input type="hidden" name="categoryId" value={categoryId} />
+          <CategorySelect
             id="categoryId"
-            name="categoryId"
-            defaultValue={entry?.categoryId ?? ""}
-          >
-            <option value="">Sans catégorie</option>
-            <optgroup label="Recettes">
-              {categories
-                .filter((category) => category.type === "income")
-                .map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-            </optgroup>
-            <optgroup label="Dépenses">
-              {categories
-                .filter((category) => category.type === "expense")
-                .map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-            </optgroup>
-          </Select>
+            type={entryType}
+            value={categoryId}
+            onChange={setCategoryId}
+            categories={categories}
+            keepId={entry?.categoryId}
+            onCreated={onCategoryCreated}
+          />
         </Field>
         <Field
           label="Événement"
