@@ -254,18 +254,28 @@ async function readStatements(files: StatementFile[]): Promise<ReadStatement[]> 
 
 type AccountRow = typeof financialAccounts.$inferSelect;
 
-/** Compte proposé pour une section de relevé, et pourquoi. */
+type AccountSuggestion = Pick<AnalyzedSection, "suggestedAccountId" | "accountMatch">;
+
+const NO_SUGGESTION: AccountSuggestion = { suggestedAccountId: null, accountMatch: "none" };
+
+/**
+ * Compte proposé pour une section de relevé, et pourquoi. Seuls les comptes
+ * bancaires comptent : une caisse ne reçoit jamais un relevé, même si un
+ * numéro y a été saisi par erreur.
+ */
 function suggestAccount(
   accounts: AccountRow[],
   accountNumber: string,
-): Pick<AnalyzedSection, "suggestedAccountId" | "accountMatch"> {
-  const byNumber = accounts.find((a) => a.bankAccountNumber === accountNumber);
+): AccountSuggestion {
+  const byNumber = accounts.find(
+    (a) => a.type === "bank" && a.bankAccountNumber === accountNumber,
+  );
   if (byNumber) {
     // Rattaché à un compte archivé : ne rien proposer d'autre, l'enregistrement
     // refuserait de toute façon de donner ce numéro à un second compte.
     return byNumber.isActive
       ? { suggestedAccountId: byNumber.id, accountMatch: "number" }
-      : { suggestedAccountId: null, accountMatch: "none" };
+      : NO_SUGGESTION;
   }
   const activeBanks = accounts.filter((a) => a.isActive && a.type === "bank");
   const byName = activeBanks.find(
@@ -280,7 +290,42 @@ function suggestAccount(
   if (unnumbered.length === 1) {
     return { suggestedAccountId: unnumbered[0].id, accountMatch: "single" };
   }
-  return { suggestedAccountId: null, accountMatch: "none" };
+  return NO_SUGGESTION;
+}
+
+/**
+ * Un compte sans numéro n'en recevra qu'un : proposé d'après son nom, ou
+ * comme seul compte bancaire, pour deux numéros différents du même envoi
+ * (compte courant et livret d'un même relevé), il ferait échouer
+ * l'enregistrement sur la seconde section. Il revient à la première section
+ * qui a quelque chose à importer — d'abord à celle dont le numéro figure dans
+ * son nom — et les autres numéros restent sans proposition. Une section sans
+ * rien à importer ne réclame rien : le serveur ignore son compte.
+ */
+function claimSuggestions(
+  sections: {
+    accountNumber: string;
+    actionable: boolean;
+    suggestion: AccountSuggestion;
+  }[],
+) {
+  const claimed = new Map<string, string>();
+  for (const match of ["name", "single"] as const) {
+    for (const { accountNumber, actionable, suggestion } of sections) {
+      const id = suggestion.suggestedAccountId;
+      if (actionable && suggestion.accountMatch === match && id && !claimed.has(id)) {
+        claimed.set(id, accountNumber);
+      }
+    }
+  }
+  return sections.map(({ accountNumber, suggestion }) => {
+    const owner = suggestion.suggestedAccountId
+      ? claimed.get(suggestion.suggestedAccountId)
+      : undefined;
+    return suggestion.accountMatch !== "number" && owner && owner !== accountNumber
+      ? NO_SUGGESTION
+      : suggestion;
+  });
 }
 
 const NATURE_CATEGORY_PATTERNS: Partial<
@@ -471,7 +516,58 @@ async function classify(
     );
   };
 
+  // Premier passage, sans requête : ce que devient chaque opération (déjà
+  // traitée, en double dans l'envoi, ou à décider). Il faut le savoir avant
+  // de proposer les comptes : une section sans rien à décider n'en réclame
+  // aucun (voir `claimSuggestions`).
   const batch = new Set<string>();
+  const firstPass = new Map(
+    okReads.map((read) => [
+      read,
+      read.parsed.sections.map((source) => {
+        const prints = fingerprints(source.accountNumber, source.lines);
+        const states = prints.map((fingerprint) => {
+          const stored = linesByFingerprint.get(fingerprint);
+          const entryDeleted =
+            stored &&
+            (stored.decision === "imported" || stored.decision === "linked") &&
+            !stored.entryId;
+          if (stored && !entryDeleted) return { kind: "stored" as const, stored };
+          // Avant la reprise d'une écriture supprimée : la même opération
+          // présente dans deux relevés de l'envoi ne se décide qu'une fois.
+          if (batch.has(fingerprint)) return { kind: "batch" as const };
+          batch.add(fingerprint);
+          return stored
+            ? { kind: "deleted" as const, stored }
+            : { kind: "fresh" as const };
+        });
+        return {
+          source,
+          prints,
+          states,
+          actionable: states.some(
+            (state) => state.kind === "deleted" || state.kind === "fresh",
+          ),
+        };
+      }),
+    ]),
+  );
+  const allSections = [...firstPass.values()].flat();
+  const suggestions = claimSuggestions(
+    allSections.map((section) => ({
+      accountNumber: section.source.accountNumber,
+      actionable: section.actionable,
+      suggestion: suggestAccount(accounts, section.source.accountNumber),
+    })),
+  );
+  const suggestionOf = new Map(
+    allSections.map((section, index) => [section, suggestions[index]]),
+  );
+  /** Comptes qu'une section sans numéro connu peut recevoir sans être refusée. */
+  const unnumberedBankIds = accounts
+    .filter((a) => a.isActive && a.type === "bank" && !a.bankAccountNumber)
+    .map((a) => a.id);
+
   const statements: StatementContext[] = [];
   const analyzed: AnalyzedStatement[] = [];
 
@@ -481,16 +577,33 @@ async function classify(
       continue;
     }
     const sections: SectionContext[] = [];
-    for (const source of read.parsed.sections) {
+    for (const first of firstPass.get(read) ?? []) {
+      const { source, prints, states } = first;
       const key = `${read.sha}:${source.accountNumber}`;
-      const suggestion = suggestAccount(accounts, source.accountNumber);
-      const prints = fingerprints(source.accountNumber, source.lines);
+      const suggestion = suggestionOf.get(first) ?? NO_SUGGESTION;
       const previous = previousByKey.get(key) ?? null;
 
       // Écritures qui pourraient être ces opérations, saisies à la main ou
-      // par un autre moyen : même montant, date proche, sur le compte
-      // proposé ou sans compte. Une écriture déjà rattachée à une ligne de
-      // relevé est hors jeu — elle a déjà son opération.
+      // par un autre moyen : même montant, date proche, sans compte ou sur
+      // un compte que la section peut recevoir. Numéro connu : son seul
+      // compte. Compte proposé d'après son nom ou faute d'autre : tous les
+      // comptes bancaires sans numéro, car le trésorier peut en choisir un
+      // autre que celui proposé, et une écriture saisie sur celui-là doit
+      // aussi être signalée. Rien de proposé : partout. Une écriture déjà
+      // rattachée à une ligne de relevé est hors jeu — elle a déjà son
+      // opération.
+      const accountFilter =
+        suggestion.accountMatch === "number" && suggestion.suggestedAccountId
+          ? or(
+              eq(accountingEntries.accountId, suggestion.suggestedAccountId),
+              isNull(accountingEntries.accountId),
+            )
+          : suggestion.accountMatch === "none"
+            ? undefined
+            : or(
+                inArray(accountingEntries.accountId, unnumberedBankIds),
+                isNull(accountingEntries.accountId),
+              );
       const amounts = [...new Set(source.lines.map((line) => line.amountCents))];
       const sectionDays = source.lines.flatMap((line) =>
         line.valueDate ? [line.operationDate, line.valueDate] : [line.operationDate],
@@ -541,12 +654,7 @@ async function classify(
                       ),
                     ),
                   ),
-                  suggestion.suggestedAccountId
-                    ? or(
-                        eq(accountingEntries.accountId, suggestion.suggestedAccountId),
-                        isNull(accountingEntries.accountId),
-                      )
-                    : undefined,
+                  accountFilter,
                   sql`not exists (select 1 from ${bankStatementLines} where ${bankStatementLines.entryId} = ${accountingEntries.id} or ${bankStatementLines.cashEntryId} = ${accountingEntries.id})`,
                 ),
               )
@@ -588,12 +696,9 @@ async function classify(
         };
         let existing: LineContext["existing"] = null;
 
-        const stored = linesByFingerprint.get(fingerprint);
-        const entryDeleted =
-          stored &&
-          (stored.decision === "imported" || stored.decision === "linked") &&
-          !stored.entryId;
-        if (stored && !entryDeleted) {
+        const state = states[index];
+        if (state.kind === "stored") {
+          const { stored } = state;
           line.state = "already_imported";
           line.alreadyImported = {
             source: "previous_import",
@@ -604,9 +709,7 @@ async function classify(
           };
           return { line, source: parsedLine, existing };
         }
-        // Avant la reprise d'une écriture supprimée : la même opération
-        // présente dans deux relevés de l'envoi ne se décide qu'une fois.
-        if (batch.has(fingerprint)) {
+        if (state.kind === "batch") {
           line.state = "already_imported";
           line.alreadyImported = {
             source: "batch",
@@ -617,15 +720,14 @@ async function classify(
           };
           return { line, source: parsedLine, existing };
         }
-        batch.add(fingerprint);
 
-        if (stored) {
+        if (state.kind === "deleted") {
           line.state = "doubt";
           line.doubtReason = "deleted_entry";
           existing = {
-            id: stored.id,
-            importId: stored.importId,
-            cashEntryId: stored.cashEntryId,
+            id: state.stored.id,
+            importId: state.stored.importId,
+            cashEntryId: state.stored.cashEntryId,
           };
         } else {
           const days = parsedLine.valueDate
@@ -782,6 +884,22 @@ function lineName(line: ParsedLine) {
 
 const MESSAGE_CONCURRENT =
   "Ces opérations viennent d’être importées par ailleurs. Relancez l’analyse.";
+const MESSAGE_CHANGED =
+  "Les imports de relevés viennent de changer par ailleurs (un import enregistré ou annulé en même temps, une écriture supprimée). Relancez l’analyse.";
+
+/**
+ * Code SQLSTATE d'une erreur de la base, ou null. Drizzle enveloppe l'erreur
+ * de PostgreSQL : on remonte la chaîne des causes.
+ */
+function sqlState(error: unknown): string | null {
+  let current: unknown = error;
+  for (let i = 0; i < 4 && current; i += 1) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+    current = current instanceof Error ? (current as { cause?: unknown }).cause : null;
+  }
+  return null;
+}
 
 export async function commitBankImport(
   input: unknown,
@@ -871,9 +989,19 @@ export async function commitBankImport(
     const constraint = uniqueViolation(error);
     if (
       constraint === "bank_statement_lines_fingerprint_idx" ||
-      constraint === "bank_statement_imports_file_account_idx"
+      constraint === "bank_statement_imports_file_account_idx" ||
+      constraint === "bank_statement_lines_entry_idx" ||
+      constraint === "bank_statement_lines_cash_entry_idx"
     ) {
       throw new HttpError(409, MESSAGE_CONCURRENT);
+    }
+    // Filets sous les verrous : un import ou une écriture supprimé entre
+    // l'analyse et l'insertion (clé étrangère, 23503), ou une annulation
+    // croisée avec cet enregistrement (interblocage, 40P01). La base a tout
+    // annulé ; relancer l'analyse suffit.
+    const state = sqlState(error);
+    if (state === "23503" || state === "40P01") {
+      throw new HttpError(409, MESSAGE_CHANGED);
     }
     if (constraint === "financial_accounts_bank_account_number_idx") {
       throw new HttpError(
@@ -891,6 +1019,142 @@ export async function commitBankImport(
     linked: touched.linked,
     skipped: touched.skipped,
   };
+}
+
+type PlannedSection = {
+  statement: StatementContext;
+  section: SectionContext;
+  account: AccountRow;
+  lines: { context: LineContext; decision: LineDecision }[];
+};
+
+/**
+ * Écritures à rattacher, verrouillées puis relues. L'analyse les a trouvées
+ * sans verrou : depuis, un autre administrateur a pu supprimer le brouillon
+ * ou en changer le montant, et un autre import — vers un autre compte, donc
+ * sans verrou commun avec celui-ci — a pu rattacher la même écriture sans
+ * compte à sa propre opération. Le verrou exclusif fait passer ces actions
+ * l'une après l'autre, et la relecture qui le suit voit ce qu'elles ont
+ * enregistré : ce qui a changé est refusé avec l'invitation à relancer
+ * l'analyse, plutôt qu'une erreur de clé étrangère (500) ou une écriture
+ * comptée pour deux opérations.
+ */
+async function lockLinkedEntries(tx: Transaction, planned: PlannedSection[]) {
+  const links = planned.flatMap(({ lines }) =>
+    lines.flatMap(({ context, decision }) =>
+      decision.action === "link" ? [{ context, entryId: decision.entryId }] : [],
+    ),
+  );
+  if (!links.length) return;
+  const ids = [...new Set(links.map((link) => link.entryId))].sort();
+  const rows = await tx
+    .select({
+      id: accountingEntries.id,
+      type: accountingEntries.type,
+      amountCents: accountingEntries.amountCents,
+    })
+    .from(accountingEntries)
+    .where(inArray(accountingEntries.id, ids))
+    .orderBy(accountingEntries.id)
+    .for("update");
+  const taken = await tx
+    .select({
+      entryId: bankStatementLines.entryId,
+      cashEntryId: bankStatementLines.cashEntryId,
+    })
+    .from(bankStatementLines)
+    .where(
+      or(
+        inArray(bankStatementLines.entryId, ids),
+        inArray(bankStatementLines.cashEntryId, ids),
+      ),
+    );
+  const takenIds = new Set(taken.flatMap((row) => [row.entryId, row.cashEntryId]));
+  const entryById = new Map(rows.map((row) => [row.id, row]));
+  for (const { context, entryId } of links) {
+    const entry = entryById.get(entryId);
+    if (
+      !entry ||
+      entry.type !== context.line.type ||
+      entry.amountCents !== context.line.amountCents ||
+      takenIds.has(entryId)
+    ) {
+      throw new HttpError(
+        409,
+        `L’écriture choisie pour l’opération ${lineName(context.source)} vient d’être supprimée, modifiée ou rattachée à une autre opération. Relancez l’analyse.`,
+      );
+    }
+  }
+}
+
+/**
+ * Catégories et événements choisis, contrôlés tous ensemble avant la moindre
+ * écriture. Ils ne font pas partie de l'empreinte de l'analyse : une
+ * catégorie désactivée entre-temps ne ressortirait sinon qu'à l'insertion,
+ * en « Catégorie comptable invalide ou inactive. », sans dire laquelle ni
+ * pour quelle opération.
+ */
+async function checkReferences(tx: Transaction, planned: PlannedSection[]) {
+  const imports = planned.flatMap(({ lines }) =>
+    lines.flatMap(({ context, decision }) =>
+      decision.action === "import" ? [{ context, decision }] : [],
+    ),
+  );
+  const categoryIds = [
+    ...new Set(imports.flatMap(({ decision }) => decision.categoryId ?? [])),
+  ].sort();
+  const eventIds = [
+    ...new Set(imports.flatMap(({ decision }) => decision.eventId ?? [])),
+  ].sort();
+  // Verrou partagé, comme à la saisie d'une écriture : la catégorie ou
+  // l'événement ne peut plus être supprimé avant la fin de l'import.
+  const categoryRows = categoryIds.length
+    ? await tx
+        .select({
+          id: accountingCategories.id,
+          name: accountingCategories.name,
+          type: accountingCategories.type,
+          isActive: accountingCategories.isActive,
+        })
+        .from(accountingCategories)
+        .where(inArray(accountingCategories.id, categoryIds))
+        .orderBy(accountingCategories.id)
+        .for("key share")
+    : [];
+  const eventRows = eventIds.length
+    ? await tx
+        .select({ id: events.id })
+        .from(events)
+        .where(inArray(events.id, eventIds))
+        .orderBy(events.id)
+        .for("key share")
+    : [];
+  const categoryById = new Map(categoryRows.map((row) => [row.id, row]));
+  const knownEvents = new Set(eventRows.map((row) => row.id));
+  for (const { context, decision } of imports) {
+    const name = lineName(context.source);
+    if (decision.categoryId) {
+      const category = categoryById.get(decision.categoryId);
+      if (!category || !category.isActive) {
+        throw new HttpError(
+          409,
+          `La catégorie ${category ? `« ${category.name} » ` : ""}choisie pour l’opération ${name} n’existe plus ou vient d’être désactivée. Relancez l’analyse.`,
+        );
+      }
+      if (category.type !== context.line.type) {
+        throw new HttpError(
+          400,
+          `La catégorie « ${category.name} » est une catégorie de ${category.type === "income" ? "recettes" : "dépenses"} : elle ne convient pas à l’opération ${name}.`,
+        );
+      }
+    }
+    if (decision.eventId && !knownEvents.has(decision.eventId)) {
+      throw new HttpError(
+        409,
+        `L’événement choisi pour l’opération ${name} n’existe plus. Relancez l’analyse.`,
+      );
+    }
+  }
 }
 
 async function applyDecisions(
@@ -933,16 +1197,12 @@ async function applyDecisions(
   /** Numéros à inscrire sur les comptes qui n'en avaient pas. */
   const numberToSet = new Map<string, string>();
 
-  type Planned = {
-    statement: StatementContext;
-    section: SectionContext;
-    account: AccountRow;
-    lines: { context: LineContext; decision: LineDecision }[];
-  };
+  type Planned = PlannedSection;
   const planned: Planned[] = [];
   const decided = new Set<string>();
   const ignorable = new Set<string>();
   const linkedEntries = new Set<string>();
+  let actionableSections = 0;
   let importedSections = 0;
 
   for (const statement of statements) {
@@ -950,9 +1210,15 @@ async function applyDecisions(
       const actionable = section.lines.filter(
         (context) => context.line.state !== "already_imported",
       );
+      if (actionable.length) actionableSections += 1;
       const accountId = sectionChoice.get(section.section.key) ?? null;
-      if (!accountId) {
-        // Section laissée de côté : ses décisions éventuelles sont ignorées.
+      // Section laissée de côté, ou sans rien à importer (tout y est déjà
+      // traité) : ses décisions éventuelles sont ignorées, et le compte
+      // envoyé pour elle n'est ni contrôlé ni numéroté. L'écran n'affiche pas
+      // de choix de compte pour une telle section : un compte proposé
+      // d'office, mais rattaché à un autre numéro, ferait sinon échouer tout
+      // l'envoi sur une section que le trésorier ne peut pas corriger.
+      if (!accountId || !actionable.length) {
         for (const context of section.lines) ignorable.add(context.line.fingerprint);
         continue;
       }
@@ -977,11 +1243,21 @@ async function applyDecisions(
         );
       }
       const number = section.source.accountNumber;
-      const bound = numberToSet.get(account.id) ?? account.bankAccountNumber;
+      const bound = account.bankAccountNumber;
       if (bound && bound !== number) {
         throw new HttpError(
           409,
           `Ce relevé concerne le compte n° ${number}, et « ${account.name} » est rattaché au n° ${bound}.`,
+        );
+      }
+      // Pas encore numéroté, mais déjà choisi pour un autre numéro dans ce
+      // même envoi : l'envoi se contredit, relancer l'analyse n'y changerait
+      // rien — il faut choisir un autre compte.
+      const chosenFor = numberToSet.get(account.id);
+      if (chosenFor && chosenFor !== number) {
+        throw new HttpError(
+          400,
+          `« ${account.name} » est déjà choisi pour le relevé du compte n° ${chosenFor} dans cet envoi : un compte ne reçoit les relevés que d’un seul numéro. Choisissez un autre compte pour le compte n° ${number}.`,
         );
       }
       const owner =
@@ -996,7 +1272,7 @@ async function applyDecisions(
           `Le compte n° ${number} est déjà rattaché à « ${owner.name} ».`,
         );
       }
-      if (!bound) numberToSet.set(account.id, number);
+      if (!bound && !chosenFor) numberToSet.set(account.id, number);
 
       const lines: Planned["lines"] = [];
       for (const context of actionable) {
@@ -1050,18 +1326,21 @@ async function applyDecisions(
       throw new HttpError(400, "Décision pour une opération inconnue : relancez l’analyse.");
     }
   }
-  if (!importedSections) {
-    throw new HttpError(
-      400,
-      "Choisissez le compte de destination d’au moins un relevé.",
-    );
-  }
-  if (!planned.length) {
+  if (!actionableSections) {
     throw new HttpError(
       409,
       "Ce relevé a déjà été importé : il n’y a rien de nouveau à enregistrer.",
     );
   }
+  if (!importedSections || !planned.length) {
+    throw new HttpError(
+      400,
+      "Choisissez le compte de destination d’au moins un relevé.",
+    );
+  }
+
+  await lockLinkedEntries(tx, planned);
+  await checkReferences(tx, planned);
 
   // --- Écritures ----------------------------------------------------------
   for (const [accountId, number] of numberToSet) {
@@ -1069,13 +1348,35 @@ async function applyDecisions(
       .update(financialAccounts)
       .set({ bankAccountNumber: number, updatedAt: new Date() })
       .where(eq(financialAccounts.id, accountId));
+    // Même trace qu'une modification du compte à la main : l'historique du
+    // compte dit d'où vient son numéro.
+    await recordAudit(
+      actor,
+      "accounting.account_update",
+      "financial_account",
+      accountId,
+      {
+        changedFields: ["bankAccountNumber"],
+        bankAccountNumber: number,
+        source: "bank_import",
+      },
+      tx,
+    );
   }
 
   const touchedImports = new Set<string>();
   const totals = { imported: 0, linked: 0, skipped: 0 };
 
   for (const { statement, section, account, lines } of planned) {
-    const counts = { imported: 0, linked: 0, skipped: 0 };
+    /**
+     * Compteurs par import touché : une opération reprise (écriture
+     * supprimée puis réimportée) reste sur la ligne, et donc l'import, où
+     * elle avait été enregistrée. Chaque import touché reçoit sa trace.
+     */
+    const countsByImport = new Map<
+      string,
+      { imported: number; linked: number; skipped: number }
+    >();
     let importId: string | null = null;
     const needsImportRow = lines.some(({ context }) => !context.existing);
     if (needsImportRow) {
@@ -1084,6 +1385,11 @@ async function applyDecisions(
       importId = section.previousImportId;
       if (!importId) {
         const source = section.source;
+        // L'IBAN de la section quand le relevé en donne un par compte ; à
+        // défaut, celui de l'en-tête ne vaut que pour un relevé à un seul
+        // compte — sur un relevé multi-comptes, il désigne le compte courant
+        // et serait faux sur la ligne du livret.
+        const sectionIban = (source as { iban?: string | null }).iban;
         const [created] = await tx
           .insert(bankStatementImports)
           .values({
@@ -1091,7 +1397,9 @@ async function applyDecisions(
             accountId: account.id,
             accountNumber: source.accountNumber,
             accountLabel: source.accountLabel,
-            iban: statement.parsed.iban,
+            iban:
+              sectionIban ??
+              (statement.parsed.sections.length === 1 ? statement.parsed.iban : null),
             statementDate: statement.parsed.statementDate
               ? parseLocalDateTime(statement.parsed.statementDate)
               : null,
@@ -1116,6 +1424,13 @@ async function applyDecisions(
       const { line, source, existing } = context;
       let entryId: string | null = null;
       let cashEntryId: string | null = existing?.cashEntryId ?? null;
+      const lineImportId = (existing?.importId ?? importId) as string;
+      const counts = countsByImport.get(lineImportId) ?? {
+        imported: 0,
+        linked: 0,
+        skipped: 0,
+      };
+      countsByImport.set(lineImportId, counts);
 
       if (decision.action === "import") {
         const occurredAt = parseLocalDateTime(line.operationDate);
@@ -1148,6 +1463,7 @@ async function applyDecisions(
             status: entry.status,
             amountCents: entry.amountCents,
             source: "bank_import",
+            importId: lineImportId,
           },
           tx,
         );
@@ -1189,6 +1505,7 @@ async function applyDecisions(
               status: mirror.status,
               amountCents: mirror.amountCents,
               source: "bank_import",
+              importId: lineImportId,
             },
             tx,
           );
@@ -1210,11 +1527,16 @@ async function applyDecisions(
 
       if (existing) {
         // L'opération est déjà connue (son écriture avait été supprimée) :
-        // on met à jour sa ligne, l'empreinte ne s'insère qu'une fois.
-        await tx
+        // on met à jour sa ligne, l'empreinte ne s'insère qu'une fois. Une
+        // annulation de son import, passée depuis l'analyse, a emporté la
+        // ligne : sans ce contrôle, l'écriture serait créée sans ligne qui la
+        // suive, et l'opération redeviendrait importable une seconde fois.
+        const [updated] = await tx
           .update(bankStatementLines)
           .set({ decision: decisionValue, entryId, cashEntryId })
-          .where(eq(bankStatementLines.id, existing.id));
+          .where(eq(bankStatementLines.id, existing.id))
+          .returning({ id: bankStatementLines.id });
+        if (!updated) throw new HttpError(409, MESSAGE_CHANGED);
         touchedImports.add(existing.importId);
       } else {
         await tx.insert(bankStatementLines).values({
@@ -1233,23 +1555,25 @@ async function applyDecisions(
       }
     }
 
-    await recordAudit(
-      actor,
-      "accounting.bank_import",
-      "bank_statement_import",
-      importId,
-      {
-        bank: BANK,
-        accountNumber: section.source.accountNumber,
-        statementDate: statement.parsed.statementDate,
-        accountId: account.id,
-        ...counts,
-      },
-      tx,
-    );
-    totals.imported += counts.imported;
-    totals.linked += counts.linked;
-    totals.skipped += counts.skipped;
+    for (const [touchedId, counts] of countsByImport) {
+      await recordAudit(
+        actor,
+        "accounting.bank_import",
+        "bank_statement_import",
+        touchedId,
+        {
+          bank: BANK,
+          accountNumber: section.source.accountNumber,
+          statementDate: statement.parsed.statementDate,
+          accountId: account.id,
+          ...counts,
+        },
+        tx,
+      );
+      totals.imported += counts.imported;
+      totals.linked += counts.linked;
+      totals.skipped += counts.skipped;
+    }
   }
 
   // Compteurs recalculés d'après les lignes : un import repris ou une ligne
@@ -1348,6 +1672,23 @@ export async function listBankStatementImports(
  */
 export async function undoBankImport(id: string, actor: AuditActor) {
   return db.transaction(async (tx) => {
+    // Verrou sur le compte d'abord, puis sur l'import : l'ordre de
+    // l'enregistrement. Un import en cours sur ce compte (qui reprend
+    // peut-être une ligne de celui-ci) finit avant l'annulation, ou attend
+    // qu'elle soit finie et refait son analyse — au lieu d'écrire dans une
+    // ligne que l'annulation vient d'emporter, ou de s'interbloquer avec elle.
+    const [peek] = await tx
+      .select({ accountId: bankStatementImports.accountId })
+      .from(bankStatementImports)
+      .where(eq(bankStatementImports.id, id));
+    if (!peek) throw new HttpError(404, "Import de relevé introuvable.");
+    if (peek.accountId) {
+      await tx
+        .select({ id: financialAccounts.id })
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, peek.accountId))
+        .for("update");
+    }
     const [current] = await tx
       .select()
       .from(bankStatementImports)
@@ -1376,9 +1717,15 @@ export async function undoBankImport(id: string, actor: AuditActor) {
     // passe avant (et l'annulation la voit), ou attend l'annulation.
     const entries = entryIds.length
       ? await tx
-          .select({ id: accountingEntries.id, status: accountingEntries.status })
+          .select({
+            id: accountingEntries.id,
+            status: accountingEntries.status,
+            type: accountingEntries.type,
+            amountCents: accountingEntries.amountCents,
+          })
           .from(accountingEntries)
           .where(inArray(accountingEntries.id, entryIds))
+          .orderBy(accountingEntries.id)
           .for("update")
       : [];
     const posted = entries.filter((entry) => entry.status === "posted").length;
@@ -1402,6 +1749,25 @@ export async function undoBankImport(id: string, actor: AuditActor) {
       );
     }
 
+    // Le trésorier a pu retoucher ces brouillons depuis l'import (libellé,
+    // catégorie, pièce jointe) : le journal dit lesquels ont disparu, dans
+    // la trace de l'annulation et dans l'historique de chaque écriture,
+    // comme une suppression à la main.
+    for (const entry of entries) {
+      await recordAudit(
+        actor,
+        "accounting.delete_draft",
+        "accounting_entry",
+        entry.id,
+        {
+          type: entry.type,
+          amountCents: entry.amountCents,
+          source: "bank_import_undo",
+          importId: id,
+        },
+        tx,
+      );
+    }
     await recordAudit(
       actor,
       "accounting.bank_import_undo",
@@ -1413,7 +1779,11 @@ export async function undoBankImport(id: string, actor: AuditActor) {
         statementDate: current.statementDate
           ? toDateInput(current.statementDate)
           : null,
-        deletedEntries: entries.length,
+        deletedEntries: entries.map((entry) => ({
+          id: entry.id,
+          type: entry.type,
+          amountCents: entry.amountCents,
+        })),
         lines: lines.length,
       },
       tx,

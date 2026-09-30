@@ -34,6 +34,12 @@ export type BankStatementSection = {
   closingDate: string;
   totalDebitCents: number;
   totalCreditCents: number;
+  /**
+   * IBAN imprimé dans la section (sous son solde final, ou sur la ligne du
+   * titulaire des relevés anciens). Absent ou null : la section n'en donne
+   * pas, un livret par exemple. L'IBAN du relevé est celui du premier compte.
+   */
+  iban?: string | null;
   lines: BankStatementLine[];
 };
 
@@ -437,18 +443,37 @@ type DraftSection = {
   opening: { cents: number; date: string } | null;
   closing: { cents: number; date: string } | null;
   totals: { debit: number; credit: number } | null;
+  iban: string | null;
   lines: DraftLine[];
 };
 
 const ACCOUNT_PATTERN = /^(.*?)\s*\bN\s?[°º]\s*(\d[\d ]{4,}\d)\s+en\s+euros?\b/i;
-const BALANCE_PATTERN = /\bSOLDE\s+(?:(CREDITEUR|DEBITEUR|NUL)\s+)?AU\s+(\d{2}\/\d{2}\/\d{4})\b/;
+/**
+ * Ligne de solde : « SOLDE CREDITEUR AU 27/02/2026 » (départ) ou « Réf : 003
+ * SOLDE CREDITEUR AU 31/03/2026 » (arrivée), en début de ligne. Jamais après
+ * une date d'opération : « VIR SOLDE AU 10/06/2026 » est un libellé, et le
+ * prendre pour le solde final fermait la section en silence.
+ */
+const BALANCE_PATTERN =
+  /^(?:REF\s*:\s*\d+\s+)?SOLDE\s+(?:(CREDITEUR|DEBITEUR|NUL)\s+)?AU\s+(\d{2}\/\d{2}\/\d{4})\b/;
 const TOTAL_PATTERN = /^TOTAL DES MOUVEMENTS\b/;
 /** Reports de bas et de haut de page : des sous-totaux, pas des opérations. */
 const CARRY_PATTERN =
   /^(?:REPORT|A REPORTER|TOTAL A REPORTER|SOLDE A REPORTER|SOLDE REPORTE|SOUS[- ]TOTAL|TOTAL)\b/;
+/**
+ * Un report ne porte que son mot-clé et ses montants : « TOTAL ACCESS CARTE
+ * 02892630 » (station-service) ou « REPORT KERMESSE » (motif) sont des détails.
+ */
+const CARRY_ONLY_PATTERN =
+  /^(?:REPORT|A REPORTER|TOTAL A REPORTER|SOLDE A REPORTER|SOLDE REPORTE|SOUS[- ]TOTAL|TOTAL)\s*:?$/;
 /** Fin de la partie « tableau » d'une page : renvoi, mentions légales, pied. */
 const PAGE_END_PATTERN =
-  /SUITE AU VERSO|SOUS RESERVE DES EXTOURNES|INFORMATION SUR LA PROTECTION|^PAGE \d+$|\bIBAN\s*:/;
+  /SUITE AU VERSO|SOUS RESERVE DES EXTOURNES|INFORMATION SUR LA PROTECTION|^PAGE \d+$/;
+/**
+ * Pied de section « QXBAN : … IBAN : FR76 … », ou « IBAN : … » seul. En
+ * début de ligne seulement : le motif d'un virement peut citer un IBAN.
+ */
+const IBAN_LINE_PATTERN = /^(?:QXBAN\b.*\s)?IBAN\s*:/;
 /**
  * Encadrés qui ne sont pas des opérations du compte : récapitulatif des autres
  * comptes, des frais de l'année, et surtout le détail d'une carte à débit
@@ -469,6 +494,48 @@ const MARGIN_X = 40;
 
 function sectionName(section: DraftSection): string {
   return `du compte N° ${section.accountNumber}`;
+}
+
+/**
+ * Report de page ? Seulement si la ligne ne porte que le mot-clé et des
+ * montants ; sans montant, une ligne alignée sous un libellé en est le détail.
+ */
+function isCarry(line: PdfLine, columns: Columns, where: string, detail: boolean): boolean {
+  if (!CARRY_PATTERN.test(normalize(line.text))) return false;
+  const { body, amounts } = splitAmounts(line.words, columns, where);
+  const words = normalize(body.map((word) => word.text).join(" "));
+  return CARRY_ONLY_PATTERN.test(words) && (amounts.length > 0 || !detail);
+}
+
+/** Section close, et comment on le sait. */
+type ClosedSection = {
+  section: DraftSection;
+  /** Close avant la page courante, dont l'en-tête rappelle pourtant le compte. */
+  echo: boolean;
+};
+
+/**
+ * Après le solde final d'un compte, rien du tableau ne doit revenir avant le
+ * compte suivant. Une opération, un total ou un solde qui reparaît signale
+ * une mise en page inconnue, ou deux relevés du même compte collés dans un
+ * seul PDF : lus en silence, ils disparaissaient de l'import.
+ */
+function assertStaysClosed(closed: ClosedSection, line: PdfLine, columns: Columns, page: number) {
+  const text = normalize(line.text);
+  const first = line.words[0];
+  const dated =
+    first !== undefined && first.x0 < columns.valueDateX - 2 && parseDate(first.text) !== null;
+  if (!dated && !BALANCE_PATTERN.test(text) && !TOTAL_PATTERN.test(text)) return;
+  if (closed.echo) {
+    throw new BankStatementError(
+      "unreadable",
+      `Ce PDF contient plusieurs relevés ${sectionName(closed.section)} : importez chaque relevé séparément.`,
+    );
+  }
+  throw new BankStatementError(
+    "unreadable",
+    `Des opérations suivent le solde final ${sectionName(closed.section)} (page ${page}) : la mise en page est inattendue.`,
+  );
 }
 
 function requireAmount(line: DraftLine | null, section: DraftSection) {
@@ -522,6 +589,14 @@ function readSections(doc: PdfText): DraftSection[] {
   let lastLine: DraftLine | null = null;
   // Dans un encadré hors opérations (voir SKIP_BLOCK_PATTERN), d'une page à l'autre.
   let skipping = false;
+  // Dernière section close, tant qu'aucun autre compte ne s'ouvre.
+  let closed: ClosedSection | null = null;
+  // Section à qui revient un IBAN imprimé hors du tableau : celle du dernier
+  // compte annoncé, jusqu'au suivant.
+  let ibanOwner: DraftSection | null = null;
+  const takeIban = (line: PdfLine) => {
+    if (ibanOwner && ibanOwner.iban === null) ibanOwner.iban = findIban([line]);
+  };
 
   for (const page of doc.pages) {
     let headerSeen = false;
@@ -549,9 +624,20 @@ function readSections(doc: PdfText): DraftSection[] {
           );
           if (known) {
             current = known.closing === null ? known : null;
+            closed = known.closing === null ? null : { section: known, echo: true };
+            ibanOwner = known;
           } else {
-            current = { ...account, opening: null, closing: null, totals: null, lines: [] };
+            current = {
+              ...account,
+              opening: null,
+              closing: null,
+              totals: null,
+              iban: null,
+              lines: [],
+            };
             sections.push(current);
+            closed = null;
+            ibanOwner = current;
           }
           lastLine = null;
         }
@@ -570,7 +656,12 @@ function readSections(doc: PdfText): DraftSection[] {
         continue;
       }
 
-      if (!current || skipping) continue;
+      if (skipping) continue;
+      if (!current) {
+        if (closed) assertStaysClosed(closed, line, columns ?? FALLBACK_COLUMNS, page.page);
+        takeIban(line);
+        continue;
+      }
 
       // Page de suite sans en-tête (ou avant celui du compte suivant) : le
       // tableau reprend à sa première ligne reconnaissable, avec les colonnes
@@ -586,20 +677,34 @@ function readSections(doc: PdfText): DraftSection[] {
             BALANCE_PATTERN.test(text) ||
             TOTAL_PATTERN.test(text) ||
             CARRY_PATTERN.test(text));
-        if (!resumes) continue;
+        if (!resumes) {
+          // Ligne du titulaire, pied de page… : l'IBAN du compte y figure parfois.
+          takeIban(line);
+          continue;
+        }
         tableActive = true;
         lastTableY = line.y;
       }
 
-      if (PAGE_END_PATTERN.test(text)) {
+      const cols = columns ?? FALLBACK_COLUMNS;
+      const where = `(${sectionName(current)}, page ${page.page})`;
+      // Ligne de détail possible : alignée sous le libellé, juste après la
+      // ligne précédente — ou juste sous l'en-tête répété quand le libellé
+      // déborde sur la page suivante. Un motif libre (« SOLDE AU 31/05/2026 »,
+      // « IBAN : FR76… ») y reste un détail, pas un solde ni un pied de page.
+      const maxGap = Math.max(14, cols.fontSize * 2.6);
+      const isDetail =
+        lastLine !== null &&
+        Math.abs(line.x0 - (cols.labelX + lastLine.labelOffset)) <= 6 &&
+        line.y - lastTableY <= maxGap;
+
+      if (PAGE_END_PATTERN.test(text) || (!isDetail && IBAN_LINE_PATTERN.test(text))) {
         tableActive = false;
+        takeIban(line);
         continue;
       }
 
-      const cols = columns ?? FALLBACK_COLUMNS;
-      const where = `(${sectionName(current)}, page ${page.page})`;
-
-      const balance = text.match(BALANCE_PATTERN);
+      const balance = isDetail ? null : text.match(BALANCE_PATTERN);
       if (balance) {
         const date = parseDate(balance[2]);
         const { amounts } = splitAmounts(line.words, cols, where);
@@ -615,6 +720,7 @@ function readSections(doc: PdfText): DraftSection[] {
           requireAmount(lastLine, current);
           current.closing = { cents, date };
           // Solde final : la section est close, la suite de la page est hors tableau.
+          closed = { section: current, echo: false };
           current = null;
           lastLine = null;
           tableActive = false;
@@ -640,7 +746,7 @@ function readSections(doc: PdfText): DraftSection[] {
         continue;
       }
 
-      if (CARRY_PATTERN.test(text)) {
+      if (isCarry(line, cols, where, isDetail)) {
         // Report de haut de page : le libellé de la dernière opération peut
         // encore se poursuivre juste en dessous, on ne la clôt pas.
         lastTableY = line.y;
@@ -682,17 +788,11 @@ function readSections(doc: PdfText): DraftSection[] {
         continue;
       }
 
-      // Ligne de détail : alignée sous le libellé, juste après la ligne
-      // précédente — ou juste sous l'en-tête répété quand le libellé déborde
-      // sur la page suivante. Tout autre texte marque la fin du tableau sur
-      // cette page.
-      const maxGap = Math.max(14, cols.fontSize * 2.6);
-      const isDetail =
-        lastLine !== null &&
-        Math.abs(line.x0 - (cols.labelX + lastLine.labelOffset)) <= 6 &&
-        line.y - lastTableY <= maxGap;
+      // Ligne de détail. Tout autre texte marque la fin du tableau sur cette
+      // page.
       if (!isDetail || !lastLine) {
         tableActive = false;
+        takeIban(line);
         continue;
       }
       const { body, amounts } = splitAmounts(line.words, cols, where);
@@ -789,8 +889,20 @@ function checkSection(draft: DraftSection): BankStatementSection {
     closingDate: draft.closing.date,
     totalDebitCents: totals.debit,
     totalCreditCents: totals.credit,
+    iban: ibanOfAccount(draft.iban, draft.accountNumber),
     lines,
   };
+}
+
+/**
+ * Un IBAN français contient le numéro du compte (caractères 15 à 25) : on ne
+ * garde l'IBAN lu dans une section que s'il désigne bien ce compte, et pas un
+ * compte voisin dont le cadre serait imprimé au même endroit.
+ */
+function ibanOfAccount(iban: string | null, accountNumber: string): string | null {
+  if (!iban) return null;
+  if (!iban.startsWith("FR")) return iban;
+  return iban.slice(14, 25) === accountNumber.padStart(11, "0") ? iban : null;
 }
 
 /* ------------------------------------------------------------------------ */

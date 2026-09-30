@@ -106,7 +106,7 @@ export function AccountingManager({
   const [workspace, setWorkspace] = useState<
     "entries" | "accounts" | "categories"
   >("entries");
-  const [editor, setEditorState] = useState<
+  const [editor, setEditor] = useState<
     "new" | AccountingEntryView | null
   >(null);
   const [importing, setImportingState] = useState(false);
@@ -140,14 +140,12 @@ export function AccountingManager({
   );
 
   // Formulaire d'écriture et import partagent la même place au-dessus de la
-  // liste : ouvrir l'un referme l'autre.
-  function setEditor(next: "new" | AccountingEntryView | null) {
-    setEditorState(next);
-    if (next) setImportingState(false);
-  }
+  // liste. Ouvrir l'import referme le formulaire ; ouvrir le formulaire ne
+  // fait que masquer l'import, qui reste monté (voir plus bas) et réapparaît
+  // à la fermeture du formulaire.
   function setImporting(next: boolean) {
     setImportingState(next);
-    if (next) setEditorState(null);
+    if (next) setEditor(null);
   }
 
   const accountNames = useMemo(
@@ -159,6 +157,15 @@ export function AccountingManager({
       new Map(localCategories.map((category) => [category.id, category.name])),
     [localCategories],
   );
+  // Une catégorie supprimée (onglet Catégories) disparaît de la liste : le
+  // filtre qui la visait retombe sur « Toutes », sinon le sélecteur afficherait
+  // « Toutes les catégories » tout en filtrant encore sur elle.
+  const effectiveCategoryFilter =
+    categoryFilter === "all" ||
+    categoryFilter === "none" ||
+    localCategories.some((category) => category.id === categoryFilter)
+      ? categoryFilter
+      : "all";
   const activeCategoryCount = localCategories.filter(
     (category) => category.isActive,
   ).length;
@@ -192,15 +199,15 @@ export function AccountingManager({
         (!normalizedQuery || searchContent.includes(normalizedQuery)) &&
         (type === "all" || entry.type === type) &&
         (status === "all" || entry.status === status) &&
-        (categoryFilter === "all" ||
-          (categoryFilter === "none"
+        (effectiveCategoryFilter === "all" ||
+          (effectiveCategoryFilter === "none"
             ? !entry.categoryId
-            : entry.categoryId === categoryFilter))
+            : entry.categoryId === effectiveCategoryFilter))
       );
     });
   }, [
     accountNames,
-    categoryFilter,
+    effectiveCategoryFilter,
     categoryNames,
     entries,
     query,
@@ -383,18 +390,31 @@ export function AccountingManager({
           />
         </Card>
       )}
-
-      {importing && (
-        <BankStatementImport
-          accounts={accounts}
-          categories={localCategories}
-          events={events}
-          imports={imports}
-          onCategoryCreated={createdCategory}
-          onClose={() => setImporting(false)}
-        />
+        </>
       )}
 
+      {/*
+        L'import reste monté quand on passe aux onglets Comptes ou Catégories
+        (où la vérification invite à créer un compte ou une catégorie) ou
+        qu'on ouvre le formulaire d'écriture : il est seulement masqué. Le
+        démonter perdrait relevés, analyse et décisions, et même le résultat
+        d'un enregistrement en cours.
+      */}
+      {importing && (
+        <div hidden={workspace !== "entries" || Boolean(editor)}>
+          <BankStatementImport
+            accounts={accounts}
+            categories={localCategories}
+            events={events}
+            imports={imports}
+            onCategoryCreated={createdCategory}
+            onClose={() => setImporting(false)}
+          />
+        </div>
+      )}
+
+      {workspace === "entries" && (
+        <>
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative min-w-0 flex-1">
@@ -458,7 +478,7 @@ export function AccountingManager({
             </label>
             <Select
               id="accounting-category"
-              value={categoryFilter}
+              value={effectiveCategoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
               className="lg:w-48"
             >
@@ -491,7 +511,7 @@ export function AccountingManager({
               variant="outline"
               icon={FileUp}
               onClick={() => setImporting(true)}
-              aria-expanded={importing}
+              aria-expanded={importing && !editor}
               className="w-full lg:w-auto"
             >
               Importer un relevé

@@ -104,6 +104,14 @@ type LineChoice = {
 
 type OkStatement = Extract<AnalyzedStatement, { ok: true }>;
 
+/**
+ * Enregistrement refusé, affiché dans le pied de la vérification jusqu'à la
+ * prochaine tentative. `rerun` : l'analyse est périmée (import concurrent,
+ * écriture ajoutée…), la relancer règle le conflit ; sinon le trésorier
+ * corrige son choix dans l'écran.
+ */
+type Conflict = { message: string; rerun: boolean };
+
 /* ------------------------------------------------------------------------ */
 /* Dates et montants                                                         */
 /* ------------------------------------------------------------------------ */
@@ -137,6 +145,18 @@ function fileSize(bytes: number) {
 
 function plural(count: number, singular: string, pluralForm = `${singular}s`) {
   return `${count} ${count > 1 ? pluralForm : singular}`;
+}
+
+function hasActionableLine(section: AnalyzedSection) {
+  return section.lines.some((line) => line.state !== "already_imported");
+}
+
+/** Écritures candidates d'un doute, dans un ordre stable, pour comparer deux analyses. */
+function candidateKey(line: AnalyzedLine) {
+  return line.candidates
+    .map((candidate) => candidate.entryId)
+    .sort()
+    .join(",");
 }
 
 function isPdf(file: File) {
@@ -183,7 +203,7 @@ export function BankStatementImport({
   >({});
   const [choices, setChoices] = useState<Record<string, LineChoice>>({});
   const [entryStatus, setEntryStatus] = useState<"draft" | "posted">("draft");
-  const [conflict, setConflict] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
   const [result, setResult] = useState<BankImportCommitResult | null>(null);
   const [pendingUndo, setPendingUndo] = useState<BankImportSummary | null>(
     null,
@@ -305,14 +325,17 @@ export function BankStatementImport({
       toast("Un relevé n’a pas pu être envoyé : retirez-le ou réessayez.", "error");
       return;
     }
-    await analyze(uploaded, false);
+    // Retour depuis la vérification (« Changer les relevés ») : les choix
+    // déjà faits pour les opérations inchangées sont repris, comme après une
+    // analyse relancée.
+    await analyze(uploaded, analysis !== null);
   }
 
   /* ---- Analyse ---------------------------------------------------------- */
 
   async function analyze(
     selection: { fileUrl: string; fileName: string }[],
-    rerun: boolean,
+    keepPrevious: boolean,
   ) {
     if (!bank) return;
     setPhase("analyzing");
@@ -331,9 +354,9 @@ export function BankStatementImport({
       setAnalysis(next);
       setAnalyzedFiles(selection);
       setConflict(null);
-      initDecisions(next, rerun);
+      initDecisions(next, keepPrevious);
       setStep("review");
-      if (rerun) {
+      if (keepPrevious) {
         toast("Analyse relancée : vos choix ont été conservés quand c’était possible.");
         document.getElementById(HEADING_ID)?.focus();
       }
@@ -348,8 +371,8 @@ export function BankStatementImport({
   /**
    * Prépare les choix de chaque opération. Après une analyse relancée, on
    * garde ce que le trésorier avait déjà saisi (libellés, catégories…) pour
-   * les opérations qui n'ont pas changé ; un doute n'est gardé tranché que si
-   * ses écritures candidates sont toujours là.
+   * les opérations qui n'ont pas changé. `lineIndex` et `sectionAccounts`
+   * décrivent encore l'analyse précédente : l'état n'est remplacé qu'après.
    */
   function initDecisions(next: BankImportAnalysis, keepPrevious: boolean) {
     const knownCategories = new Set(
@@ -357,50 +380,88 @@ export function BankStatementImport({
     );
     const knownEvents = new Set(events.map((event) => event.id));
     const defaultCash = cashAccounts[0]?.id ?? "";
+    const previousChoices = choicesRef.current;
     const nextChoices: Record<string, LineChoice> = {};
     const nextAccounts: Record<string, string> = {};
-    for (const statement of next.statements) {
-      if (!statement.ok) continue;
-      for (const section of statement.sections) {
-        const previousAccount = keepPrevious
-          ? sectionAccounts[section.key]
-          : undefined;
-        const suggested =
-          section.suggestedAccountId &&
-          bankAccounts.some((a) => a.id === section.suggestedAccountId)
-            ? section.suggestedAccountId
-            : "";
-        nextAccounts[section.key] = previousAccount ?? suggested;
-        for (const line of section.lines) {
-          if (line.state === "already_imported") continue;
-          const previous = keepPrevious ? choices[line.fingerprint] : undefined;
-          const candidateIds = new Set(line.candidates.map((c) => c.entryId));
-          const keptDoubt =
-            previous && line.state === "doubt"
-              ? previous.doubt.startsWith("link:")
-                ? candidateIds.has(previous.doubt.slice(5))
-                  ? previous.doubt
-                  : ""
-                : previous.doubt
-              : "";
-          nextChoices[line.fingerprint] = {
-            include: previous?.include ?? true,
-            label: previous?.label ?? line.label,
-            categoryId:
-              previous?.categoryId ??
-              (line.suggestedCategoryId &&
-              knownCategories.has(line.suggestedCategoryId)
-                ? line.suggestedCategoryId
-                : ""),
-            eventId:
-              previous?.eventId ??
-              (line.suggestedEventId && knownEvents.has(line.suggestedEventId)
-                ? line.suggestedEventId
-                : ""),
-            cashAccountId: previous?.cashAccountId ?? defaultCash,
-            doubt: keptDoubt,
-          };
+    const sections = next.statements.flatMap((statement) =>
+      statement.ok ? statement.sections : [],
+    );
+    // Un compte sans numéro proposé « par son nom » ou « seul compte sans
+    // numéro » ne peut l'être que pour un numéro de relevé par envoi : le
+    // serveur lui attache ce numéro et refuserait le suivant. Les sections qui
+    // ont quelque chose à importer passent d'abord ; les autres ne sont pas
+    // envoyées (voir `buildRequest`).
+    const claimed = new Map<string, string>();
+    const ordered = [
+      ...sections.filter(hasActionableLine),
+      ...sections.filter((section) => !hasActionableLine(section)),
+    ];
+    for (const section of ordered) {
+      const previousAccount = keepPrevious
+        ? sectionAccounts[section.key]
+        : undefined;
+      let suggested =
+        section.suggestedAccountId &&
+        bankAccounts.some((a) => a.id === section.suggestedAccountId)
+          ? section.suggestedAccountId
+          : "";
+      if (
+        suggested &&
+        (section.accountMatch === "single" || section.accountMatch === "name")
+      ) {
+        const number = claimed.get(suggested);
+        if (number !== undefined && number !== section.accountNumber) {
+          suggested = "";
         }
+      }
+      const value = previousAccount ?? suggested;
+      nextAccounts[section.key] = value;
+      if (
+        hasActionableLine(section) &&
+        value &&
+        value !== SKIP_SECTION &&
+        !accountById.get(value)?.bankAccountNumber &&
+        !claimed.has(value)
+      ) {
+        claimed.set(value, section.accountNumber);
+      }
+      for (const line of section.lines) {
+        if (line.state === "already_imported") continue;
+        const previous = keepPrevious
+          ? previousChoices[line.fingerprint]
+          : undefined;
+        const before = keepPrevious ? lineIndex.get(line.fingerprint) : undefined;
+        // Un doute tranché ne le reste que si la question n'a pas changé :
+        // même motif, mêmes écritures candidates. Une candidate apparue
+        // depuis n'a jamais été montrée au trésorier.
+        const sameDoubt =
+          line.state === "doubt" &&
+          before?.state === "doubt" &&
+          before.doubtReason === line.doubtReason &&
+          candidateKey(before) === candidateKey(line);
+        // Écartée ou rattachée à la main, puis redevenue « nouvelle » (sa
+        // candidate a disparu entre-temps) : elle reste écartée. Un refus
+        // explicite ne devient jamais un import.
+        const refused =
+          previous?.doubt === "skip" || previous?.doubt.startsWith("link:");
+        nextChoices[line.fingerprint] = {
+          include:
+            line.state === "new" && refused ? false : (previous?.include ?? true),
+          label: previous?.label ?? line.label,
+          categoryId:
+            previous?.categoryId ??
+            (line.suggestedCategoryId &&
+            knownCategories.has(line.suggestedCategoryId)
+              ? line.suggestedCategoryId
+              : ""),
+          eventId:
+            previous?.eventId ??
+            (line.suggestedEventId && knownEvents.has(line.suggestedEventId)
+              ? line.suggestedEventId
+              : ""),
+          cashAccountId: previous?.cashAccountId ?? defaultCash,
+          doubt: previous && sameDoubt ? previous.doubt : "",
+        };
       }
     }
     setSectionAccounts(nextAccounts);
@@ -482,6 +543,23 @@ export function BankStatementImport({
 
   /* ---- Bilan de la vérification ---------------------------------------- */
 
+  // Relevés refusés par la dernière analyse (autre banque, illisible…) : la
+  // liste des fichiers les signale, pour qu'on sache lequel retirer.
+  const rejectedFiles = useMemo(
+    () =>
+      new Map(
+        (analysis?.statements ?? []).flatMap((statement) =>
+          statement.ok ? [] : [[statement.fileUrl, statement.error] as const],
+        ),
+      ),
+    [analysis],
+  );
+
+  const batchClaims = useMemo(
+    () => claimsOf(okStatements, sectionAccounts, accountById),
+    [accountById, okStatements, sectionAccounts],
+  );
+
   const summary = useMemo(() => {
     let toImport = 0;
     let toLink = 0;
@@ -491,7 +569,13 @@ export function BankStatementImport({
     let missingAccount = 0;
     let accountConflict = 0;
     let firstDoubt: string | null = null;
-    let firstMissingSection: string | null = null;
+    let firstSectionIssue: string | null = null;
+    // Une écriture existante ne se rattache qu'à une opération (le serveur
+    // refuse sinon l'envoi entier) : les lignes qui reprennent une écriture
+    // déjà choisie plus haut sont signalées.
+    const linkedBy = new Map<string, string>();
+    const duplicateLinks = new Set<string>();
+    let firstDuplicateLink: { fingerprint: string; label: string } | null = null;
     for (const statement of okStatements) {
       for (const section of statement.sections) {
         const choice = sectionAccounts[section.key] ?? "";
@@ -502,10 +586,13 @@ export function BankStatementImport({
         if (choice === SKIP_SECTION || actionable.length === 0) continue;
         if (!choice) {
           missingAccount += 1;
-          firstMissingSection ??= section.key;
+          firstSectionIssue ??= section.key;
           continue;
         }
-        if (accountProblem(section, choice, accounts)) accountConflict += 1;
+        if (accountProblem(section, choice, accounts, batchClaims)) {
+          accountConflict += 1;
+          firstSectionIssue ??= section.key;
+        }
         for (const line of actionable) {
           const decision = choices[line.fingerprint];
           if (!decision) continue;
@@ -515,7 +602,21 @@ export function BankStatementImport({
               firstDoubt ??= line.fingerprint;
             } else if (decision.doubt === "import") toImport += 1;
             else if (decision.doubt === "skip") toSkip += 1;
-            else toLink += 1;
+            else {
+              toLink += 1;
+              const entryId = decision.doubt.slice(5);
+              if (linkedBy.has(entryId)) {
+                duplicateLinks.add(line.fingerprint);
+                firstDuplicateLink ??= {
+                  fingerprint: line.fingerprint,
+                  label:
+                    line.candidates.find((c) => c.entryId === entryId)?.label ??
+                    line.label,
+                };
+              } else {
+                linkedBy.set(entryId, line.fingerprint);
+              }
+            }
           } else if (decision.include) toImport += 1;
           else toSkip += 1;
         }
@@ -530,20 +631,24 @@ export function BankStatementImport({
       missingAccount,
       accountConflict,
       firstDoubt,
-      firstMissingSection,
+      firstSectionIssue,
+      duplicateLinks,
+      firstDuplicateLink,
     };
-  }, [accounts, choices, okStatements, sectionAccounts]);
+  }, [accounts, batchClaims, choices, okStatements, sectionAccounts]);
 
   const blocker =
     summary.missingAccount > 0
       ? "Choisissez le compte de destination de chaque relevé, ou « Ne pas importer ce compte »."
       : summary.accountConflict > 0
-        ? "Un compte choisi est rattaché à un autre numéro : choisissez le bon compte."
+        ? "Un compte choisi ne convient pas à ce relevé (voir sous « Compte de destination ») : choisissez-en un autre, ou « Ne pas importer ce compte »."
         : summary.unresolved > 0
           ? `Tranchez ${summary.unresolved > 1 ? `les ${summary.unresolved} doublons possibles` : "le doublon possible"} avant d’importer.`
-          : summary.toImport + summary.toLink + summary.toSkip === 0
-            ? "Rien à enregistrer : tout est déjà importé ou laissé de côté."
-            : null;
+          : summary.firstDuplicateLink
+            ? `L’écriture « ${summary.firstDuplicateLink.label} » est choisie pour deux opérations : une écriture ne se rattache qu’à une seule.`
+            : summary.toImport + summary.toLink + summary.toSkip === 0
+              ? "Rien à enregistrer : tout est déjà importé ou laissé de côté."
+              : null;
 
   /* ---- Enregistrement --------------------------------------------------- */
 
@@ -555,7 +660,13 @@ export function BankStatementImport({
       fileName: statement.fileName,
       sections: statement.sections.map((section) => {
         const choice = sectionAccounts[section.key] ?? "";
-        const accountId = choice && choice !== SKIP_SECTION ? choice : null;
+        // Une section sans rien à importer (tout déjà importé) n'envoie pas
+        // de compte : le serveur y vérifierait, voire y attacherait, un
+        // numéro que le trésorier ne voit pas et ne peut pas changer.
+        const accountId =
+          choice && choice !== SKIP_SECTION && hasActionableLine(section)
+            ? choice
+            : null;
         if (accountId) {
           for (const line of section.lines) {
             if (line.state === "already_imported") continue;
@@ -627,14 +738,16 @@ export function BankStatementImport({
       router.refresh();
     } catch (error) {
       const message = (error as Error).message;
-      // Un conflit (analyse périmée, import concurrent, numéro de compte
-      // déjà pris) se règle en relançant l'analyse : on le garde affiché
-      // avec le bouton, plutôt qu'un toast qui s'efface.
-      if (
-        (error instanceof ApiError && error.status === 409) ||
-        /relancez l’analyse/i.test(message)
-      ) {
-        setConflict(message);
+      // Un conflit reste affiché dans le pied, sous le bouton qu'on vient de
+      // presser, plutôt qu'un toast qui s'efface. Seule une analyse périmée
+      // (le serveur dit « relancez l'analyse ») se règle en la relançant :
+      // un numéro de compte déjà pris se corrige dans l'écran, et relancer
+      // bouclerait sur la même erreur. On recharge alors les comptes, pour
+      // que les vérifications de l'écran voient ce qui a changé.
+      const rerun = /relancez l’analyse/i.test(message);
+      if ((error instanceof ApiError && error.status === 409) || rerun) {
+        setConflict({ message, rerun });
+        if (!rerun) router.refresh();
       } else {
         toast(message, "error");
       }
@@ -651,10 +764,21 @@ export function BankStatementImport({
     fieldset?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
   }
 
-  function focusFirstMissingSection() {
-    if (!summary.firstMissingSection) return;
+  function focusFirstDuplicateLink() {
+    if (!summary.firstDuplicateLink) return;
+    const fieldset = document.getElementById(
+      `doubt-${summary.firstDuplicateLink.fingerprint}`,
+    );
+    fieldset?.scrollIntoView({ behavior: "smooth", block: "center" });
+    fieldset
+      ?.querySelector<HTMLInputElement>("input:checked")
+      ?.focus({ preventScroll: true });
+  }
+
+  function focusFirstSectionIssue() {
+    if (!summary.firstSectionIssue) return;
     const select = document.getElementById(
-      `section-account-${summary.firstMissingSection}`,
+      `section-account-${summary.firstSectionIssue}`,
     );
     select?.scrollIntoView({ behavior: "smooth", block: "center" });
     select?.focus({ preventScroll: true });
@@ -680,7 +804,11 @@ export function BankStatementImport({
       await api(`/api/accounting/bank-imports/${pendingUndo.id}`, {
         method: "DELETE",
       });
-      toast("Import annulé : ses brouillons ont été supprimés.");
+      toast(
+        pendingUndo.importedCount > 0
+          ? "Import annulé : ses brouillons ont été supprimés."
+          : "Import annulé : ses opérations pourront être réimportées.",
+      );
       setPendingUndo(null);
       router.refresh();
     } catch (error) {
@@ -731,6 +859,7 @@ export function BankStatementImport({
         {step === "files" && bank && (
           <FilesStep
             files={files}
+            rejected={rejectedFiles}
             errors={fileErrors}
             busy={busy}
             progress={progress}
@@ -771,75 +900,62 @@ export function BankStatementImport({
               </Button>
             </div>
 
-            {conflict && (
-              <div
-                role="alert"
-                className="flex flex-col gap-3 rounded-xl border-2 border-coral-200 bg-coral-50 p-4 sm:flex-row sm:items-center"
-              >
-                <TriangleAlert
-                  className="h-5 w-5 shrink-0 text-coral-700"
-                  aria-hidden="true"
-                />
-                <p className="flex-1 text-sm font-semibold text-coral-800">
-                  {conflict}
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  icon={RefreshCw}
-                  loading={phase === "analyzing"}
-                  disabled={busy}
-                  onClick={() => void analyze(analyzedFiles, true)}
-                >
-                  Relancer l’analyse
-                </Button>
-              </div>
-            )}
-
-            {analysis.statements.map((statement) =>
-              statement.ok ? (
-                <StatementBlock
-                  key={statement.fileSha256}
-                  statement={statement}
-                  bankAccounts={bankAccounts}
-                  accounts={accounts}
-                  accountById={accountById}
-                  sectionAccounts={sectionAccounts}
-                  onSectionAccount={(key, value) =>
-                    setSectionAccounts((current) => ({ ...current, [key]: value }))
-                  }
-                  choices={choices}
-                  categories={categories}
-                  events={events}
-                  cashAccounts={cashAccounts}
-                  onLineChange={updateLine}
-                  onLineCategory={setLineCategory}
-                  onCategoryCreated={onCategoryCreated}
-                />
-              ) : (
-                <div
-                  key={statement.fileUrl}
-                  className="flex items-start gap-3 rounded-2xl border-2 border-coral-200 bg-coral-50 p-4"
-                >
-                  <CircleAlert
-                    className="mt-0.5 h-5 w-5 shrink-0 text-coral-700"
-                    aria-hidden="true"
+            {/*
+              Champs désactivés pendant une analyse ou un enregistrement :
+              une modification faite pendant la requête serait écrasée par
+              son résultat, ou absente de ce qui est enregistré.
+            */}
+            <fieldset disabled={busy} className="min-w-0 space-y-6">
+              {analysis.statements.map((statement) =>
+                statement.ok ? (
+                  <StatementBlock
+                    key={statement.fileSha256}
+                    statement={statement}
+                    bankAccounts={bankAccounts}
+                    accounts={accounts}
+                    accountById={accountById}
+                    sectionAccounts={sectionAccounts}
+                    batchClaims={batchClaims}
+                    duplicateLinks={summary.duplicateLinks}
+                    onSectionAccount={(key, value) => {
+                      setSectionAccounts((current) => ({ ...current, [key]: value }));
+                      // Un refus lié au compte choisi (numéro déjà pris…)
+                      // ne vaut plus une fois le compte changé.
+                      setConflict((current) => (current?.rerun ? current : null));
+                    }}
+                    choices={choices}
+                    categories={categories}
+                    events={events}
+                    cashAccounts={cashAccounts}
+                    onLineChange={updateLine}
+                    onLineCategory={setLineCategory}
+                    onCategoryCreated={onCategoryCreated}
                   />
-                  <div className="min-w-0">
-                    <p className="break-words font-bold text-coral-900">
-                      {statement.fileName}
-                    </p>
-                    <p className="mt-1 text-sm text-coral-800">
-                      {statement.error}
-                    </p>
-                    <p className="mt-1 text-xs text-coral-700">
-                      Ce fichier est laissé de côté ; les autres relevés
-                      peuvent être importés.
-                    </p>
+                ) : (
+                  <div
+                    key={statement.fileUrl}
+                    className="flex items-start gap-3 rounded-2xl border-2 border-coral-200 bg-coral-50 p-4"
+                  >
+                    <CircleAlert
+                      className="mt-0.5 h-5 w-5 shrink-0 text-coral-700"
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <p className="break-words font-bold text-coral-900">
+                        {statement.fileName}
+                      </p>
+                      <p className="mt-1 text-sm text-coral-800">
+                        {statement.error}
+                      </p>
+                      <p className="mt-1 text-xs text-coral-700">
+                        Ce fichier est laissé de côté ; les autres relevés
+                        peuvent être importés.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ),
-            )}
+                ),
+              )}
+            </fieldset>
 
             {okStatements.length > 0 ? (
               <ReviewFooter
@@ -850,9 +966,13 @@ export function BankStatementImport({
                 busy={busy}
                 committing={phase === "committing"}
                 progress={progress}
+                conflict={conflict}
+                analyzing={phase === "analyzing"}
+                onRerun={() => void analyze(analyzedFiles, true)}
                 onCommit={() => void commit()}
                 onShowDoubt={focusFirstDoubt}
-                onShowSection={focusFirstMissingSection}
+                onShowSection={focusFirstSectionIssue}
+                onShowDuplicateLink={focusFirstDuplicateLink}
               />
             ) : (
               <div className="flex justify-end">
@@ -887,9 +1007,7 @@ export function BankStatementImport({
         open={Boolean(pendingUndo)}
         title="Annuler cet import ?"
         description={
-          pendingUndo
-            ? `${plural(pendingUndo.importedCount, "brouillon créé", "brouillons créés")} par l’import du relevé ${pendingUndo.statementDate ? `du ${frDay(pendingUndo.statementDate)}` : `du ${frDay(pendingUndo.periodStart)} au ${frDay(pendingUndo.periodEnd)}`} ${pendingUndo.importedCount > 1 ? "seront supprimés" : "sera supprimé"}, et ses opérations pourront être réimportées. Les écritures existantes qui lui avaient été rattachées ne sont pas modifiées.`
-            : ""
+          pendingUndo ? undoDescription(pendingUndo) : ""
         }
         confirmLabel="Annuler l’import"
         loading={undoing}
@@ -900,11 +1018,63 @@ export function BankStatementImport({
   );
 }
 
+function undoDescription(summary: BankImportSummary) {
+  const statement = summary.statementDate
+    ? `du ${frDay(summary.statementDate)}`
+    : `du ${frDay(summary.periodStart)} au ${frDay(summary.periodEnd)}`;
+  // Un import qui n'a fait que rattacher ou écarter des opérations n'a créé
+  // aucun brouillon : « 0 brouillon sera supprimé » ne voudrait rien dire.
+  if (summary.importedCount === 0) {
+    return `L’import du relevé ${statement} n’a créé aucune écriture : ses décisions (opérations rattachées ou écartées) seront effacées, et ses opérations pourront être réimportées. Les écritures existantes qui lui avaient été rattachées ne sont pas modifiées.`;
+  }
+  return `${plural(summary.importedCount, "brouillon créé", "brouillons créés")} par l’import du relevé ${statement} ${summary.importedCount > 1 ? "seront supprimés" : "sera supprimé"}, et ses opérations pourront être réimportées. Les écritures existantes qui lui avaient été rattachées ne sont pas modifiées.`;
+}
+
+/**
+ * Numéros que recevraient les comptes choisis dans cet envoi : pour chaque
+ * compte, son numéro connu ou celui du premier relevé qui le choisit ; pour
+ * chaque numéro, le premier compte choisi. Le serveur refuse qu'un compte
+ * reçoive deux numéros, ou un numéro deux comptes. Seules comptent les
+ * sections réellement envoyées (voir `buildRequest`).
+ */
+type BatchClaims = {
+  numberOf: Map<string, string>;
+  ownerOf: Map<string, string>;
+};
+
+function claimsOf(
+  statements: OkStatement[],
+  sectionAccounts: Record<string, string>,
+  accountById: Map<string, FinancialAccountView>,
+): BatchClaims {
+  const numberOf = new Map<string, string>();
+  const ownerOf = new Map<string, string>();
+  for (const statement of statements) {
+    for (const section of statement.sections) {
+      const choice = sectionAccounts[section.key] ?? "";
+      if (!choice || choice === SKIP_SECTION || !hasActionableLine(section)) {
+        continue;
+      }
+      if (!numberOf.has(choice)) {
+        numberOf.set(
+          choice,
+          accountById.get(choice)?.bankAccountNumber ?? section.accountNumber,
+        );
+      }
+      if (!ownerOf.has(section.accountNumber)) {
+        ownerOf.set(section.accountNumber, choice);
+      }
+    }
+  }
+  return { numberOf, ownerOf };
+}
+
 /** Problème de rattachement du compte choisi au numéro du relevé. */
 function accountProblem(
   section: AnalyzedSection,
   accountId: string,
   accounts: FinancialAccountView[],
+  claims: BatchClaims,
 ): string | null {
   const chosen = accounts.find((account) => account.id === accountId);
   if (!chosen) return null;
@@ -921,6 +1091,15 @@ function accountProblem(
   );
   if (owner) {
     return `Le n° ${section.accountNumber} est déjà rattaché à « ${owner.name} ».`;
+  }
+  const claimedNumber = claims.numberOf.get(accountId);
+  if (claimedNumber && claimedNumber !== section.accountNumber) {
+    return `Ce compte est déjà choisi pour le n° ${claimedNumber} dans cet envoi : un compte ne reçoit les relevés que d’un seul numéro.`;
+  }
+  const claimedBy = claims.ownerOf.get(section.accountNumber);
+  if (claimedBy && claimedBy !== accountId) {
+    const name = accounts.find((account) => account.id === claimedBy)?.name;
+    return `Le n° ${section.accountNumber} est déjà envoyé sur « ${name ?? "un autre compte"} » dans cet envoi.`;
   }
   return null;
 }
@@ -949,7 +1128,7 @@ function Stepper({ step }: { step: Step }) {
           <li
             key={item.id}
             aria-current={active ? "step" : undefined}
-            className="flex min-w-0 items-center gap-2"
+            className="flex min-w-0 flex-col items-center gap-1 text-center sm:flex-row sm:gap-2 sm:text-left"
           >
             <span
               aria-hidden="true"
@@ -965,8 +1144,11 @@ function Stepper({ step }: { step: Step }) {
               {done ? <Check className="h-3.5 w-3.5" /> : index + 1}
             </span>
             <span
+              // Sur téléphone, le libellé passe sous la pastille : à côté, il
+              // ne restait qu'une soixantaine de pixels et « Vérification »
+              // était tronqué.
               className={cn(
-                "truncate text-sm",
+                "max-w-full text-xs sm:truncate sm:text-sm",
                 active ? "font-bold text-slate-950" : "font-medium text-slate-500",
               )}
             >
@@ -1025,7 +1207,7 @@ function BankStep({
               className="sr-only"
             />
             <span className="flex h-14 items-center rounded-xl bg-white px-3 ring-1 ring-slate-200">
-              <CreditMutuelLogo className="h-7 w-auto max-w-full" />
+              <CreditMutuelLogo className="h-7 w-auto max-w-full" decorative />
             </span>
             <span>
               <span className="block font-bold text-slate-950">{info.label}</span>
@@ -1075,6 +1257,7 @@ function BankStep({
 
 function FilesStep({
   files,
+  rejected,
   errors,
   busy,
   progress,
@@ -1084,6 +1267,7 @@ function FilesStep({
   onAnalyze,
 }: {
   files: SelectedFile[];
+  rejected: Map<string, string>;
   errors: string[];
   busy: boolean;
   progress: string;
@@ -1099,7 +1283,7 @@ function FilesStep({
     <div className="space-y-5">
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white ring-1 ring-slate-200">
-          <CreditMutuelEmblem className="h-6 w-6" />
+          <CreditMutuelEmblem className="h-6 w-6" decorative />
         </span>
         <div>
           <h3
@@ -1179,60 +1363,71 @@ function FilesStep({
 
       {files.length > 0 && (
         <ul aria-label="Relevés choisis" className="space-y-2">
-          {files.map((item) => (
-            <li
-              key={item.key}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border-2 bg-white px-3 py-2.5",
-                item.status === "error" ? "border-coral-200" : "border-slate-200",
-              )}
-            >
-              <FileText
-                className="h-5 w-5 shrink-0 text-slate-400"
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {item.file.name}
-                </p>
-                <p
-                  className={cn(
-                    "text-xs",
-                    item.status === "error" ? "text-coral-700" : "text-slate-500",
-                  )}
-                >
-                  {fileSize(item.file.size)} ·{" "}
-                  {item.status === "uploading"
-                    ? "envoi…"
-                    : item.status === "uploaded"
-                      ? "envoyé"
-                      : item.status === "error"
-                        ? item.error
-                        : "prêt"}
-                </p>
-              </div>
-              {item.status === "uploading" ? (
-                <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin text-brand-700"
-                  aria-hidden="true"
-                />
-              ) : item.status === "uploaded" ? (
-                <CircleCheck
-                  className="h-4 w-4 shrink-0 text-sea-600"
-                  aria-hidden="true"
-                />
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onRemove(item.key)}
-                disabled={busy}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-coral-50 hover:text-coral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
-                aria-label={`Retirer ${item.file.name}`}
+          {files.map((item) => {
+            const refusal = item.url ? rejected.get(item.url) : undefined;
+            const failed = item.status === "error" || refusal !== undefined;
+            return (
+              <li
+                key={item.key}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border-2 bg-white px-3 py-2.5",
+                  failed ? "border-coral-200" : "border-slate-200",
+                )}
               >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
+                <FileText
+                  className="h-5 w-5 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {item.file.name}
+                  </p>
+                  <p
+                    className={cn(
+                      "text-xs",
+                      failed ? "text-coral-700" : "text-slate-500",
+                    )}
+                  >
+                    {fileSize(item.file.size)} ·{" "}
+                    {refusal !== undefined
+                      ? `refusé à l’analyse : ${refusal}`
+                      : item.status === "uploading"
+                        ? "envoi…"
+                        : item.status === "uploaded"
+                          ? "envoyé"
+                          : item.status === "error"
+                            ? item.error
+                            : "prêt"}
+                  </p>
+                </div>
+                {refusal !== undefined ? (
+                  <CircleAlert
+                    className="h-4 w-4 shrink-0 text-coral-700"
+                    aria-hidden="true"
+                  />
+                ) : item.status === "uploading" ? (
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin text-brand-700"
+                    aria-hidden="true"
+                  />
+                ) : item.status === "uploaded" ? (
+                  <CircleCheck
+                    className="h-4 w-4 shrink-0 text-sea-600"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => onRemove(item.key)}
+                  disabled={busy}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-coral-50 hover:text-coral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+                  aria-label={`Retirer ${item.file.name}`}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -1286,6 +1481,8 @@ function StatementBlock({
   accounts,
   accountById,
   sectionAccounts,
+  batchClaims,
+  duplicateLinks,
   onSectionAccount,
   choices,
   categories,
@@ -1300,6 +1497,8 @@ function StatementBlock({
   accounts: FinancialAccountView[];
   accountById: Map<string, FinancialAccountView>;
   sectionAccounts: Record<string, string>;
+  batchClaims: BatchClaims;
+  duplicateLinks: Set<string>;
   onSectionAccount: (key: string, value: string) => void;
   choices: Record<string, LineChoice>;
   categories: AccountingCategoryView[];
@@ -1318,7 +1517,7 @@ function StatementBlock({
     >
       <header className="flex flex-col gap-3 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white ring-1 ring-slate-200">
-          <CreditMutuelEmblem className="h-7 w-7" />
+          <CreditMutuelEmblem className="h-7 w-7" decorative />
         </span>
         <div className="min-w-0 flex-1">
           <h4 className="font-bold text-slate-950">
@@ -1347,6 +1546,8 @@ function StatementBlock({
             accounts={accounts}
             accountById={accountById}
             accountChoice={sectionAccounts[section.key] ?? ""}
+            batchClaims={batchClaims}
+            duplicateLinks={duplicateLinks}
             onAccount={(value) => onSectionAccount(section.key, value)}
             choices={choices}
             categories={categories}
@@ -1369,6 +1570,8 @@ function SectionBlock({
   accounts,
   accountById,
   accountChoice,
+  batchClaims,
+  duplicateLinks,
   onAccount,
   choices,
   categories,
@@ -1384,6 +1587,8 @@ function SectionBlock({
   accounts: FinancialAccountView[];
   accountById: Map<string, FinancialAccountView>;
   accountChoice: string;
+  batchClaims: BatchClaims;
+  duplicateLinks: Set<string>;
   onAccount: (value: string) => void;
   choices: Record<string, LineChoice>;
   categories: AccountingCategoryView[];
@@ -1403,7 +1608,19 @@ function SectionBlock({
     accountChoice && accountChoice !== SKIP_SECTION
       ? accountById.get(accountChoice) ?? null
       : null;
-  const problem = chosen ? accountProblem(section, chosen.id, accounts) : null;
+  const problem = chosen
+    ? accountProblem(section, chosen.id, accounts, batchClaims)
+    : null;
+  // Proposition retirée par `initDecisions` : le compte est déjà proposé
+  // pour un autre numéro de cet envoi.
+  const claimedElsewhere =
+    !accountChoice && section.suggestedAccountId
+      ? batchClaims.numberOf.get(section.suggestedAccountId)
+      : undefined;
+  const suggestedName =
+    claimedElsewhere && claimedElsewhere !== section.accountNumber
+      ? accountById.get(section.suggestedAccountId ?? "")?.name
+      : undefined;
   const skipped = accountChoice === SKIP_SECTION;
   // Un compte archivé proposé par l'analyse reste affiché pour qu'on
   // comprenne le choix, même s'il ne peut pas recevoir l'import.
@@ -1507,6 +1724,12 @@ function SectionBlock({
                   Aucun compte bancaire actif : créez-le dans l’onglet
                   « Comptes ».
                 </p>
+              ) : suggestedName ? (
+                <p className="font-semibold text-amber-700">
+                  « {suggestedName} » reçoit déjà le n° {claimedElsewhere} :
+                  choisissez un autre compte (ou créez-le dans l’onglet
+                  « Comptes »), ou laissez ce compte de côté.
+                </p>
               ) : (
                 <p className="font-semibold text-amber-700">
                   Choisissez le compte sur lequel passer ces opérations.
@@ -1543,6 +1766,7 @@ function SectionBlock({
                 key={line.fingerprint}
                 line={line}
                 choice={choices[line.fingerprint]}
+                linkTaken={duplicateLinks.has(line.fingerprint)}
                 categories={categories}
                 events={events}
                 cashAccounts={cashAccounts}
@@ -1621,6 +1845,7 @@ function AlreadyImportedRow({ line }: { line: AnalyzedLine }) {
 const LineRow = memo(function LineRow({
   line,
   choice,
+  linkTaken,
   categories,
   events,
   cashAccounts,
@@ -1630,6 +1855,7 @@ const LineRow = memo(function LineRow({
 }: {
   line: AnalyzedLine;
   choice: LineChoice | undefined;
+  linkTaken: boolean;
   categories: AccountingCategoryView[];
   events: AccountingEventView[];
   cashAccounts: FinancialAccountView[];
@@ -1720,7 +1946,12 @@ const LineRow = memo(function LineRow({
           )}
 
           {isDoubt && (
-            <DoubtChoice line={line} choice={choice} onChange={onChange} />
+            <DoubtChoice
+              line={line}
+              choice={choice}
+              linkTaken={linkTaken}
+              onChange={onChange}
+            />
           )}
 
           {importing && (
@@ -1799,10 +2030,13 @@ function candidateSummary(candidate: AnalyzedLine["candidates"][number]) {
 function DoubtChoice({
   line,
   choice,
+  linkTaken,
   onChange,
 }: {
   line: AnalyzedLine;
   choice: LineChoice;
+  /** L'écriture choisie est déjà rattachée à une autre opération de l'envoi. */
+  linkTaken: boolean;
   onChange: (fingerprint: string, patch: Partial<LineChoice>) => void;
 }) {
   const fp = line.fingerprint;
@@ -1879,6 +2113,14 @@ function DoubtChoice({
           );
         })}
       </div>
+      {linkTaken && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs font-semibold text-coral-700">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Cette écriture est déjà rattachée à une autre opération de l’envoi,
+          et une écriture ne correspond qu’à une seule opération : choisissez
+          une autre réponse.
+        </p>
+      )}
     </fieldset>
   );
 }
@@ -1964,6 +2206,45 @@ function CashMovement({
   );
 }
 
+const STATUS_OPTIONS = [
+  ["draft", "Brouillons (à vérifier)"],
+  ["posted", "Validées"],
+] as const;
+
+function StatusChoice({
+  name,
+  status,
+  onStatus,
+  className,
+}: {
+  name: string;
+  status: "draft" | "posted";
+  onStatus: (status: "draft" | "posted") => void;
+  className?: string;
+}) {
+  return (
+    <fieldset className={cn("flex-wrap items-center gap-x-4 gap-y-1", className)}>
+      <legend className="sr-only">Statut des écritures créées</legend>
+      <span aria-hidden="true" className="text-xs font-semibold text-slate-500">
+        Écritures créées :
+      </span>
+      {STATUS_OPTIONS.map(([value, label]) => (
+        <label key={value} className="flex min-h-8 items-center gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name={name}
+            value={value}
+            checked={status === value}
+            onChange={() => onStatus(value)}
+            className="h-4 w-4 border-2 border-slate-300 accent-brand-700"
+          />
+          {label}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 function ReviewFooter({
   summary,
   blocker,
@@ -1972,9 +2253,13 @@ function ReviewFooter({
   busy,
   committing,
   progress,
+  conflict,
+  analyzing,
+  onRerun,
   onCommit,
   onShowDoubt,
   onShowSection,
+  onShowDuplicateLink,
 }: {
   summary: {
     toImport: number;
@@ -1983,6 +2268,8 @@ function ReviewFooter({
     already: number;
     unresolved: number;
     missingAccount: number;
+    accountConflict: number;
+    firstDuplicateLink: { fingerprint: string; label: string } | null;
   };
   blocker: string | null;
   status: "draft" | "posted";
@@ -1990,9 +2277,13 @@ function ReviewFooter({
   busy: boolean;
   committing: boolean;
   progress: string;
+  conflict: Conflict | null;
+  analyzing: boolean;
+  onRerun: () => void;
   onCommit: () => void;
   onShowDoubt: () => void;
   onShowSection: () => void;
+  onShowDuplicateLink: () => void;
 }) {
   const counters = [
     `${summary.toImport} à importer`,
@@ -2005,102 +2296,141 @@ function ReviewFooter({
       ? [plural(summary.unresolved, "doute à trancher", "doutes à trancher")]
       : []),
   ];
+  const sectionIssue = summary.missingAccount > 0 || summary.accountConflict > 0;
+  const help = committing
+    ? progress
+    : (blocker ??
+      (status === "draft"
+        ? "Les brouillons restent modifiables et l’import annulable."
+        : "Les écritures validées sont verrouillées : l’import ne pourra plus être annulé."));
   return (
-    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 rounded-b-[14px] border-t-2 border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 space-y-2">
-          <p
-            aria-live="polite"
-            className="text-sm font-bold text-slate-900"
+    <>
+      {/*
+        Sur téléphone, le choix du statut quitte le pied collant : empilé avec
+        les compteurs, le bouton et l'aide, il occupait un tiers de l'écran,
+        davantage clavier ouvert. Il reste juste au-dessus, dans le flux.
+      */}
+      <StatusChoice
+        name="bank-import-status-mobile"
+        status={status}
+        onStatus={onStatus}
+        className="flex rounded-xl bg-slate-50 px-3 py-2 sm:hidden"
+      />
+      {/*
+        `lg:-bottom-10` : dès `lg`, la page défile dans <main>, dont la marge
+        intérieure basse (py-10) décollait le pied du bas de l'écran, laissant
+        voir les opérations dessous.
+      */}
+      <div className="sticky bottom-0 z-10 -mx-5 -mb-5 rounded-b-[14px] border-t-2 border-slate-200 bg-white/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6 sm:py-4 lg:-bottom-10">
+        {conflict && (
+          // Dans le pied collant : visible sous le bouton qu'on vient de
+          // presser, même en bas d'un long relevé.
+          <div
+            role="alert"
+            className="mb-3 flex flex-col gap-2 rounded-xl border-2 border-coral-200 bg-coral-50 p-3 sm:flex-row sm:items-center"
           >
-            {counters.join(" · ")}
-          </p>
-          <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <legend className="sr-only">Statut des écritures créées</legend>
-            <span aria-hidden="true" className="text-xs font-semibold text-slate-500">
-              Écritures créées :
-            </span>
-            {(
-              [
-                ["draft", "Brouillons (à vérifier)"],
-                ["posted", "Validées"],
-              ] as const
-            ).map(([value, label]) => (
-              <label key={value} className="flex min-h-8 items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="radio"
-                  name="bank-import-status"
-                  value={value}
-                  checked={status === value}
-                  onChange={() => onStatus(value)}
-                  className="h-4 w-4 border-2 border-slate-300 accent-brand-700"
-                />
-                {label}
-              </label>
-            ))}
-          </fieldset>
-          {status === "posted" && (
-            <p className="text-xs font-medium text-amber-700">
-              Les écritures validées sont verrouillées : l’import ne pourra
-              plus être annulé.
+            <p className="flex flex-1 items-start gap-2 text-sm font-semibold text-coral-800">
+              <TriangleAlert
+                className="mt-0.5 h-4 w-4 shrink-0 text-coral-700"
+                aria-hidden="true"
+              />
+              {conflict.message}
             </p>
-          )}
-        </div>
-        <div className="flex flex-col items-stretch gap-1.5 lg:items-end">
-          <Button
-            type="button"
-            icon={Check}
-            loading={committing}
-            disabled={busy || Boolean(blocker)}
-            aria-describedby="bank-import-commit-help"
-            onClick={onCommit}
-          >
-            {summary.toImport > 0
-              ? `Importer ${plural(summary.toImport, "écriture")}`
-              : "Enregistrer les décisions"}
-          </Button>
-          <p
-            id="bank-import-commit-help"
-            role="status"
-            className={cn(
-              "text-xs lg:text-right",
-              blocker ? "font-semibold text-amber-700" : "text-slate-500",
+            {conflict.rerun && (
+              <Button
+                type="button"
+                size="sm"
+                icon={RefreshCw}
+                loading={analyzing}
+                disabled={busy}
+                onClick={onRerun}
+                className="shrink-0"
+              >
+                Relancer l’analyse
+              </Button>
             )}
-          >
-            {committing
-              ? progress
-              : blocker ??
-                (status === "draft"
-                  ? "Les brouillons restent modifiables et l’import annulable."
-                  : "Les écritures seront enregistrées comme validées.")}
-            {!committing && summary.missingAccount > 0 && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={onShowSection}
-                  className="font-bold text-brand-700 underline"
-                >
-                  Voir le relevé
-                </button>
-              </>
-            )}
-            {!committing && summary.missingAccount === 0 && summary.unresolved > 0 && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={onShowDoubt}
-                  className="font-bold text-brand-700 underline"
-                >
-                  Voir le premier doute
-                </button>
-              </>
-            )}
-          </p>
+          </div>
+        )}
+        <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <p aria-live="polite" className="text-sm font-bold text-slate-900">
+              {counters.join(" · ")}
+            </p>
+            <StatusChoice
+              name="bank-import-status"
+              status={status}
+              onStatus={onStatus}
+              className="hidden sm:flex"
+            />
+          </div>
+          <div className="flex flex-col items-stretch gap-1.5 lg:items-end">
+            <Button
+              type="button"
+              icon={Check}
+              loading={committing}
+              disabled={busy || Boolean(blocker)}
+              aria-describedby="bank-import-commit-help"
+              onClick={onCommit}
+            >
+              {summary.toImport > 0
+                ? `Importer ${plural(summary.toImport, "écriture")}`
+                : "Enregistrer les décisions"}
+            </Button>
+            <p
+              id="bank-import-commit-help"
+              role="status"
+              className={cn(
+                "text-xs lg:text-right",
+                blocker || (!committing && status === "posted")
+                  ? "font-semibold text-amber-700"
+                  : "text-slate-500",
+              )}
+            >
+              {help}
+              {!committing && sectionIssue && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={onShowSection}
+                    className="font-bold text-brand-700 underline"
+                  >
+                    Voir le relevé
+                  </button>
+                </>
+              )}
+              {!committing && !sectionIssue && summary.unresolved > 0 && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={onShowDoubt}
+                    className="font-bold text-brand-700 underline"
+                  >
+                    Voir le premier doute
+                  </button>
+                </>
+              )}
+              {!committing &&
+                !sectionIssue &&
+                summary.unresolved === 0 &&
+                summary.firstDuplicateLink && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={onShowDuplicateLink}
+                      className="font-bold text-brand-700 underline"
+                    >
+                      Voir l’opération
+                    </button>
+                  </>
+                )}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -2134,7 +2464,11 @@ function ResultStep({
           <p className="mt-1 text-sm text-sea-900">
             {plural(result.imported, "écriture créée", "écritures créées")}
             {result.imported > 0 &&
-              (status === "draft" ? " en brouillon" : " et validées")}
+              (status === "draft"
+                ? " en brouillon"
+                : result.imported > 1
+                  ? " et validées"
+                  : " et validée")}
             {result.linked > 0 &&
               `, ${plural(result.linked, "opération rattachée", "opérations rattachées")} à des écritures existantes`}
             {result.skipped > 0 &&
@@ -2181,7 +2515,7 @@ function PastImports({
           >
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white ring-1 ring-slate-200">
-                <CreditMutuelEmblem className="h-5 w-5" />
+                <CreditMutuelEmblem className="h-5 w-5" decorative />
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-900">

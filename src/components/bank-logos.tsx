@@ -6,20 +6,31 @@
  * et aurait besoin de `next/image` en mode non optimisé. Les tracés sont repris
  * tels quels du logo officiel, couleurs comprises : une marque ne se recolore
  * pas. Sur un fond sombre ou coloré, on pose le logo sur une pastille blanche.
+ *
+ * `decorative` : le logo accompagne un texte qui nomme déjà la banque (un
+ * libellé, un titre). Il est alors masqué aux lecteurs d'écran, qui sinon
+ * annonceraient « Crédit Mutuel » deux fois, ou devant chaque ligne.
  */
+
+type LogoProps = { className?: string; decorative?: boolean };
+
+function a11yProps(decorative: boolean | undefined) {
+  return decorative
+    ? ({ "aria-hidden": true } as const)
+    : ({ role: "img", "aria-label": "Crédit Mutuel" } as const);
+}
 
 /** Emblème (croix stylisée), commun au logo complet et à la pastille. */
 const EMBLEM_PATH =
   "m 114.14,19.41 -4.78,-8.29 a 5.19,5.19 0 0 1 -4.65,6.26 6.41,6.41 0 0 0 -5.13,-3 5.19,5.19 0 0 1 7.31,-6.64 5.66,5.66 0 0 1 0.88,0.64 L 102.94,0 h -7.26 l -4.79,8.29 a 5.18,5.18 0 0 1 7.74,0.9 6.42,6.42 0 0 0 0,5.95 5.18,5.18 0 0 1 -9.4,-3 4.83,4.83 0 0 1 0.11,-1.08 l -4.83,8.36 3.64,6.29 h 9.56 a 5.19,5.19 0 0 1 -3.09,-7.15 6.46,6.46 0 0 0 5.18,-2.94 5.19,5.19 0 0 1 2.1,9.65 5.85,5.85 0 0 1 -1,0.44 h 9.65 z";
 
 /** Logo complet Crédit Mutuel (mot-symbole et emblème), bleu #164194 et rouge #e30613. */
-export function CreditMutuelLogo({ className }: { className?: string }) {
+export function CreditMutuelLogo({ className, decorative }: LogoProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="-0.78717843 -0.78717843 209.57435686 27.81363786"
-      role="img"
-      aria-label="Crédit Mutuel"
+      {...a11yProps(decorative)}
       className={className}
     >
       <path
@@ -36,13 +47,12 @@ export function CreditMutuelLogo({ className }: { className?: string }) {
 }
 
 /** Emblème seul (la croix stylisée rouge), pour les pastilles et petites tailles. */
-export function CreditMutuelEmblem({ className }: { className?: string }) {
+export function CreditMutuelEmblem({ className, decorative }: LogoProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="83.51 -2.96 31.63 31.63"
-      role="img"
-      aria-label="Crédit Mutuel"
+      {...a11yProps(decorative)}
       className={className}
     >
       <path fill="#e30613" d={EMBLEM_PATH} />

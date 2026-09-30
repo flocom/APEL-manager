@@ -133,11 +133,15 @@ function nameOrNull(printed: string): string | null {
 }
 
 /** « VIR INST TRAILEURS SOLIDAIRES » → « TRAILEURS SOLIDAIRES ». */
-function afterTransferPrefix(label: string): string | null {
-  const rest = label
+function withoutTransferPrefix(label: string): string {
+  return label
     .replace(/^(?:VIREMENT|VIRT|VIR)\b\.?\s*/i, "")
     .replace(/^(?:(?:INST|SEPA|PERIOD\.?|PERM|RECU|DE)\b\.?\s*)+/i, "")
     .trim();
+}
+
+function afterTransferPrefix(label: string): string | null {
+  const rest = withoutTransferPrefix(label);
   return rest ? nameOrNull(rest) : null;
 }
 
@@ -288,8 +292,16 @@ function guess(texts: Texts, direction: Direction): Guess | null {
 
   // Virements.
   if (/^(?:VIREMENT|VIRT|VIR)\b/.test(label)) {
-    const everything = all.join(" ");
-    if (direction === "credit" && /HELLO ?ASSO/.test(everything)) {
+    // Le payeur : ce qui suit « VIR » dans le libellé, ou la première ligne
+    // de détail. Les plateformes ne se reconnaissent qu'à lui, ou à leur
+    // ligne de référence (« HELLOASSO 2963920 07012026 ») : le motif libre
+    // d'un parent (« COTISATION HORS HELLOASSO ») ne fait pas d'un virement
+    // un reversement.
+    const payers = [withoutTransferPrefix(label), details[0] ?? ""];
+    const helloAsso =
+      payers.some((payer) => /^HELLO ?ASSO/.test(payer)) ||
+      details.some((detail) => /^HELLO ?ASSO\s+\d{5,}\b/.test(detail));
+    if (direction === "credit" && helloAsso) {
       return {
         paymentMethod: "bank_transfer",
         natureKey: "online_payout",
@@ -299,7 +311,7 @@ function guess(texts: Texts, direction: Direction): Guess | null {
         reference: findIn(details, /\bHELLOASSO\s+(\d{5,})\b/) ?? transferReference(details),
       };
     }
-    if (direction === "credit" && /\bSUMUP\b/.test(everything)) {
+    if (direction === "credit" && payers.some((payer) => /^SUMUP\b/.test(payer))) {
       // Encaissements du terminal SumUp, reversés par virement.
       return {
         paymentMethod: "bank_transfer",

@@ -962,7 +962,18 @@ export const bankStatementLines = pgTable(
       t.fingerprint,
     ),
     importIdx: index("bank_statement_lines_import_idx").on(t.importId),
-    entryIdx: index("bank_statement_lines_entry_idx").on(t.entryId),
+    /**
+     * Une écriture n'appartient qu'à une opération de relevé, qu'elle y soit
+     * rattachée, importée ou miroir en caisse. Le service le vérifie sous
+     * verrou ; l'index tranche si deux imports simultanés (sur deux comptes,
+     * donc sans verrou commun) visaient la même écriture sans compte.
+     */
+    entryIdx: uniqueIndex("bank_statement_lines_entry_idx")
+      .on(t.entryId)
+      .where(sql`${t.entryId} is not null`),
+    cashEntryIdx: uniqueIndex("bank_statement_lines_cash_entry_idx")
+      .on(t.cashEntryId)
+      .where(sql`${t.cashEntryId} is not null`),
     amountCheck: check(
       "bank_statement_lines_amount_cents_check",
       sql`${t.amountCents} > 0`,

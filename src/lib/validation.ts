@@ -532,14 +532,46 @@ export const associationMemberSchema = z.object({
 export const associationMemberUpdateSchema = associationMemberSchema.partial();
 
 /**
+ * IBAN français bien formé et dont la clé (ISO 13616, modulo 97) est juste :
+ * renvoie ses onze caractères de numéro de compte (après les codes banque et
+ * guichet), sinon null. FR76 15519 39057 00020911101 09 → « 00020911101 »,
+ * le « N° » imprimé en tête des relevés du Crédit Mutuel.
+ */
+function frenchIbanAccountNumber(value: string): string | null {
+  if (!/^FR\d{12}[0-9A-Z]{11}\d{2}$/.test(value)) return null;
+  let remainder = 0;
+  for (const char of value.slice(4) + value.slice(0, 4)) {
+    const digits = /\d/.test(char) ? char : String(char.charCodeAt(0) - 55);
+    for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
+  }
+  return remainder === 1 ? value.slice(14, 25) : null;
+}
+
+/**
  * Numéro de compte tel qu'imprimé sur les relevés (« N° 00020911101 » au
- * Crédit Mutuel), ou un IBAN. Espaces retirés et majuscules : c'est la forme
- * sous laquelle l'import le compare, « 0002 0911 101 » doit désigner le même
- * compte. Vide : aucun numéro.
+ * Crédit Mutuel). Espaces retirés et majuscules : c'est la forme sous laquelle
+ * l'import le compare, « 0002 0911 101 » doit désigner le même compte. Vide :
+ * aucun numéro.
+ *
+ * Un IBAN collé à la place (il figure sur le RIB, on le saisit volontiers)
+ * bloquerait tous les imports, qui ne comparent que le « N° » : un IBAN
+ * français valide est ramené à son numéro de compte, tout autre IBAN est
+ * refusé avec l'explication.
  */
 const bankAccountNumber = z
   .string()
-  .transform((value) => value.replace(/\s+/g, "").toUpperCase())
+  .transform((value, ctx) => {
+    const compact = value.replace(/\s+/g, "").toUpperCase();
+    if (!/^[A-Z]{2}\d{2}/.test(compact) || compact.length < 15) return compact;
+    const number = frenchIbanAccountNumber(compact);
+    if (number) return number;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Ceci ressemble à un IBAN, mais il n’est pas valide ou pas français : saisissez le N° de compte imprimé en tête du relevé (onze chiffres au Crédit Mutuel).",
+    });
+    return z.NEVER;
+  })
   .pipe(
     z
       .string()
@@ -552,7 +584,7 @@ const bankAccountNumber = z
   .nullable()
   .optional();
 
-export const financialAccountSchema = z.object({
+const financialAccountFields = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
   type: z.enum(["bank", "cash"]),
   description: optionalText(1000),
@@ -560,11 +592,36 @@ export const financialAccountSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const financialAccountUpdateSchema = financialAccountSchema
+/**
+ * Une caisse n'a pas de relevé : un numéro saisi là par erreur ferait
+ * proposer la caisse à l'import, puis refuser le vrai compte bancaire
+ * (« numéro déjà rattaché à la caisse »). Sur une modification qui ne précise
+ * pas le type, le service refait ce contrôle avec le type enregistré.
+ */
+function refuseCashAccountNumber(
+  data: { type?: "bank" | "cash"; bankAccountNumber?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (data.type === "cash" && data.bankAccountNumber) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["bankAccountNumber"],
+      message:
+        "Une caisse n’a pas de numéro de compte bancaire : laissez ce champ vide.",
+    });
+  }
+}
+
+export const financialAccountSchema = financialAccountFields.superRefine(
+  refuseCashAccountNumber,
+);
+
+export const financialAccountUpdateSchema = financialAccountFields
   .partial()
   .refine((data) => Object.keys(data).length > 0, {
     message: "Aucune modification fournie",
-  });
+  })
+  .superRefine(refuseCashAccountNumber);
 
 export const accountingCategorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),

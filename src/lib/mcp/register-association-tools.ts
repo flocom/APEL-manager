@@ -481,7 +481,7 @@ export function registerAssociationTools(
           .nullable()
           .optional()
           .describe(
-            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; null pour l’effacer.",
+            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; un IBAN français est ramené à ce numéro. Jamais pour une caisse. null pour l’effacer.",
           ),
         isActive: z.boolean().default(true),
       }),
@@ -514,7 +514,7 @@ export function registerAssociationTools(
           .nullable()
           .optional()
           .describe(
-            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; null pour l’effacer.",
+            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; un IBAN français est ramené à ce numéro. Jamais pour une caisse. null pour l’effacer.",
           ),
         isActive: z.boolean().optional(),
       }),

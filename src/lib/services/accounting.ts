@@ -145,6 +145,23 @@ export async function updateFinancialAccount(
     }
   }
 
+  // Le schéma ne voit que les champs envoyés : un numéro ajouté à une caisse
+  // sans renvoyer son type, ou une caisse obtenue en changeant le type d'un
+  // compte numéroté, se contrôle avec ce qui est enregistré.
+  if (data.type !== undefined || data.bankAccountNumber !== undefined) {
+    const type = data.type ?? current.type;
+    const number =
+      data.bankAccountNumber !== undefined
+        ? data.bankAccountNumber
+        : current.bankAccountNumber;
+    if (type === "cash" && number) {
+      throw new HttpError(
+        400,
+        "Une caisse n’a pas de numéro de compte bancaire : videz ce champ.",
+      );
+    }
+  }
+
   const updates: Partial<typeof financialAccounts.$inferInsert> = {
     updatedAt: new Date(),
   };

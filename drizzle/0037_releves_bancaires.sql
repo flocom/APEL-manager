@@ -52,5 +52,6 @@ CREATE UNIQUE INDEX "bank_statement_imports_file_account_idx" ON "bank_statement
 CREATE INDEX "bank_statement_imports_account_idx" ON "bank_statement_imports" USING btree ("account_id","period_end");--> statement-breakpoint
 CREATE UNIQUE INDEX "bank_statement_lines_fingerprint_idx" ON "bank_statement_lines" USING btree ("fingerprint");--> statement-breakpoint
 CREATE INDEX "bank_statement_lines_import_idx" ON "bank_statement_lines" USING btree ("import_id");--> statement-breakpoint
-CREATE INDEX "bank_statement_lines_entry_idx" ON "bank_statement_lines" USING btree ("entry_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "bank_statement_lines_entry_idx" ON "bank_statement_lines" USING btree ("entry_id") WHERE "bank_statement_lines"."entry_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "bank_statement_lines_cash_entry_idx" ON "bank_statement_lines" USING btree ("cash_entry_id") WHERE "bank_statement_lines"."cash_entry_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "financial_accounts_bank_account_number_idx" ON "financial_accounts" USING btree ("bank_account_number") WHERE "financial_accounts"."bank_account_number" is not null;
