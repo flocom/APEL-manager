@@ -5,9 +5,11 @@ import {
   ArrowUpRight,
   BookOpenText,
   CircleDollarSign,
+  Download,
   FileUp,
   FileWarning,
   Landmark,
+  Link2,
   LockKeyhole,
   Paperclip,
   PartyPopper,
@@ -18,12 +20,14 @@ import {
   Trash2,
   type LucideIcon,
   WalletCards,
-  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import { BankLinkDialog } from "@/components/accounting/bank-link-dialog";
 import { CategorySelect } from "@/components/accounting/category-picker";
+import { AccountingExportDialog } from "@/components/accounting/export-dialog";
+import { AccountingModal } from "@/components/accounting/modal";
 import {
   type AccountingCategoryPayload,
   type AccountingCategoryView,
@@ -51,6 +55,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import type { BankImportSummary } from "@/lib/banking/import-types";
+import { treasuryBalance } from "@/lib/accounting/balances";
 import { api } from "@/lib/client";
 import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
@@ -76,6 +81,8 @@ export interface AccountingEntryView {
   notes: string | null;
   attachmentUrl: string | null;
   version: number;
+  /** Créée par un import de relevé : peut encore être rattachée à une écriture déjà saisie. */
+  fromBankImport: boolean;
 }
 
 function dateInput(value: string | null) {
@@ -114,6 +121,8 @@ export function AccountingManager({
   const [pendingDelete, setPendingDelete] =
     useState<AccountingEntryView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [linking, setLinking] = useState<AccountingEntryView | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Copie locale des catégories : une catégorie créée depuis le formulaire,
   // l'import ou l'onglet Catégories apparaît aussitôt partout, sans attendre
@@ -307,7 +316,11 @@ export function AccountingManager({
       </Card>
 
       {workspace === "accounts" ? (
-        <FinancialAccountsManager accounts={accounts} entries={entries} />
+        <FinancialAccountsManager
+          accounts={accounts}
+          entries={entries}
+          statements={imports}
+        />
       ) : workspace === "categories" ? (
         <AccountingCategoriesManager
           categories={localCategories}
@@ -325,9 +338,9 @@ export function AccountingManager({
             className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
         <ModuleStat
-          label="Solde"
-          value={formatEuros(incomeCents - expenseCents)}
-          helper="Écritures validées"
+          label="Trésorerie"
+          value={formatEuros(treasuryBalance(accounts, entries))}
+          helper="Soldes de départ et écritures validées"
           icon={WalletCards}
           tone="brand"
         />
@@ -355,28 +368,11 @@ export function AccountingManager({
           </section>
 
       {editor && (
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b-2 border-slate-100 bg-brand-50 px-5 py-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-700">
-                Livre de comptes
-              </p>
-              <h2 className="mt-1 text-xl font-bold text-brand-950">
-                {editor === "new"
-                  ? "Ajouter une écriture"
-                  : "Modifier l'écriture"}
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEditor(null)}
-              disabled={submitting}
-              className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-brand-500"
-              aria-label="Fermer le formulaire"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+        <AccountingModal
+          title={editor === "new" ? "Ajouter une écriture" : "Modifier l’écriture"}
+          busy={submitting}
+          onClose={() => setEditor(null)}
+        >
           <AccountingEntryForm
             key={editor === "new" ? "new" : editor.id}
             entry={editor === "new" ? null : editor}
@@ -388,7 +384,7 @@ export function AccountingManager({
             onSubmit={save}
             onCancel={() => setEditor(null)}
           />
-        </Card>
+        </AccountingModal>
       )}
         </>
       )}
@@ -401,7 +397,7 @@ export function AccountingManager({
         d'un enregistrement en cours.
       */}
       {importing && (
-        <div hidden={workspace !== "entries" || Boolean(editor)}>
+        <div hidden={workspace !== "entries"}>
           <BankStatementImport
             accounts={accounts}
             categories={localCategories}
@@ -505,7 +501,16 @@ export function AccountingManager({
               })}
             </Select>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:shrink-0">
+          <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              icon={Download}
+              onClick={() => setExporting(true)}
+              className="w-full lg:w-auto"
+            >
+              Export comptable
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -582,6 +587,7 @@ export function AccountingManager({
                     : null
                 }
                 onEdit={() => setEditor(entry)}
+                onLink={() => setLinking(entry)}
                 onDelete={() => setPendingDelete(entry)}
               />
             ))}
@@ -695,6 +701,18 @@ export function AccountingManager({
                           >
                             Modifier
                           </Button>
+                          {entry.fromBankImport && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              icon={Link2}
+                              onClick={() => setLinking(entry)}
+                              title="Rattacher l’opération du relevé à une écriture déjà saisie"
+                            >
+                              Rattacher
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             size="sm"
@@ -721,6 +739,21 @@ export function AccountingManager({
           </div>
         </>
       )}
+
+          {exporting && (
+            <AccountingExportDialog entries={entries} onClose={() => setExporting(false)} />
+          )}
+
+          {linking && (
+            <BankLinkDialog
+              entry={linking}
+              onClose={() => setLinking(null)}
+              onLinked={() => {
+                setLinking(null);
+                router.refresh();
+              }}
+            />
+          )}
 
           <ConfirmDialog
             open={Boolean(pendingDelete)}
@@ -799,12 +832,14 @@ function AccountingMobileCard({
   accountName,
   categoryName,
   onEdit,
+  onLink,
   onDelete,
 }: {
   entry: AccountingEntryView;
   accountName: string | null;
   categoryName: string | null;
   onEdit: () => void;
+  onLink: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -873,6 +908,18 @@ function AccountingMobileCard({
             >
               Supprimer
             </Button>
+            {entry.fromBankImport && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={Link2}
+                onClick={onLink}
+                className="col-span-2"
+              >
+                Rattacher à une écriture existante
+              </Button>
+            )}
           </div>
         ) : (
           <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-500">

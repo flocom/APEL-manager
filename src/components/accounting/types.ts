@@ -11,6 +11,8 @@ export interface AccountingCategoryView {
   name: string;
   type: AccountingEntryType;
   description: string | null;
+  /** Compte du plan comptable pour l'export ; null : déduit du nom. */
+  ledgerCode: string | null;
   isActive: boolean;
   /** Écritures rattachées, tous statuts : ce qui empêche la suppression. */
   entryCount: number;
@@ -30,6 +32,7 @@ export interface AccountingCategoryPayload {
   name: string;
   type: AccountingEntryType;
   description: string | null;
+  ledgerCode: string | null;
   isActive: boolean;
 }
 
@@ -48,6 +51,7 @@ export function upsertCategory(
     name: category.name,
     type: category.type,
     description: category.description,
+    ledgerCode: category.ledgerCode,
     isActive: category.isActive,
   };
   if (list.some((item) => item.id === category.id)) {

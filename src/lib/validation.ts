@@ -584,13 +584,59 @@ const bankAccountNumber = z
   .nullable()
   .optional();
 
+/**
+ * Compte du plan comptable pour l'export (FEC) : des chiffres, de trois à
+ * huit (« 756 », « 627000 »). Vide, l'export le déduit du nom.
+ */
+const ledgerCode = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, ""))
+  .pipe(
+    z
+      .string()
+      .regex(/^(?:\d{3,8})?$/, "Compte comptable invalide : de 3 à 8 chiffres (ex. 756000)."),
+  )
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .optional();
+
 const financialAccountFields = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
   type: z.enum(["bank", "cash"]),
   description: optionalText(1000),
   bankAccountNumber,
+  ledgerCode,
+  /**
+   * Solde de départ, positif ou négatif (un découvert), et le jour dont il
+   * est le solde. Les deux vont ensemble ; null les efface.
+   */
+  openingBalanceCents: z.coerce
+    .number()
+    .int()
+    .min(-MONTANT_MAX_CENTIMES * 100, "Solde de départ invalide.")
+    .max(MONTANT_MAX_CENTIMES * 100, "Solde de départ invalide.")
+    .nullable()
+    .optional(),
+  openingBalanceDate: localDateTime.nullable().optional(),
   isActive: z.boolean().default(true),
 });
+
+/** Le solde de départ n'a de sens qu'avec sa date, et inversement. */
+function openingBalanceTogether(
+  data: { openingBalanceCents?: number | null; openingBalanceDate?: Date | null },
+  ctx: z.RefinementCtx,
+) {
+  const amount = data.openingBalanceCents;
+  const date = data.openingBalanceDate;
+  if (amount === undefined && date === undefined) return;
+  if ((amount === null || amount === undefined) !== (date === null || date === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [amount === null || amount === undefined ? "openingBalanceCents" : "openingBalanceDate"],
+      message: "Le solde de départ et sa date vont ensemble : renseignez les deux, ou aucun.",
+    });
+  }
+}
 
 /**
  * Une caisse n'a pas de relevé : un numéro saisi là par erreur ferait
@@ -612,21 +658,23 @@ function refuseCashAccountNumber(
   }
 }
 
-export const financialAccountSchema = financialAccountFields.superRefine(
-  refuseCashAccountNumber,
-);
+export const financialAccountSchema = financialAccountFields
+  .superRefine(refuseCashAccountNumber)
+  .superRefine(openingBalanceTogether);
 
 export const financialAccountUpdateSchema = financialAccountFields
   .partial()
   .refine((data) => Object.keys(data).length > 0, {
     message: "Aucune modification fournie",
   })
-  .superRefine(refuseCashAccountNumber);
+  .superRefine(refuseCashAccountNumber)
+  .superRefine(openingBalanceTogether);
 
 export const accountingCategorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
   type: z.enum(["income", "expense"]),
   description: optionalText(1000),
+  ledgerCode,
   isActive: z.boolean().default(true),
 });
 

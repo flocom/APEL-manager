@@ -754,6 +754,20 @@ export const financialAccounts = pgTable(
      * pas un secret : il figure aussi sur un RIB.
      */
     bankAccountNumber: text("bank_account_number"),
+    /**
+     * Solde de départ du compte, et le jour dont il est le solde (en fin de
+     * journée) : la trésorerie réelle ne part pas de zéro. Le solde du compte
+     * est ce solde plus les écritures validées postérieures. Rempli au
+     * premier relevé importé (le solde d'ouverture du plus ancien relevé), ou
+     * saisi à la main.
+     */
+    openingBalanceCents: integer("opening_balance_cents"),
+    openingBalanceDate: timestamp("opening_balance_date", { withTimezone: true }),
+    /**
+     * Compte du plan comptable pour l'export (FEC) : « 512000 » pour une
+     * banque, « 530000 » pour une caisse. Vide, l'export en attribue un.
+     */
+    ledgerCode: text("ledger_code"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -766,6 +780,11 @@ export const financialAccounts = pgTable(
     typeActiveIdx: index("financial_accounts_type_active_idx").on(
       t.type,
       t.isActive,
+    ),
+    /** Solde de départ et sa date vont ensemble. */
+    openingBalanceCheck: check(
+      "financial_accounts_opening_balance_check",
+      sql`(${t.openingBalanceCents} is null) = (${t.openingBalanceDate} is null)`,
     ),
     /** Un numéro de compte bancaire ne désigne qu'un compte de trésorerie. */
     bankAccountNumberIdx: uniqueIndex("financial_accounts_bank_account_number_idx")
@@ -782,6 +801,12 @@ export const accountingCategories = pgTable(
     name: text("name").notNull(),
     type: accountingCategoryTypeEnum("type").notNull(),
     description: text("description"),
+    /**
+     * Compte du plan comptable associatif pour l'export (FEC) : « 756000 »
+     * pour les cotisations, « 627000 » pour les frais bancaires… Vide,
+     * l'export le déduit du nom de la catégorie.
+     */
+    ledgerCode: text("ledger_code"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

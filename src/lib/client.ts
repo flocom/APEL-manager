@@ -1,5 +1,5 @@
 type ApiOptions = {
-  method?: "POST" | "PATCH" | "DELETE" | "PUT";
+  method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   body?: unknown;
 };
 

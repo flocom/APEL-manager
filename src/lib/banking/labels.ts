@@ -441,3 +441,34 @@ export function analyzeLabel(
     labelKey: key,
   };
 }
+
+/**
+ * Date d'achat d'un paiement par carte, imprimée dans le libellé
+ * (« PAIEMENT CB 2206 LYON » : achat du 22/06). La banque ne passe l'opération
+ * qu'un à trois jours plus tard, parfois davantage après un week-end : c'est
+ * cette date-là que porte le ticket, donc l'écriture saisie à la main.
+ *
+ * L'année est celle de l'opération, ou la précédente pour un achat de fin
+ * décembre passé en janvier. Une date impossible, postérieure à l'opération
+ * ou plus vieille d'un mois n'est pas une date d'achat : null.
+ */
+export function cardPurchaseDate(label: string, operationDate: string): string | null {
+  const match = normalizeLabel(label).match(
+    /^(?:PAIEMENT\s+(?:CB|PSC|CARTE)|ACHAT\s+CB|CB|RETRAIT\s+DAB|RET\s+DAB)\s+(\d{2})(\d{2})\b/,
+  );
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  const [opYear] = operationDate.split("-").map(Number);
+  for (const year of [opYear, opYear - 1]) {
+    const date = new Date(Date.UTC(year, month - 1, day));
+    // 31/02 → mars : pas une date.
+    if (date.getUTCMonth() !== month - 1) return null;
+    const iso = date.toISOString().slice(0, 10);
+    if (iso > operationDate) continue;
+    const ageDays = (Date.parse(`${operationDate}T00:00:00Z`) - date.getTime()) / 86_400_000;
+    return ageDays <= 31 ? iso : null;
+  }
+  return null;
+}

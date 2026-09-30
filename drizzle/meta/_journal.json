@@ -267,6 +267,13 @@
       "when": 1790721826487,
       "tag": "0037_releves_bancaires",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790749536975,
+      "tag": "0038_solde_de_depart_et_export",
+      "breakpoints": true
     }
   ]
 }

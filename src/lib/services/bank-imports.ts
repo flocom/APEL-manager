@@ -19,11 +19,12 @@ import type {
   BankImportAnalysis,
   BankImportCommitResult,
   BankImportSummary,
+  BankLinkOptions,
   DuplicateCandidate,
   LineDecision,
   SupportedBank,
 } from "@/lib/banking/import-types";
-import { analyzeLabel, labelKey, normalizeLabel } from "@/lib/banking/labels";
+import { analyzeLabel, cardPurchaseDate, labelKey, normalizeLabel } from "@/lib/banking/labels";
 import { parseLocalDateTime, toDateInput } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
@@ -33,6 +34,7 @@ import {
   bankStatementLines,
   events,
   financialAccounts,
+  membershipPayments,
   users,
 } from "@/lib/db/schema";
 import { redactError } from "@/lib/errors";
@@ -109,6 +111,21 @@ const BANK_LABEL = "Crédit Mutuel";
 
 /** Écart toléré entre la date d'une écriture saisie et celle de l'opération. */
 const DOUBT_WINDOW_DAYS = 3;
+/** Paiement par carte sans date d'achat lisible : la fenêtre remonte d'une semaine. */
+const CARD_WINDOW_DAYS = 7;
+
+/**
+ * Jours auxquels une écriture saisie à la main peut correspondre à
+ * l'opération : date d'opération, date de valeur, et date d'achat d'un
+ * paiement par carte (celle du ticket).
+ */
+function matchDays(line: ParsedLine): string[] {
+  const days = [line.operationDate];
+  if (line.valueDate) days.push(line.valueDate);
+  const purchase = cardPurchaseDate(line.label, line.operationDate);
+  if (purchase) days.push(purchase);
+  return days;
+}
 const MAX_CANDIDATES = 5;
 /** Écritures relues pour deviner une catégorie d'après un libellé semblable. */
 const CATEGORY_HISTORY_LIMIT = 3000;
@@ -605,9 +622,7 @@ async function classify(
                 isNull(accountingEntries.accountId),
               );
       const amounts = [...new Set(source.lines.map((line) => line.amountCents))];
-      const sectionDays = source.lines.flatMap((line) =>
-        line.valueDate ? [line.operationDate, line.valueDate] : [line.operationDate],
-      );
+      const sectionDays = source.lines.flatMap(matchDays);
       const pool =
         amounts.length && sectionDays.length
           ? await lecteur
@@ -641,7 +656,7 @@ async function classify(
                     parseLocalDateTime(
                       shiftDay(
                         sectionDays.reduce((a, b) => (b < a ? b : a)),
-                        -DOUBT_WINDOW_DAYS - 1,
+                        -CARD_WINDOW_DAYS - 1,
                       ),
                     ),
                   ),
@@ -730,10 +745,15 @@ async function classify(
             cashEntryId: state.stored.cashEntryId,
           };
         } else {
-          const days = parsedLine.valueDate
-            ? [parsedLine.operationDate, parsedLine.valueDate].sort()
-            : [parsedLine.operationDate];
-          const from = shiftDay(days[0], -DOUBT_WINDOW_DAYS);
+          const days = matchDays(parsedLine).sort();
+          // Petit paiement par carte regroupé, sans date d'achat imprimée
+          // (« METRO FRANCE CARTE 1716383241 ») : le ticket peut dater d'une
+          // semaine avant le passage en banque.
+          const before =
+            insight.paymentMethod === "card" && days.length === 1 + (parsedLine.valueDate ? 1 : 0)
+              ? CARD_WINDOW_DAYS
+              : DOUBT_WINDOW_DAYS;
+          const from = shiftDay(days[0], -before);
           const to = shiftDay(days[days.length - 1], DOUBT_WINDOW_DAYS);
           const candidates: DuplicateCandidate[] = poolWithDays
             .filter(
@@ -1364,6 +1384,8 @@ async function applyDecisions(
     );
   }
 
+  await learnOpeningBalances(tx, planned, actor);
+
   const touchedImports = new Set<string>();
   const totals = { imported: 0, linked: 0, skipped: 0 };
 
@@ -1595,6 +1617,75 @@ async function applyDecisions(
   return { importIds, ...totals };
 }
 
+/**
+ * Solde de départ du compte, appris du plus ancien relevé importé : son solde
+ * d'ouverture est le solde réel du compte ce jour-là. Un solde saisi à la
+ * main n'est jamais remplacé ; un solde appris d'un relevé l'est quand on
+ * importe ensuite un relevé plus ancien (on remonte le point de départ).
+ */
+async function learnOpeningBalances(
+  tx: Transaction,
+  planned: PlannedSection[],
+  actor: AuditActor,
+) {
+  const earliest = new Map<string, { account: AccountRow; date: string; cents: number }>();
+  for (const { account, section } of planned) {
+    const { openingDate, openingBalanceCents } = section.source;
+    const known = earliest.get(account.id);
+    if (!known || openingDate < known.date) {
+      earliest.set(account.id, { account, date: openingDate, cents: openingBalanceCents });
+    }
+  }
+  for (const { account, date, cents } of earliest.values()) {
+    const [current] = await tx
+      .select({
+        cents: financialAccounts.openingBalanceCents,
+        date: financialAccounts.openingBalanceDate,
+      })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, account.id));
+    if (current.date) {
+      const currentDay = toDateInput(current.date);
+      if (date >= currentDay) continue;
+      // Plus ancien que le solde enregistré : on ne remonte que si celui-ci
+      // venait lui-même d'un relevé, jamais par-dessus une saisie à la main.
+      const [fromImport] = await tx
+        .select({ id: bankStatementImports.id })
+        .from(bankStatementImports)
+        .where(
+          and(
+            eq(bankStatementImports.accountId, account.id),
+            eq(bankStatementImports.periodStart, current.date),
+            eq(bankStatementImports.openingBalanceCents, current.cents ?? 0),
+          ),
+        )
+        .limit(1);
+      if (!fromImport) continue;
+    }
+    await tx
+      .update(financialAccounts)
+      .set({
+        openingBalanceCents: cents,
+        openingBalanceDate: parseLocalDateTime(date),
+        updatedAt: new Date(),
+      })
+      .where(eq(financialAccounts.id, account.id));
+    await recordAudit(
+      actor,
+      "accounting.account_update",
+      "financial_account",
+      account.id,
+      {
+        changedFields: ["openingBalanceCents", "openingBalanceDate"],
+        openingBalanceCents: cents,
+        openingBalanceDate: date,
+        source: "bank_import",
+      },
+      tx,
+    );
+  }
+}
+
 /* ------------------------------------------------------------------------ */
 /* Historique et annulation                                                  */
 /* ------------------------------------------------------------------------ */
@@ -1789,5 +1880,236 @@ export async function undoBankImport(id: string, actor: AuditActor) {
       tx,
     );
     return { deletedEntries: entries.length };
+  });
+}
+
+/* ------------------------------------------------------------------------ */
+/* Rapprochement après coup                                                  */
+/* ------------------------------------------------------------------------ */
+
+/** Écritures proposées : même sens, même montant, à six semaines près. */
+const RELINK_WINDOW_DAYS = 45;
+const RELINK_MAX_CANDIDATES = 20;
+
+/**
+ * Ligne de relevé qui a créé cette écriture, avec son import. Seule une
+ * écriture créée par un import (`imported`) se rattache après coup : une
+ * écriture saisie à la main n'a pas d'opération à céder.
+ */
+async function importedLineOf(lecteur: Lecteur, entryId: string) {
+  const [row] = await lecteur
+    .select({
+      lineId: bankStatementLines.id,
+      importId: bankStatementLines.importId,
+      operationDate: bankStatementLines.operationDate,
+      valueDate: bankStatementLines.valueDate,
+      label: bankStatementLines.label,
+      details: bankStatementLines.details,
+      amountCents: bankStatementLines.amountCents,
+      direction: bankStatementLines.direction,
+      accountId: bankStatementImports.accountId,
+      statementDate: bankStatementImports.statementDate,
+    })
+    .from(bankStatementLines)
+    .innerJoin(
+      bankStatementImports,
+      eq(bankStatementLines.importId, bankStatementImports.id),
+    )
+    .where(
+      and(
+        eq(bankStatementLines.entryId, entryId),
+        eq(bankStatementLines.decision, "imported"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Filtre des écritures qui peuvent recevoir l'opération. */
+function relinkFilter(
+  entryId: string,
+  line: NonNullable<Awaited<ReturnType<typeof importedLineOf>>>,
+) {
+  return and(
+    sql`${accountingEntries.id} <> ${entryId}`,
+    eq(accountingEntries.type, line.direction === "credit" ? "income" : "expense"),
+    eq(accountingEntries.amountCents, line.amountCents),
+    // Saisie sur le même compte, ou sans compte : une écriture d'un autre
+    // compte bancaire ou de la caisse n'est pas ce mouvement-là.
+    line.accountId
+      ? or(eq(accountingEntries.accountId, line.accountId), isNull(accountingEntries.accountId))
+      : undefined,
+    // Déjà rattachée à une opération (ou créée par un import) : elle a la
+    // sienne.
+    sql`not exists (select 1 from ${bankStatementLines} where ${bankStatementLines.entryId} = ${accountingEntries.id} or ${bankStatementLines.cashEntryId} = ${accountingEntries.id})`,
+  );
+}
+
+export async function getBankLinkOptions(entryId: string): Promise<BankLinkOptions> {
+  const line = await importedLineOf(db, entryId);
+  if (!line) {
+    throw new HttpError(404, "Cette écriture n’a pas été créée par un import de relevé.");
+  }
+  const operationDate = toDateInput(line.operationDate);
+  const purchaseDate = cardPurchaseDate(line.label, operationDate);
+  const reference = purchaseDate ?? operationDate;
+  const rows = await db
+    .select({
+      id: accountingEntries.id,
+      label: accountingEntries.label,
+      amountCents: accountingEntries.amountCents,
+      occurredAt: accountingEntries.occurredAt,
+      status: accountingEntries.status,
+      counterparty: accountingEntries.counterparty,
+      attachmentUrl: accountingEntries.attachmentUrl,
+      accountName: financialAccounts.name,
+      categoryName: accountingCategories.name,
+    })
+    .from(accountingEntries)
+    .leftJoin(financialAccounts, eq(accountingEntries.accountId, financialAccounts.id))
+    .leftJoin(accountingCategories, eq(accountingEntries.categoryId, accountingCategories.id))
+    .where(
+      and(
+        relinkFilter(entryId, line),
+        gte(
+          accountingEntries.occurredAt,
+          parseLocalDateTime(shiftDay(reference, -RELINK_WINDOW_DAYS)),
+        ),
+        lt(
+          accountingEntries.occurredAt,
+          parseLocalDateTime(shiftDay(operationDate, RELINK_WINDOW_DAYS + 1)),
+        ),
+      ),
+    );
+  const candidates = rows
+    .map((row) => ({ row, day: toDateInput(row.occurredAt) }))
+    .sort(
+      (a, b) =>
+        dayDistance(a.day, reference) - dayDistance(b.day, reference) ||
+        b.row.occurredAt.getTime() - a.row.occurredAt.getTime(),
+    )
+    .slice(0, RELINK_MAX_CANDIDATES)
+    .map(({ row }) => ({
+      entryId: row.id,
+      label: row.label,
+      amountCents: row.amountCents,
+      occurredAt: row.occurredAt.toISOString(),
+      status: row.status,
+      accountName: row.accountName,
+      categoryName: row.categoryName,
+      counterparty: row.counterparty,
+      hasAttachment: Boolean(row.attachmentUrl),
+    }));
+  return {
+    line: {
+      operationDate,
+      valueDate: line.valueDate ? toDateInput(line.valueDate) : null,
+      purchaseDate,
+      label: line.label,
+      details: line.details ? line.details.split("\n").filter(Boolean) : [],
+      amountCents: line.amountCents,
+      direction: line.direction as "debit" | "credit",
+      statementDate: line.statementDate ? toDateInput(line.statementDate) : null,
+    },
+    candidates,
+  };
+}
+
+/**
+ * Rattache l'opération du relevé à une écriture existante et supprime le
+ * brouillon que l'import avait créé pour elle. L'écriture choisie n'est pas
+ * modifiée — ni son justificatif, ni sa catégorie, ni son statut —, sauf un
+ * brouillon sans compte, qui reçoit le compte du relevé : c'est bien sur ce
+ * compte que l'argent a bougé.
+ */
+export async function relinkImportedEntry(
+  entryId: string,
+  targetEntryId: string,
+  actor: AuditActor,
+) {
+  if (entryId === targetEntryId) {
+    throw new HttpError(400, "Choisissez une autre écriture que celle créée par l’import.");
+  }
+  return db.transaction(async (tx) => {
+    const line = await importedLineOf(tx, entryId);
+    if (!line) {
+      throw new HttpError(409, "Cette écriture n’est plus rattachée à une opération importée.");
+    }
+    await tx
+      .select({ id: bankStatementLines.id })
+      .from(bankStatementLines)
+      .where(eq(bankStatementLines.id, line.lineId))
+      .for("update");
+    // Les deux écritures verrouillées dans l'ordre des identifiants, comme
+    // partout ailleurs : pas d'interblocage avec un import en cours.
+    const locked = await tx
+      .select()
+      .from(accountingEntries)
+      .where(inArray(accountingEntries.id, [entryId, targetEntryId]))
+      .orderBy(accountingEntries.id)
+      .for("update");
+    const source = locked.find((entry) => entry.id === entryId);
+    const target = locked.find((entry) => entry.id === targetEntryId);
+    if (!source) throw new HttpError(409, "L’écriture importée n’existe plus.");
+    if (source.status !== "draft") {
+      throw new HttpError(
+        409,
+        "L’écriture importée a déjà été validée : elle est immuable et ne peut plus être remplacée.",
+      );
+    }
+    if (!target) throw new HttpError(404, "L’écriture choisie n’existe plus.");
+    const [eligible] = await tx
+      .select({ id: accountingEntries.id })
+      .from(accountingEntries)
+      .where(and(eq(accountingEntries.id, targetEntryId), relinkFilter(entryId, line)))
+      .limit(1);
+    if (!eligible) {
+      throw new HttpError(
+        409,
+        "L’écriture choisie ne peut pas recevoir cette opération : sens, montant ou compte différents, ou déjà rattachée à une autre opération.",
+      );
+    }
+    const [{ n: payments }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(membershipPayments)
+      .where(eq(membershipPayments.entryId, entryId));
+    if (Number(payments) > 0) {
+      throw new HttpError(
+        409,
+        "Des cotisations sont pointées sur l’écriture importée : retirez d’abord ce pointage.",
+      );
+    }
+
+    await tx
+      .update(bankStatementLines)
+      .set({ entryId: targetEntryId, decision: "linked" })
+      .where(eq(bankStatementLines.id, line.lineId));
+    if (target.status === "draft" && !target.accountId && line.accountId) {
+      await tx
+        .update(accountingEntries)
+        .set({ accountId: line.accountId, version: target.version + 1, updatedAt: new Date() })
+        .where(eq(accountingEntries.id, targetEntryId));
+    }
+    await tx.delete(accountingEntries).where(eq(accountingEntries.id, entryId));
+    const count = (decision: string) =>
+      sql<number>`(select count(*)::int from bank_statement_lines l where l.import_id = "bank_statement_imports"."id" and l.decision = ${decision})`;
+    await tx
+      .update(bankStatementImports)
+      .set({ importedCount: count("imported"), linkedCount: count("linked") })
+      .where(eq(bankStatementImports.id, line.importId));
+
+    await recordAudit(
+      actor,
+      "accounting.bank_line_relink",
+      "accounting_entry",
+      targetEntryId,
+      {
+        importId: line.importId,
+        lineId: line.lineId,
+        deletedEntry: { id: entryId, type: source.type, amountCents: source.amountCents },
+      },
+      tx,
+    );
+    return { entryId: targetEntryId };
   });
 }

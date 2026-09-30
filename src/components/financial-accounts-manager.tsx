@@ -26,7 +26,14 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+import {
+  accountBalance,
+  checkAgainstStatement,
+  type BalanceEntry,
+  type StatementCheck,
+} from "@/lib/accounting/balances";
 import { api } from "@/lib/client";
+import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -37,22 +44,29 @@ export interface FinancialAccountView {
   description: string | null;
   /** Numéro imprimé sur les relevés : l'import des relevés s'y fie pour proposer ce compte. */
   bankAccountNumber: string | null;
+  /** Solde de départ et son jour (instant ISO), voir `src/lib/accounting/balances.ts`. */
+  openingBalanceCents: number | null;
+  openingBalanceDate: string | null;
+  /** Compte du plan comptable pour l'export ; null : 512… ou 530… attribué à l'export. */
+  ledgerCode: string | null;
   isActive: boolean;
 }
 
-interface AccountEntrySummary {
+/** Dernier relevé importé d'un compte, pour le contrôle du solde. */
+export interface AccountStatementView {
   accountId: string | null;
-  type: "income" | "expense";
-  status: "draft" | "posted";
-  amountCents: number;
+  periodEnd: string;
+  closingBalanceCents: number;
 }
 
 export function FinancialAccountsManager({
   accounts,
   entries,
+  statements,
 }: {
   accounts: FinancialAccountView[];
-  entries: AccountEntrySummary[];
+  entries: BalanceEntry[];
+  statements: AccountStatementView[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -75,22 +89,25 @@ export function FinancialAccountsManager({
   );
 
   const accountMetrics = useMemo(() => {
-    const metrics = new Map<string, { count: number; balanceCents: number }>();
+    const metrics = new Map<
+      string,
+      { count: number; balanceCents: number; check: StatementCheck }
+    >();
     for (const account of accounts) {
-      metrics.set(account.id, { count: 0, balanceCents: 0 });
-    }
-    for (const entry of entries) {
-      if (!entry.accountId) continue;
-      const current = metrics.get(entry.accountId);
-      if (!current) continue;
-      current.count += 1;
-      if (entry.status === "posted") {
-        current.balanceCents +=
-          entry.type === "income" ? entry.amountCents : -entry.amountCents;
-      }
+      // Dernier relevé importé du compte : le solde calculé à sa date doit
+      // retomber sur le solde imprimé.
+      const latest =
+        statements
+          .filter((statement) => statement.accountId === account.id)
+          .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))[0] ?? null;
+      metrics.set(account.id, {
+        count: entries.filter((entry) => entry.accountId === account.id).length,
+        balanceCents: accountBalance(account, entries).cents,
+        check: checkAgainstStatement(account, entries, latest),
+      });
     }
     return metrics;
-  }, [accounts, entries]);
+  }, [accounts, entries, statements]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,6 +115,8 @@ export function FinancialAccountsManager({
 
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
+    const openingAmount = String(form.get("openingBalance") ?? "").trim().replace(",", ".");
+    const openingDate = String(form.get("openingBalanceDate") ?? "").trim();
     const body = {
       name: form.get("name"),
       type: form.get("type"),
@@ -109,6 +128,12 @@ export function FinancialAccountsManager({
         form.get("type") === "bank"
           ? String(form.get("bankAccountNumber") ?? "").trim() || null
           : null,
+      // Montant et date vont ensemble : l'un sans l'autre est refusé par le
+      // serveur, avec un message clair.
+      openingBalanceCents:
+        openingAmount === "" ? null : Math.round(Number(openingAmount) * 100),
+      openingBalanceDate: openingDate || null,
+      ledgerCode: String(form.get("ledgerCode") ?? "").trim() || null,
       ...(editor === "new" ? { isActive: true } : {}),
     };
 
@@ -276,6 +301,7 @@ export function FinancialAccountsManager({
             const metrics = accountMetrics.get(account.id) ?? {
               count: 0,
               balanceCents: 0,
+              check: { kind: "none" } as StatementCheck,
             };
             return (
               <AccountCard
@@ -283,6 +309,7 @@ export function FinancialAccountsManager({
                 account={account}
                 count={metrics.count}
                 balanceCents={metrics.balanceCents}
+                check={metrics.check}
                 loading={busyAccountId === account.id}
                 onEdit={() => setEditor(account)}
                 onArchive={() => setPendingArchive(account)}
@@ -334,6 +361,7 @@ function AccountCard({
   account,
   count,
   balanceCents,
+  check,
   loading,
   onEdit,
   onArchive,
@@ -342,6 +370,7 @@ function AccountCard({
   account: FinancialAccountView;
   count: number;
   balanceCents: number;
+  check: StatementCheck;
   loading: boolean;
   onEdit: () => void;
   onArchive: () => void;
@@ -400,9 +429,7 @@ function AccountCard({
 
         <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
           <div>
-            <p className="text-xs font-medium text-slate-500">
-              Solde affecté
-            </p>
+            <p className="text-xs font-medium text-slate-500">Solde</p>
             <p
               className={cn(
                 "mt-1 break-words text-lg font-extrabold tabular-nums",
@@ -419,6 +446,12 @@ function AccountCard({
             </p>
           </div>
         </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {account.openingBalanceDate && account.openingBalanceCents !== null
+            ? `Solde de départ au ${formatShortDate(account.openingBalanceDate)} : ${formatEuros(account.openingBalanceCents)}, plus les écritures validées depuis.`
+            : "Sans solde de départ : le solde part de zéro. Renseignez-le (Modifier), ou importez un relevé."}
+        </p>
+        <StatementCheckLine check={check} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t-2 border-slate-100 bg-white p-3">
@@ -457,6 +490,31 @@ function AccountCard({
         )}
       </div>
     </Card>
+  );
+}
+
+/** Contrôle du solde calculé avec le dernier relevé importé du compte. */
+function StatementCheckLine({ check }: { check: StatementCheck }) {
+  if (check.kind === "none") return null;
+  const statement = `relevé du ${formatShortDate(check.statementDate)} (${formatEuros(check.closingCents)})`;
+  const tone =
+    check.kind === "ok"
+      ? "border-sea-200 bg-sea-50 text-sea-800"
+      : check.kind === "ok_with_drafts"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-coral-200 bg-coral-50 text-coral-800";
+  const text =
+    check.kind === "ok"
+      ? `✓ Conforme au ${statement}.`
+      : check.kind === "ok_with_drafts"
+        ? `Conforme au ${statement} une fois validés ${check.draftCount} brouillon${check.draftCount > 1 ? "s" : ""}.`
+        : check.kind === "missing_opening"
+          ? `Impossible de comparer au ${statement} : renseignez le solde de départ du compte.`
+          : `Écart de ${formatEuros(Math.abs(check.gapCents))} avec le ${statement} : solde calculé ${formatEuros(check.computedCents)}. Une opération manque, est en double ou encore en brouillon.`;
+  return (
+    <p className={cn("mt-2 rounded-lg border-2 px-3 py-2 text-xs font-semibold", tone)}>
+      {text}
+    </p>
   );
 }
 
@@ -536,6 +594,55 @@ function FinancialAccountForm({
             />
           </Field>
         )}
+        <Field
+          label="Solde de départ (€)"
+          htmlFor="financial-account-opening"
+          hint="Facultatif — le solde réel du compte à une date, par exemple celui d’un relevé. Rempli seul au premier relevé importé."
+        >
+          <Input
+            id="financial-account-opening"
+            name="openingBalance"
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            defaultValue={
+              account?.openingBalanceCents != null
+                ? (account.openingBalanceCents / 100).toFixed(2)
+                : ""
+            }
+            placeholder="Ex. 5480.19"
+          />
+        </Field>
+        <Field
+          label="Solde au (fin de journée)"
+          htmlFor="financial-account-opening-date"
+        >
+          <Input
+            id="financial-account-opening-date"
+            name="openingBalanceDate"
+            type="date"
+            defaultValue={
+              account?.openingBalanceDate ? toDateInput(account.openingBalanceDate) : ""
+            }
+          />
+        </Field>
+        <Field
+          label="Compte comptable (export)"
+          htmlFor="financial-account-ledger"
+          hint="Facultatif — pour l’export comptable (FEC). Vide : 512000 pour une banque, 530000 pour une caisse."
+          className="sm:col-span-2"
+        >
+          <Input
+            id="financial-account-ledger"
+            name="ledgerCode"
+            maxLength={8}
+            inputMode="numeric"
+            autoComplete="off"
+            defaultValue={account?.ledgerCode ?? ""}
+            placeholder={type === "bank" ? "512000" : "530000"}
+            className="tabular-nums sm:max-w-xs"
+          />
+        </Field>
         <Field
           label="Description"
           htmlFor="financial-account-description"

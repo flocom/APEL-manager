@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { Landmark } from "lucide-react";
 
 import {
@@ -10,6 +10,7 @@ import { requireRole } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import {
   accountingEntries,
+  bankStatementLines,
   events,
   financialAccounts,
 } from "@/lib/db/schema";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountingPage() {
   await requireRole("admin");
-  const [entries, accounts, categories, eventOptions, imports] =
+  const [entries, accounts, categories, eventOptions, imports, importedLines] =
     await Promise.all([
       db
         .select()
@@ -39,7 +40,19 @@ export default async function AccountingPage() {
         .from(events)
         .orderBy(desc(events.startAt)),
       listBankStatementImports(),
+      // Écritures créées par un import : elles peuvent encore être
+      // rattachées à une écriture déjà saisie.
+      db
+        .select({ entryId: bankStatementLines.entryId })
+        .from(bankStatementLines)
+        .where(
+          and(
+            eq(bankStatementLines.decision, "imported"),
+            isNotNull(bankStatementLines.entryId),
+          ),
+        ),
     ]);
+  const fromBankImport = new Set(importedLines.map((line) => line.entryId));
   const eventTitles = new Map(
     eventOptions.map((event) => [event.id, event.title]),
   );
@@ -61,6 +74,7 @@ export default async function AccountingPage() {
     notes: entry.notes,
     attachmentUrl: entry.attachmentUrl,
     version: entry.version,
+    fromBankImport: fromBankImport.has(entry.id),
   }));
 
   return (
@@ -73,12 +87,25 @@ export default async function AccountingPage() {
       <AccountingManager
         entries={serialized}
         accounts={accounts.map(
-          ({ id, name, type, description, bankAccountNumber, isActive }) => ({
+          ({
             id,
             name,
             type,
             description,
             bankAccountNumber,
+            openingBalanceCents,
+            openingBalanceDate,
+            ledgerCode,
+            isActive,
+          }) => ({
+            id,
+            name,
+            type,
+            description,
+            bankAccountNumber,
+            openingBalanceCents,
+            openingBalanceDate: openingBalanceDate?.toISOString() ?? null,
+            ledgerCode,
             isActive,
           }),
         )}
