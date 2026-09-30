@@ -219,3 +219,27 @@ export type BankImportCommitResult = {
   linked: number;
   skipped: number;
 };
+
+/**
+ * Rapprochement après coup : l'écriture créée par un import est en fait une
+ * écriture déjà saisie (un paiement par carte avec son ticket, par exemple).
+ * `GET /api/accounting/entries/[id]/bank-link` renvoie l'opération du relevé
+ * et les écritures qui peuvent la recevoir ; `POST` avec `{ targetEntryId }`
+ * rattache l'opération à l'écriture choisie et supprime le brouillon importé.
+ */
+export type BankLinkCandidate = DuplicateCandidate & { hasAttachment: boolean };
+
+export type BankLinkOptions = {
+  line: {
+    operationDate: string;
+    valueDate: string | null;
+    /** Date d'achat imprimée dans le libellé d'un paiement par carte. */
+    purchaseDate: string | null;
+    label: string;
+    details: string[];
+    amountCents: number;
+    direction: "debit" | "credit";
+    statementDate: string | null;
+  };
+  candidates: BankLinkCandidate[];
+};
