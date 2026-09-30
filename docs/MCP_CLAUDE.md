@@ -15,7 +15,7 @@ messagerie, journal d'audit et suivi des mises à jour.
 | **Pièces jointes** | Lister, rattacher et retirer les documents d'un événement |
 | **Communication** | Écrire aux bénévoles d'un événement, aux membres de l'équipe, aux adhérents ; régler Resend/SMTP et envoyer un message de test |
 | **Adhérents** | Lister, créer, modifier, archiver |
-| **Comptabilité** | Synthèse globale ou par événement, écritures (créer, modifier, supprimer un brouillon, rattacher à un événement), comptes bancaires et caisses, catégories (créer, modifier, supprimer) |
+| **Comptabilité** | Synthèse globale ou par événement, écritures (créer, modifier, supprimer un brouillon, rattacher à un événement), comptes bancaires et caisses (avec le numéro de compte des relevés, `bankAccountNumber`), catégories (créer — un homonyme du même sens est refusé —, modifier, supprimer), historique des relevés bancaires importés (`list_bank_statement_imports`, lecture seule : l'import lui-même se fait depuis l'écran Comptabilité) |
 | **Documents** | Lister, lire, créer, modifier, archiver ; supprimer un PV archivé |
 | **Comptes** | Lister, changer un rôle, supprimer |
 | **Exploitation** | Identité et réglages de l'association, état du courrier sortant, journal d'audit, version installée et mises à jour disponibles |

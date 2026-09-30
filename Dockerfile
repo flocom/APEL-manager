@@ -31,10 +31,14 @@ FROM base AS production-dependencies
 COPY package.json package-lock.json .npmrc ./
 # ONNX Runtime livre ses bibliothèques pour macOS et Windows aussi (plus de
 # 200 Mo) : l'image n'en garde que celles de Linux.
+# pdf.js (lecture des relevés bancaires) tire en option @napi-rs/canvas, un
+# moteur de dessin natif d'environ 34 Mo. Il ne sert qu'à afficher des pages ;
+# pour en lire le texte, pdf.js s'en passe très bien.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --omit=dev && npm cache clean --force \
     && rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin \
-              node_modules/onnxruntime-node/bin/napi-v6/win32
+              node_modules/onnxruntime-node/bin/napi-v6/win32 \
+              node_modules/@napi-rs
 
 
 FROM base AS runner

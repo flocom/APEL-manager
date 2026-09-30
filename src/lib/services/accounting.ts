@@ -16,6 +16,7 @@ import {
   accountingEntryUpdateSchema,
   financialAccountSchema,
   financialAccountUpdateSchema,
+  type AccountingEntryInput,
 } from "@/lib/validation";
 
 import { recordAudit, type AuditActor } from "./audit";
@@ -36,20 +37,80 @@ export async function getFinancialAccount(id: string) {
   return account ?? null;
 }
 
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Contrainte d'unicité qu'une requête vient de heurter, ou null. Drizzle
+ * enveloppe l'erreur de PostgreSQL : on remonte la chaîne des causes.
+ */
+export function uniqueViolation(error: unknown): string | null {
+  let courante: unknown = error;
+  for (let i = 0; i < 4 && courante; i += 1) {
+    const e = courante as { code?: unknown; constraint_name?: unknown };
+    if (e.code === "23505") {
+      return typeof e.constraint_name === "string" ? e.constraint_name : "";
+    }
+    courante =
+      courante instanceof Error ? (courante as { cause?: unknown }).cause : null;
+  }
+  return null;
+}
+
+const INDEX_NUMERO_DE_COMPTE = "financial_accounts_bank_account_number_idx";
+
+/**
+ * Refuse un numéro de relevé déjà porté par un autre compte, avec son nom :
+ * « déjà utilisé » seul laisserait le trésorier chercher lequel. L'index
+ * unique reste le vrai garde-fou (voir `numeroDejaPris`).
+ */
+async function assertBankAccountNumberFree(
+  bankAccountNumber: string | null | undefined,
+  exceptId: string | null,
+) {
+  if (!bankAccountNumber) return;
+  const [other] = await db
+    .select({ id: financialAccounts.id, name: financialAccounts.name })
+    .from(financialAccounts)
+    .where(eq(financialAccounts.bankAccountNumber, bankAccountNumber))
+    .limit(1);
+  if (other && other.id !== exceptId) {
+    throw new HttpError(
+      409,
+      `Le n° de compte ${bankAccountNumber} est déjà associé au compte « ${other.name} ».`,
+    );
+  }
+}
+
+/** Deux enregistrements simultanés du même numéro : l'index a tranché. */
+function numeroDejaPris(error: unknown, bankAccountNumber: string | null | undefined) {
+  if (uniqueViolation(error) === INDEX_NUMERO_DE_COMPTE) {
+    return new HttpError(
+      409,
+      `Le n° de compte ${bankAccountNumber ?? ""} est déjà associé à un autre compte.`,
+    );
+  }
+  return error;
+}
+
 export async function createFinancialAccount(
   input: unknown,
   actor: AuditActor,
 ) {
   const data = financialAccountSchema.parse(input);
+  await assertBankAccountNumberFree(data.bankAccountNumber, null);
   const [account] = await db
     .insert(financialAccounts)
     .values({
       name: data.name,
       type: data.type,
       description: emptyToNull(data.description),
+      bankAccountNumber: data.bankAccountNumber ?? null,
       isActive: data.isActive,
     })
-    .returning();
+    .returning()
+    .catch((error: unknown) => {
+      throw numeroDejaPris(error, data.bankAccountNumber);
+    });
 
   await recordAudit(
     actor,
@@ -84,6 +145,23 @@ export async function updateFinancialAccount(
     }
   }
 
+  // Le schéma ne voit que les champs envoyés : un numéro ajouté à une caisse
+  // sans renvoyer son type, ou une caisse obtenue en changeant le type d'un
+  // compte numéroté, se contrôle avec ce qui est enregistré.
+  if (data.type !== undefined || data.bankAccountNumber !== undefined) {
+    const type = data.type ?? current.type;
+    const number =
+      data.bankAccountNumber !== undefined
+        ? data.bankAccountNumber
+        : current.bankAccountNumber;
+    if (type === "cash" && number) {
+      throw new HttpError(
+        400,
+        "Une caisse n’a pas de numéro de compte bancaire : videz ce champ.",
+      );
+    }
+  }
+
   const updates: Partial<typeof financialAccounts.$inferInsert> = {
     updatedAt: new Date(),
   };
@@ -93,12 +171,19 @@ export async function updateFinancialAccount(
   if (data.description !== undefined)
     updates.description = emptyToNull(data.description);
   if (data.isActive !== undefined) updates.isActive = data.isActive;
+  if (data.bankAccountNumber !== undefined) {
+    await assertBankAccountNumberFree(data.bankAccountNumber, id);
+    updates.bankAccountNumber = data.bankAccountNumber ?? null;
+  }
 
   const [account] = await db
     .update(financialAccounts)
     .set(updates)
     .where(eq(financialAccounts.id, id))
-    .returning();
+    .returning()
+    .catch((error: unknown) => {
+      throw numeroDejaPris(error, data.bankAccountNumber);
+    });
 
   const action =
     data.isActive === false && current.isActive
@@ -262,34 +347,50 @@ async function validateReferences(
   }
 }
 
+/**
+ * Contrôle puis insère une écriture, dans la transaction de l'appelant.
+ *
+ * Partagée par la saisie manuelle et l'import des relevés : les mêmes règles
+ * de rattachement (compte actif, catégorie active et du bon sens, événement
+ * existant, verrous partagés) valent quelle que soit l'origine de l'écriture.
+ * `data` a déjà passé `accountingEntrySchema`, ou respecte ses limites.
+ */
+export async function insertAccountingEntry(
+  tx: Transaction,
+  data: Omit<AccountingEntryInput, "version">,
+  actor: AuditActor,
+) {
+  await validateReferences(data, tx);
+  const [created] = await tx
+    .insert(accountingEntries)
+    .values({
+      type: data.type,
+      status: data.status,
+      accountId: data.accountId ?? null,
+      categoryId: data.categoryId ?? null,
+      eventId: data.eventId ?? null,
+      label: data.label,
+      amountCents: data.amountCents,
+      occurredAt: data.occurredAt,
+      counterparty: emptyToNull(data.counterparty),
+      paymentMethod: emptyToNull(data.paymentMethod),
+      reference: emptyToNull(data.reference),
+      notes: emptyToNull(data.notes),
+      attachmentUrl: emptyToNull(data.attachmentUrl),
+      createdBy: actor.userId,
+    })
+    .returning();
+  return created;
+}
+
 export async function createAccountingEntry(
   input: unknown,
   actor: AuditActor,
 ) {
   const data = accountingEntrySchema.parse(input);
-  const entry = await db.transaction(async (tx) => {
-    await validateReferences(data, tx);
-    const [created] = await tx
-      .insert(accountingEntries)
-      .values({
-        type: data.type,
-        status: data.status,
-        accountId: data.accountId ?? null,
-        categoryId: data.categoryId ?? null,
-        eventId: data.eventId ?? null,
-        label: data.label,
-        amountCents: data.amountCents,
-        occurredAt: data.occurredAt,
-        counterparty: emptyToNull(data.counterparty),
-        paymentMethod: emptyToNull(data.paymentMethod),
-        reference: emptyToNull(data.reference),
-        notes: emptyToNull(data.notes),
-        attachmentUrl: emptyToNull(data.attachmentUrl),
-        createdBy: actor.userId,
-      })
-      .returning();
-    return created;
-  });
+  const entry = await db.transaction((tx) =>
+    insertAccountingEntry(tx, data, actor),
+  );
 
   await recordAudit(actor, "accounting.create", "accounting_entry", entry.id, {
     type: entry.type,
@@ -400,6 +501,130 @@ export async function updateAccountingEntry(
   return entry;
 }
 
+/** « Frais bancaires » et « frais  BANCAIRES » sont la même catégorie. */
+function nomDeCategorie(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Refuse une catégorie homonyme dans le même sens. Deux « Dons » côté
+ * recettes couperaient en deux ce que la catégorie sert à regrouper — et
+ * l'import des relevés, qui propose une catégorie d'après son nom, ne saurait
+ * laquelle choisir. Le verrou consultatif sérialise les créations et
+ * renommages simultanés : sans lui, deux onglets passaient le contrôle
+ * ensemble.
+ */
+async function assertCategoryNameFree(
+  tx: Transaction,
+  name: string,
+  type: "income" | "expense",
+  exceptId: string | null,
+) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext('apel-manager:categories-comptables'))`,
+  );
+  const wanted = nomDeCategorie(name);
+  const sameType = await tx
+    .select({
+      id: accountingCategories.id,
+      name: accountingCategories.name,
+      isActive: accountingCategories.isActive,
+    })
+    .from(accountingCategories)
+    .where(eq(accountingCategories.type, type));
+  const twin = sameType.find(
+    (category) =>
+      category.id !== exceptId && nomDeCategorie(category.name) === wanted,
+  );
+  if (twin) {
+    throw new HttpError(
+      409,
+      `Une catégorie « ${twin.name} » existe déjà dans les ${type === "income" ? "recettes" : "dépenses"}${twin.isActive ? "." : " (désactivée : réactivez-la)."}`,
+    );
+  }
+}
+
+/** Crée une catégorie comptable (écran Comptabilité, outil MCP). */
+export async function createAccountingCategory(
+  input: unknown,
+  actor: AuditActor,
+) {
+  const data = accountingCategorySchema.parse(input);
+  return db.transaction(async (tx) => {
+    await assertCategoryNameFree(tx, data.name, data.type, null);
+    const [category] = await tx
+      .insert(accountingCategories)
+      .values({
+        name: data.name,
+        type: data.type,
+        description: emptyToNull(data.description),
+        isActive: data.isActive,
+      })
+      .returning();
+    await recordAudit(
+      actor,
+      "accounting.category_create",
+      "accounting_category",
+      category.id,
+      { name: category.name, type: category.type },
+      tx,
+    );
+    return category;
+  });
+}
+
+/**
+ * Catégories avec leur usage : nombre d'écritures (tous statuts, c'est ce qui
+ * empêche de supprimer) et total des écritures validées.
+ */
+export async function listAccountingCategoriesWithUsage(): Promise<
+  {
+    id: string;
+    name: string;
+    type: "income" | "expense";
+    description: string | null;
+    isActive: boolean;
+    entryCount: number;
+    postedTotalCents: number;
+  }[]
+> {
+  const usage = db
+    .select({
+      categoryId: accountingEntries.categoryId,
+      entryCount: sql<number>`count(*)::int`.as("entry_count"),
+      postedTotalCents:
+        sql<string>`coalesce(sum(${accountingEntries.amountCents}::bigint) filter (where ${accountingEntries.status} = 'posted'), 0)::bigint`.as(
+          "posted_total_cents",
+        ),
+    })
+    .from(accountingEntries)
+    .groupBy(accountingEntries.categoryId)
+    .as("usage");
+  const rows = await db
+    .select({
+      id: accountingCategories.id,
+      name: accountingCategories.name,
+      type: accountingCategories.type,
+      description: accountingCategories.description,
+      isActive: accountingCategories.isActive,
+      entryCount: usage.entryCount,
+      postedTotalCents: usage.postedTotalCents,
+    })
+    .from(accountingCategories)
+    .leftJoin(usage, eq(usage.categoryId, accountingCategories.id))
+    .orderBy(asc(accountingCategories.name));
+  return rows.map((row) => ({
+    ...row,
+    entryCount: Number(row.entryCount ?? 0),
+    postedTotalCents: centimesDepuisSql(row.postedTotalCents),
+  }));
+}
+
 /**
  * Modifie une catégorie comptable.
  *
@@ -446,6 +671,20 @@ export async function updateAccountingCategory(
           `Cette catégorie est utilisée par ${n} écriture${Number(n) > 1 ? "s" : ""} : son sens (recette ou dépense) ne peut plus changer. Désactivez-la, puis créez-en une nouvelle.`,
         );
       }
+    }
+
+    // Même règle qu'à la création : un renommage ou un changement de sens ne
+    // doit pas produire deux catégories homonymes.
+    if (
+      (data.name !== undefined && data.name !== current.name) ||
+      (data.type !== undefined && data.type !== current.type)
+    ) {
+      await assertCategoryNameFree(
+        tx,
+        data.name ?? current.name,
+        data.type ?? current.type,
+        id,
+      );
     }
 
     const updates: Partial<typeof accountingCategories.$inferInsert> = {

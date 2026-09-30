@@ -45,8 +45,10 @@ const nextConfig = {
   // version vulnérable.
   poweredByHeader: false,
   // Module natif de la voix intégrée (src/lib/communication/integrated-voice.ts) :
-  // chargé tel quel par Node, jamais empaqueté.
-  serverExternalPackages: ["sherpa-onnx-node", "onnxruntime-node"],
+  // chargé tel quel par Node, jamais empaqueté. pdf.js (lecture des relevés
+  // bancaires, src/lib/banking/pdf-text.ts) aussi : empaqueté, il perd son
+  // moteur et le module natif optionnel qu'il cherche à côté de lui.
+  serverExternalPackages: ["sherpa-onnx-node", "onnxruntime-node", "pdfjs-dist"],
   eslint: {
     // Le lint tourne dans la CI (.github/workflows/ci.yml), avant la fusion :
     // une remarque de style ne doit pas faire échouer la construction de

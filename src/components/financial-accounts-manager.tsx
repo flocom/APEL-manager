@@ -35,6 +35,8 @@ export interface FinancialAccountView {
   name: string;
   type: "bank" | "cash";
   description: string | null;
+  /** Numéro imprimé sur les relevés : l'import des relevés s'y fie pour proposer ce compte. */
+  bankAccountNumber: string | null;
   isActive: boolean;
 }
 
@@ -100,6 +102,13 @@ export function FinancialAccountsManager({
       name: form.get("name"),
       type: form.get("type"),
       description: form.get("description") || null,
+      // Toujours envoyé, même vide : vider le champ détache le numéro. Une
+      // caisse n'en a jamais (le champ y est masqué) : un numéro de relevé
+      // posé sur une caisse ferait proposer la caisse à l'import.
+      bankAccountNumber:
+        form.get("type") === "bank"
+          ? String(form.get("bankAccountNumber") ?? "").trim() || null
+          : null,
       ...(editor === "new" ? { isActive: true } : {}),
     };
 
@@ -371,6 +380,14 @@ function AccountCard({
             <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
               {account.type === "bank" ? "Compte bancaire" : "Caisse espèces"}
             </p>
+            {account.bankAccountNumber && (
+              <p className="mt-1 text-xs text-slate-500">
+                N° sur les relevés :{" "}
+                <span className="font-semibold tabular-nums text-slate-700">
+                  {account.bankAccountNumber}
+                </span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -456,6 +473,9 @@ function FinancialAccountForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
 }) {
+  const [type, setType] = useState<FinancialAccountView["type"]>(
+    account?.type ?? "bank",
+  );
   return (
     <form onSubmit={onSubmit} className="space-y-5 p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -484,17 +504,42 @@ function FinancialAccountForm({
           <Select
             id="financial-account-type"
             name="type"
-            defaultValue={account?.type ?? "bank"}
+            value={type}
+            onChange={(event) =>
+              setType(event.currentTarget.value as FinancialAccountView["type"])
+            }
             disabled={typeLocked}
           >
             <option value="bank">Compte bancaire</option>
             <option value="cash">Caisse espèces</option>
           </Select>
         </Field>
+        {type === "bank" && (
+          <Field
+            label="N° de compte sur les relevés"
+            htmlFor="financial-account-number"
+            hint="Facultatif — le « N° » imprimé en tête de chaque relevé (ex. « N° 00020911101 »), pas l’IBAN. Il sert à reconnaître le compte lors de l’import des relevés et se renseigne seul au premier import. Ce n’est pas une donnée sensible : il ne permet aucun paiement."
+            className="sm:col-span-2"
+          >
+            <Input
+              id="financial-account-number"
+              name="bankAccountNumber"
+              maxLength={40}
+              autoComplete="off"
+              inputMode="text"
+              spellCheck={false}
+              pattern="[A-Za-z0-9 ]{5,40}"
+              title="De 5 à 34 chiffres ou lettres, espaces permis"
+              defaultValue={account?.bankAccountNumber ?? ""}
+              placeholder="Ex. 00020911101"
+              className="tabular-nums"
+            />
+          </Field>
+        )}
         <Field
           label="Description"
           htmlFor="financial-account-description"
-          hint="Facultatif — ajoutez un repère utile sans saisir de données bancaires sensibles."
+          hint="Facultatif — un repère utile. Ne saisissez ni code d’accès ni numéro de carte."
           className="sm:col-span-2"
         >
           <Textarea

@@ -531,18 +531,97 @@ export const associationMemberSchema = z.object({
 
 export const associationMemberUpdateSchema = associationMemberSchema.partial();
 
-export const financialAccountSchema = z.object({
+/**
+ * IBAN français bien formé et dont la clé (ISO 13616, modulo 97) est juste :
+ * renvoie ses onze caractères de numéro de compte (après les codes banque et
+ * guichet), sinon null. FR76 15519 39057 00020911101 09 → « 00020911101 »,
+ * le « N° » imprimé en tête des relevés du Crédit Mutuel.
+ */
+function frenchIbanAccountNumber(value: string): string | null {
+  if (!/^FR\d{12}[0-9A-Z]{11}\d{2}$/.test(value)) return null;
+  let remainder = 0;
+  for (const char of value.slice(4) + value.slice(0, 4)) {
+    const digits = /\d/.test(char) ? char : String(char.charCodeAt(0) - 55);
+    for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
+  }
+  return remainder === 1 ? value.slice(14, 25) : null;
+}
+
+/**
+ * Numéro de compte tel qu'imprimé sur les relevés (« N° 00020911101 » au
+ * Crédit Mutuel). Espaces retirés et majuscules : c'est la forme sous laquelle
+ * l'import le compare, « 0002 0911 101 » doit désigner le même compte. Vide :
+ * aucun numéro.
+ *
+ * Un IBAN collé à la place (il figure sur le RIB, on le saisit volontiers)
+ * bloquerait tous les imports, qui ne comparent que le « N° » : un IBAN
+ * français valide est ramené à son numéro de compte, tout autre IBAN est
+ * refusé avec l'explication.
+ */
+const bankAccountNumber = z
+  .string()
+  .transform((value, ctx) => {
+    const compact = value.replace(/\s+/g, "").toUpperCase();
+    if (!/^[A-Z]{2}\d{2}/.test(compact) || compact.length < 15) return compact;
+    const number = frenchIbanAccountNumber(compact);
+    if (number) return number;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Ceci ressemble à un IBAN, mais il n’est pas valide ou pas français : saisissez le N° de compte imprimé en tête du relevé (onze chiffres au Crédit Mutuel).",
+    });
+    return z.NEVER;
+  })
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^(?:[A-Z0-9]{5,34})?$/,
+        "Numéro de compte invalide : de 5 à 34 chiffres ou lettres, tel qu’il figure sur le relevé.",
+      ),
+  )
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .optional();
+
+const financialAccountFields = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
   type: z.enum(["bank", "cash"]),
   description: optionalText(1000),
+  bankAccountNumber,
   isActive: z.boolean().default(true),
 });
 
-export const financialAccountUpdateSchema = financialAccountSchema
+/**
+ * Une caisse n'a pas de relevé : un numéro saisi là par erreur ferait
+ * proposer la caisse à l'import, puis refuser le vrai compte bancaire
+ * (« numéro déjà rattaché à la caisse »). Sur une modification qui ne précise
+ * pas le type, le service refait ce contrôle avec le type enregistré.
+ */
+function refuseCashAccountNumber(
+  data: { type?: "bank" | "cash"; bankAccountNumber?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (data.type === "cash" && data.bankAccountNumber) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["bankAccountNumber"],
+      message:
+        "Une caisse n’a pas de numéro de compte bancaire : laissez ce champ vide.",
+    });
+  }
+}
+
+export const financialAccountSchema = financialAccountFields.superRefine(
+  refuseCashAccountNumber,
+);
+
+export const financialAccountUpdateSchema = financialAccountFields
   .partial()
   .refine((data) => Object.keys(data).length > 0, {
     message: "Aucune modification fournie",
-  });
+  })
+  .superRefine(refuseCashAccountNumber);
 
 export const accountingCategorySchema = z.object({
   name: z.string().trim().min(1, "Nom requis").max(160),
@@ -579,6 +658,95 @@ export const accountingEntrySchema = z.object({
 });
 
 export const accountingEntryUpdateSchema = accountingEntrySchema.partial();
+
+/**
+ * Relevé déjà téléversé dans les pièces de la comptabilité. Seule une adresse
+ * `/api/uploads/accounting-…` est admise : le serveur relit le fichier sur son
+ * propre disque, jamais à une adresse fournie par le client.
+ */
+const bankStatementFile = z.object({
+  fileUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .regex(
+      storedFilePattern("accounting"),
+      "Relevé introuvable : téléversez-le de nouveau.",
+    ),
+  fileName: z.string().trim().min(1).max(300),
+}).strict();
+
+const bankImportBank = z.enum(["credit_mutuel"]);
+
+/** Assez pour une année de relevés mensuels, sans laisser lire un disque entier. */
+const BANK_IMPORT_MAX_FILES = 12;
+
+export const bankImportAnalyzeSchema = z
+  .object({
+    bank: bankImportBank,
+    files: z
+      .array(bankStatementFile)
+      .min(1, "Ajoutez au moins un relevé.")
+      .max(
+        BANK_IMPORT_MAX_FILES,
+        `Au plus ${BANK_IMPORT_MAX_FILES} relevés à la fois.`,
+      ),
+  })
+  .strict();
+
+const bankLineDecision = z.discriminatedUnion("action", [
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("import"),
+      label: z.string().trim().min(1, "Libellé requis").max(300),
+      categoryId: z.string().uuid().nullable(),
+      eventId: z.string().uuid().nullable(),
+      cashAccountId: z.string().uuid().nullable().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("skip"),
+    })
+    .strict(),
+  z
+    .object({
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      action: z.literal("link"),
+      entryId: z.string().uuid(),
+    })
+    .strict(),
+]);
+
+export const bankImportCommitSchema = z
+  .object({
+    bank: bankImportBank,
+    token: z.string().regex(/^[0-9a-f]{64}$/, "Analyse invalide : relancez-la."),
+    status: z.enum(["draft", "posted"]),
+    statements: z
+      .array(
+        bankStatementFile
+          .extend({
+            sections: z
+              .array(
+                z
+                  .object({
+                    key: z.string().min(1).max(200),
+                    accountId: z.string().uuid().nullable(),
+                  })
+                  .strict(),
+              )
+              .max(20),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(BANK_IMPORT_MAX_FILES),
+    decisions: z.array(bankLineDecision).max(2000),
+  })
+  .strict();
 
 export const associationDocumentSchema = z.object({
   type: z.enum(ASSOCIATION_DOCUMENT_TYPES),

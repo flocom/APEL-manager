@@ -29,6 +29,7 @@
     "next": "15.5.19",
     "nodemailer": "^9.0.3",
     "onnxruntime-node": "1.30.0",
+    "pdfjs-dist": "6.3.289",
     "postgres": "^3.4.9",
     "qrcode.react": "^4.2.0",
     "react": "19.0.0",

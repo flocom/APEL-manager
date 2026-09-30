@@ -22,6 +22,7 @@ import {
 } from "@/lib/notifications/emails";
 import { getNotificationIdentity } from "@/lib/notifications/identity";
 import {
+  createAccountingCategory,
   createAccountingEntry,
   createFinancialAccount,
   deleteAccountingCategory,
@@ -33,6 +34,7 @@ import {
   updateAccountingEntry,
   updateFinancialAccount,
 } from "@/lib/services/accounting";
+import { listBankStatementImports } from "@/lib/services/bank-imports";
 import {
   anneesScolaires,
   etatDe,
@@ -65,10 +67,6 @@ import {
   saveOutboundMailSettings,
 } from "@/lib/services/mail-settings";
 import { getUpdateStatus } from "@/lib/services/updates";
-import { emptyToNull } from "@/lib/utils";
-import {
-  accountingCategorySchema,
-} from "@/lib/validation";
 
 import {
   AVIS_SAISIE_PUBLIQUE,
@@ -471,11 +469,20 @@ export function registerAssociationTools(
     "create_financial_account",
     {
       title: "Créer un compte financier",
-      description: "Ajoute un compte bancaire ou une caisse au journal.",
+      description:
+        "Ajoute un compte bancaire ou une caisse au journal. Le numéro de compte des relevés est facultatif : il est renseigné au premier relevé importé.",
       inputSchema: z.object({
         name: z.string().min(1).max(160),
         type: z.enum(["bank", "cash"]),
         description: optionalNullableString,
+        bankAccountNumber: z
+          .string()
+          .max(60)
+          .nullable()
+          .optional()
+          .describe(
+            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; un IBAN français est ramené à ce numéro. Jamais pour une caisse. null pour l’effacer.",
+          ),
         isActive: z.boolean().default(true),
       }),
       annotations: writeTool,
@@ -501,6 +508,14 @@ export function registerAssociationTools(
         name: z.string().min(1).max(160).optional(),
         type: z.enum(["bank", "cash"]).optional(),
         description: optionalNullableString,
+        bankAccountNumber: z
+          .string()
+          .max(60)
+          .nullable()
+          .optional()
+          .describe(
+            "Numéro du compte tel qu’imprimé sur les relevés (« 00020911101 » au Crédit Mutuel) ; un IBAN français est ramené à ce numéro. Jamais pour une caisse. null pour l’effacer.",
+          ),
         isActive: z.boolean().optional(),
       }),
       annotations: writeTool,
@@ -543,7 +558,8 @@ export function registerAssociationTools(
     "create_accounting_category",
     {
       title: "Créer une catégorie comptable",
-      description: "Ajoute une catégorie de recette ou de dépense.",
+      description:
+        "Ajoute une catégorie de recette ou de dépense. Refusée si une catégorie du même nom (casse et accents ignorés) existe déjà dans le même sens.",
       inputSchema: z.object({
         name: z.string().min(1).max(160),
         type: z.enum(["income", "expense"]),
@@ -554,21 +570,10 @@ export function registerAssociationTools(
     },
     async (input) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const data = accountingCategorySchema.parse(input);
-      const [category] = await db
-        .insert(accountingCategories)
-        .values({
-          name: data.name,
-          type: data.type,
-          description: emptyToNull(data.description),
-          isActive: data.isActive,
-        })
-        .returning();
-      await recordAudit(
+      // Le service refuse une catégorie homonyme dans le même sens.
+      const category = await createAccountingCategory(
+        input,
         mcpAuditActor(principal),
-        "accounting.category_create",
-        "accounting_category",
-        category.id,
       );
       return toolResult({ category }, "Catégorie comptable créée.");
     },
@@ -620,6 +625,24 @@ export function registerAssociationTools(
       // écriture validée au même moment ne peut plus s'en trouver détachée.
       await deleteAccountingCategory(id, mcpAuditActor(principal));
       return toolResult({ id, deleted: true });
+    },
+  );
+
+  server.registerTool(
+    "list_bank_statement_imports",
+    {
+      title: "Lister les relevés bancaires importés",
+      description:
+        "Liste les relevés bancaires (Crédit Mutuel) importés dans la comptabilité, du plus récent au plus ancien : compte, période, soldes, nombre d’opérations importées, rattachées à une écriture existante ou écartées, et si l’import peut encore être annulé (toutes ses écritures sont au brouillon). L’import lui-même se fait depuis l’écran Comptabilité.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+      }),
+      annotations: readOnlyTool,
+    },
+    async ({ limit }) => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      const items = await listBankStatementImports(limit);
+      return toolResult({ items });
     },
   );
 
