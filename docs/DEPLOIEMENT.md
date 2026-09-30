@@ -212,6 +212,41 @@ supprime pas : elle se désactive, l'historique reste classé.
   (`UPLOAD_ORPHAN_MAX_AGE_HOURS`, 24 h par défaut).
 - **Plafonds** : 60 analyses et 30 enregistrements par heure et par
   administrateur, 12 relevés par envoi.
+- **Rapprochement après coup** : une écriture importée encore au brouillon peut
+  être rattachée à une écriture saisie auparavant (un paiement par carte avec
+  son ticket, par exemple) : l'opération du relevé passe sur elle et le
+  brouillon importé est supprimé. La date d'achat imprimée dans le libellé des
+  paiements par carte (« PAIEMENT CB 2206 ») sert aussi à reconnaître ces
+  écritures dès l'import.
+
+#### Soldes et contrôle avec les relevés
+
+Chaque compte de trésorerie a un **solde de départ** (montant et jour), rempli
+au premier relevé importé ou saisi sur la fiche du compte. Le solde du compte
+est ce solde plus les écritures validées postérieures ; la « Trésorerie » de la
+synthèse additionne les comptes. Sur un compte qui a des relevés importés, le
+solde calculé au jour du dernier relevé est comparé au solde imprimé : conforme,
+conforme une fois les brouillons validés, ou écart à expliquer.
+
+#### Export comptable (FEC)
+
+« Export comptable » produit, pour un exercice :
+
+- le **FEC** (Fichier des Écritures Comptables, article A. 47 A-1 du livre des
+  procédures fiscales) : 18 zones séparées par « | », dates AAAAMMJJ, montants à
+  virgule, ISO 8859-15, nom « SIRENFECAAAAMMJJ.txt » (date de clôture ; sans
+  SIREN, « FECAAAAMMJJ.txt ») ;
+- le même **grand livre en tableur** (CSV pour Excel).
+
+La comptabilité de l'application étant une comptabilité de trésorerie, chaque
+écriture est exportée en partie double : compte de trésorerie (512 banque, 530
+caisse) contre le compte de charge ou de produit de sa catégorie (plan comptable
+associatif : 756 cotisations, 754 dons, 627 frais bancaires…, à régler dans
+l'onglet Catégories). Les soldes de départ deviennent des à-nouveaux (journal
+AN, contre le report à nouveau 110/119). Seules les écritures **validées**,
+donc intangibles, sont exportées, numérotées sans trou dans l'ordre
+chronologique ; l'écran signale les brouillons de la période à valider avant la
+clôture. Chaque export est journalisé.
 
 ### Documents
 

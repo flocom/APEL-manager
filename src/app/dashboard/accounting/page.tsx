@@ -87,12 +87,25 @@ export default async function AccountingPage() {
       <AccountingManager
         entries={serialized}
         accounts={accounts.map(
-          ({ id, name, type, description, bankAccountNumber, isActive }) => ({
+          ({
             id,
             name,
             type,
             description,
             bankAccountNumber,
+            openingBalanceCents,
+            openingBalanceDate,
+            ledgerCode,
+            isActive,
+          }) => ({
+            id,
+            name,
+            type,
+            description,
+            bankAccountNumber,
+            openingBalanceCents,
+            openingBalanceDate: openingBalanceDate?.toISOString() ?? null,
+            ledgerCode,
             isActive,
           }),
         )}

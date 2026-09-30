@@ -30,6 +30,7 @@ import {
   Input,
   Select,
 } from "@/components/ui";
+import { defaultCategoryLedger } from "@/lib/accounting/ledger-codes";
 import { api } from "@/lib/client";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -275,8 +276,8 @@ export function AccountingCategoriesManager({
             busyId={busyId}
             busySuggestion={busySuggestion}
             onSuggest={(names) => void createSuggested(type, names)}
-            onRename={(category, name) =>
-              patch(category, { name }, "Catégorie renommée.")
+            onRename={(category, changes) =>
+              patch(category, changes, "Catégorie mise à jour.")
             }
             onToggle={(category) =>
               void patch(
@@ -326,7 +327,10 @@ function CategoryColumn({
   busyId: string | null;
   busySuggestion: string | null;
   onSuggest: (names: string[]) => void;
-  onRename: (category: AccountingCategoryView, name: string) => Promise<boolean>;
+  onRename: (
+    category: AccountingCategoryView,
+    changes: { name?: string; ledgerCode?: string | null },
+  ) => Promise<boolean>;
   onToggle: (category: AccountingCategoryView) => void;
   onDelete: (category: AccountingCategoryView) => void;
 }) {
@@ -394,7 +398,7 @@ function CategoryColumn({
               key={category.id}
               category={category}
               busy={busyId === category.id}
-              onRename={(name) => onRename(category, name)}
+              onRename={(changes) => onRename(category, changes)}
               onToggle={() => onToggle(category)}
               onDelete={() => onDelete(category)}
             />
@@ -414,16 +418,19 @@ function CategoryRow({
 }: {
   category: AccountingCategoryView;
   busy: boolean;
-  onRename: (name: string) => Promise<boolean>;
+  onRename: (changes: { name?: string; ledgerCode?: string | null }) => Promise<boolean>;
   onToggle: () => void;
   onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(category.name);
+  const [code, setCode] = useState(category.ledgerCode ?? "");
   const inputId = `category-rename-${category.id}`;
+  const suggested = defaultCategoryLedger(category.name, category.type);
 
   function startRename() {
     setName(category.name);
+    setCode(category.ledgerCode ?? "");
     setRenaming(true);
     requestAnimationFrame(() => {
       const input = document.getElementById(inputId) as HTMLInputElement | null;
@@ -434,11 +441,15 @@ function CategoryRow({
 
   async function submitRename() {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === category.name) {
+    const nextCode = code.replace(/\s+/g, "") || null;
+    const changes: { name?: string; ledgerCode?: string | null } = {};
+    if (trimmed && trimmed !== category.name) changes.name = trimmed;
+    if (nextCode !== (category.ledgerCode ?? null)) changes.ledgerCode = nextCode;
+    if (!Object.keys(changes).length) {
       setRenaming(false);
       return;
     }
-    if (await onRename(trimmed)) setRenaming(false);
+    if (await onRename(changes)) setRenaming(false);
   }
 
   return (
@@ -471,6 +482,27 @@ function CategoryRow({
                 }
               }}
               className="min-w-0 flex-1"
+            />
+            <label htmlFor={`${inputId}-code`} className="sr-only">
+              Compte comptable de « {category.name} »
+            </label>
+            <Input
+              id={`${inputId}-code`}
+              value={code}
+              maxLength={8}
+              inputMode="numeric"
+              autoComplete="off"
+              disabled={busy}
+              placeholder={`Compte (${suggested.code})`}
+              title="Compte du plan comptable pour l’export (FEC). Vide : compte proposé d’après le nom."
+              onChange={(event) => setCode(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitRename();
+                }
+              }}
+              className="w-full tabular-nums sm:w-36"
             />
             <div className="grid grid-cols-2 gap-2 sm:flex">
               <Button
@@ -521,6 +553,14 @@ function CategoryRow({
                 {formatEuros(category.postedTotalCents)}
               </span>{" "}
               validés
+              {" · "}
+              <span title="Compte du plan comptable utilisé par l’export (FEC)">
+                compte{" "}
+                <span className="font-semibold tabular-nums text-slate-700">
+                  {category.ledgerCode ?? suggested.code}
+                </span>
+                {!category.ledgerCode && " (proposé)"}
+              </span>
             </p>
           </>
         )}
@@ -534,9 +574,9 @@ function CategoryRow({
             icon={Pencil}
             disabled={busy}
             onClick={startRename}
-            aria-label={`Renommer « ${category.name} »`}
+            aria-label={`Modifier « ${category.name} » (nom, compte comptable)`}
           >
-            <span aria-hidden="true">Renommer</span>
+            <span aria-hidden="true">Modifier</span>
           </Button>
           <Button
             type="button"

@@ -1384,6 +1384,8 @@ async function applyDecisions(
     );
   }
 
+  await learnOpeningBalances(tx, planned, actor);
+
   const touchedImports = new Set<string>();
   const totals = { imported: 0, linked: 0, skipped: 0 };
 
@@ -1613,6 +1615,75 @@ async function applyDecisions(
   }
 
   return { importIds, ...totals };
+}
+
+/**
+ * Solde de départ du compte, appris du plus ancien relevé importé : son solde
+ * d'ouverture est le solde réel du compte ce jour-là. Un solde saisi à la
+ * main n'est jamais remplacé ; un solde appris d'un relevé l'est quand on
+ * importe ensuite un relevé plus ancien (on remonte le point de départ).
+ */
+async function learnOpeningBalances(
+  tx: Transaction,
+  planned: PlannedSection[],
+  actor: AuditActor,
+) {
+  const earliest = new Map<string, { account: AccountRow; date: string; cents: number }>();
+  for (const { account, section } of planned) {
+    const { openingDate, openingBalanceCents } = section.source;
+    const known = earliest.get(account.id);
+    if (!known || openingDate < known.date) {
+      earliest.set(account.id, { account, date: openingDate, cents: openingBalanceCents });
+    }
+  }
+  for (const { account, date, cents } of earliest.values()) {
+    const [current] = await tx
+      .select({
+        cents: financialAccounts.openingBalanceCents,
+        date: financialAccounts.openingBalanceDate,
+      })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, account.id));
+    if (current.date) {
+      const currentDay = toDateInput(current.date);
+      if (date >= currentDay) continue;
+      // Plus ancien que le solde enregistré : on ne remonte que si celui-ci
+      // venait lui-même d'un relevé, jamais par-dessus une saisie à la main.
+      const [fromImport] = await tx
+        .select({ id: bankStatementImports.id })
+        .from(bankStatementImports)
+        .where(
+          and(
+            eq(bankStatementImports.accountId, account.id),
+            eq(bankStatementImports.periodStart, current.date),
+            eq(bankStatementImports.openingBalanceCents, current.cents ?? 0),
+          ),
+        )
+        .limit(1);
+      if (!fromImport) continue;
+    }
+    await tx
+      .update(financialAccounts)
+      .set({
+        openingBalanceCents: cents,
+        openingBalanceDate: parseLocalDateTime(date),
+        updatedAt: new Date(),
+      })
+      .where(eq(financialAccounts.id, account.id));
+    await recordAudit(
+      actor,
+      "accounting.account_update",
+      "financial_account",
+      account.id,
+      {
+        changedFields: ["openingBalanceCents", "openingBalanceDate"],
+        openingBalanceCents: cents,
+        openingBalanceDate: date,
+        source: "bank_import",
+      },
+      tx,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------------ */

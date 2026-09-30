@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BookOpenText,
   CircleDollarSign,
+  Download,
   FileUp,
   FileWarning,
   Landmark,
@@ -25,6 +26,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { BankLinkDialog } from "@/components/accounting/bank-link-dialog";
 import { CategorySelect } from "@/components/accounting/category-picker";
+import { AccountingExportDialog } from "@/components/accounting/export-dialog";
 import { AccountingModal } from "@/components/accounting/modal";
 import {
   type AccountingCategoryPayload,
@@ -53,6 +55,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import type { BankImportSummary } from "@/lib/banking/import-types";
+import { treasuryBalance } from "@/lib/accounting/balances";
 import { api } from "@/lib/client";
 import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
@@ -119,6 +122,7 @@ export function AccountingManager({
     useState<AccountingEntryView | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [linking, setLinking] = useState<AccountingEntryView | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Copie locale des catégories : une catégorie créée depuis le formulaire,
   // l'import ou l'onglet Catégories apparaît aussitôt partout, sans attendre
@@ -312,7 +316,11 @@ export function AccountingManager({
       </Card>
 
       {workspace === "accounts" ? (
-        <FinancialAccountsManager accounts={accounts} entries={entries} />
+        <FinancialAccountsManager
+          accounts={accounts}
+          entries={entries}
+          statements={imports}
+        />
       ) : workspace === "categories" ? (
         <AccountingCategoriesManager
           categories={localCategories}
@@ -330,9 +338,9 @@ export function AccountingManager({
             className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
         <ModuleStat
-          label="Solde"
-          value={formatEuros(incomeCents - expenseCents)}
-          helper="Écritures validées"
+          label="Trésorerie"
+          value={formatEuros(treasuryBalance(accounts, entries))}
+          helper="Soldes de départ et écritures validées"
           icon={WalletCards}
           tone="brand"
         />
@@ -493,7 +501,16 @@ export function AccountingManager({
               })}
             </Select>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:shrink-0">
+          <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              icon={Download}
+              onClick={() => setExporting(true)}
+              className="w-full lg:w-auto"
+            >
+              Export comptable
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -722,6 +739,10 @@ export function AccountingManager({
           </div>
         </>
       )}
+
+          {exporting && (
+            <AccountingExportDialog entries={entries} onClose={() => setExporting(false)} />
+          )}
 
           {linking && (
             <BankLinkDialog

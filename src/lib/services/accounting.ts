@@ -105,6 +105,9 @@ export async function createFinancialAccount(
       type: data.type,
       description: emptyToNull(data.description),
       bankAccountNumber: data.bankAccountNumber ?? null,
+      ledgerCode: data.ledgerCode ?? null,
+      openingBalanceCents: data.openingBalanceCents ?? null,
+      openingBalanceDate: data.openingBalanceDate ?? null,
       isActive: data.isActive,
     })
     .returning()
@@ -171,6 +174,11 @@ export async function updateFinancialAccount(
   if (data.description !== undefined)
     updates.description = emptyToNull(data.description);
   if (data.isActive !== undefined) updates.isActive = data.isActive;
+  if (data.ledgerCode !== undefined) updates.ledgerCode = data.ledgerCode ?? null;
+  if (data.openingBalanceCents !== undefined || data.openingBalanceDate !== undefined) {
+    updates.openingBalanceCents = data.openingBalanceCents ?? null;
+    updates.openingBalanceDate = data.openingBalanceDate ?? null;
+  }
   if (data.bankAccountNumber !== undefined) {
     await assertBankAccountNumberFree(data.bankAccountNumber, id);
     updates.bankAccountNumber = data.bankAccountNumber ?? null;
@@ -563,6 +571,7 @@ export async function createAccountingCategory(
         name: data.name,
         type: data.type,
         description: emptyToNull(data.description),
+        ledgerCode: data.ledgerCode ?? null,
         isActive: data.isActive,
       })
       .returning();
@@ -588,6 +597,7 @@ export async function listAccountingCategoriesWithUsage(): Promise<
     name: string;
     type: "income" | "expense";
     description: string | null;
+    ledgerCode: string | null;
     isActive: boolean;
     entryCount: number;
     postedTotalCents: number;
@@ -611,6 +621,7 @@ export async function listAccountingCategoriesWithUsage(): Promise<
       name: accountingCategories.name,
       type: accountingCategories.type,
       description: accountingCategories.description,
+      ledgerCode: accountingCategories.ledgerCode,
       isActive: accountingCategories.isActive,
       entryCount: usage.entryCount,
       postedTotalCents: usage.postedTotalCents,
@@ -695,6 +706,7 @@ export async function updateAccountingCategory(
     if (data.description !== undefined) {
       updates.description = emptyToNull(data.description);
     }
+    if (data.ledgerCode !== undefined) updates.ledgerCode = data.ledgerCode ?? null;
     if (data.isActive !== undefined) updates.isActive = data.isActive;
 
     const [category] = await tx
