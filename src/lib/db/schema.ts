@@ -4,6 +4,7 @@ import type {
   AgMinutesPayload,
   ReglesStatutaires,
 } from "@/lib/documents/ag-types";
+import type { HelloAssoSyncSummary } from "@/lib/helloasso/types";
 import {
   type AnyPgColumn,
   boolean,
@@ -711,6 +712,14 @@ export const associationMembers = pgTable(
       .notNull()
       .defaultNow(),
     notes: text("notes"),
+    /**
+     * Adhésion HelloAsso d'où vient le paiement (`item.id` de l'API v5) :
+     * la synchronisation ne l'importe qu'une fois, même si l'adhérent est
+     * renommé ou change d'adresse entre-temps.
+     */
+    helloassoItemId: text("helloasso_item_id"),
+    /** Commande HelloAsso (`order.id`), pour retrouver le reçu côté HelloAsso. */
+    helloassoOrderId: text("helloasso_order_id"),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -720,6 +729,9 @@ export const associationMembers = pgTable(
       .defaultNow(),
   },
   (t) => ({
+    helloassoItemIdx: uniqueIndex("association_members_helloasso_item_idx")
+      .on(t.helloassoItemId)
+      .where(sql`${t.helloassoItemId} is not null`),
     userIdx: uniqueIndex("association_members_user_idx")
       .on(t.userId)
       .where(sql`${t.userId} is not null`),
@@ -1269,6 +1281,50 @@ export const communicationSettings = pgTable(
     providerCheck: check(
       "communication_settings_tts_provider_check",
       sql`${t.ttsProvider} is null or ${t.ttsProvider} in ('piper', 'openai', 'elevenlabs')`,
+    ),
+  }),
+);
+
+/**
+ * Connexion à l'API HelloAsso, pour importer les cotisations payées en ligne.
+ *
+ * Le formulaire synchronisé n'est pas réglé ici : c'est le lien HelloAsso de
+ * « Comment régler » (`association_settings.membership_fee_note`). Une seule
+ * vérité pour les parents et pour la synchronisation.
+ */
+export const helloassoSettings = pgTable(
+  "helloasso_settings",
+  {
+    id: text("id").primaryKey().default("default"),
+    /** Identifiant client (« Mon compte › Intégrations et API »), non secret. */
+    clientId: text("client_id"),
+    /** Secret client chiffré ; jamais exposé par une API de lecture. */
+    encryptedClientSecret: text("encrypted_client_secret"),
+    clientSecretLastFour: text("client_secret_last_four"),
+    /** Dernière fois que HelloAsso a accepté ces clés. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    /** `success` ou `failed` ; null tant qu'aucune synchronisation n'a tourné. */
+    lastSyncStatus: text("last_sync_status"),
+    /** Message d'erreur lisible (jamais de secret), si la dernière a échoué. */
+    lastSyncError: text("last_sync_error"),
+    /** Bilan de la dernière synchronisation réussie (`HelloAssoSyncSummary`). */
+    lastSyncSummary: jsonb("last_sync_summary").$type<HelloAssoSyncSummary>(),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    singletonCheck: check(
+      "helloasso_settings_singleton_check",
+      sql`${t.id} = 'default'`,
+    ),
+    statusCheck: check(
+      "helloasso_settings_last_sync_status_check",
+      sql`${t.lastSyncStatus} is null or ${t.lastSyncStatus} in ('success', 'failed')`,
     ),
   }),
 );

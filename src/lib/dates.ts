@@ -120,3 +120,25 @@ export function toDateInput(d: Date | string): string {
 export function yearInParis(d: Date | string): number {
   return Number(formatInTimeZone(new Date(d), APP_TIMEZONE, "yyyy"));
 }
+
+/**
+ * Année scolaire d'un instant, au calendrier de Paris : « 2026-2027 » du
+ * 1er juillet 2026 au 30 juin 2027. Le serveur (UTC) et le navigateur doivent
+ * tomber sur la même année la nuit du 30 juin.
+ */
+export function schoolYearOf(d: Date | string): string {
+  const [annee, mois] = toDateInput(d).split("-").map(Number);
+  const start = mois >= 7 ? annee : annee - 1;
+  return `${start}-${start + 1}`;
+}
+
+/** Année scolaire en cours (voir `schoolYearOf`). */
+export function currentSchoolYear(): string {
+  return schoolYearOf(new Date());
+}
+
+/** Premier instant d'une année scolaire « 2026-2027 » : le 1er juillet 2026, minuit à Paris. */
+export function schoolYearStart(schoolYear: string): Date {
+  const start = Number(schoolYear.slice(0, 4));
+  return fromZonedTime(`${start}-07-01T00:00:00`, APP_TIMEZONE);
+}
