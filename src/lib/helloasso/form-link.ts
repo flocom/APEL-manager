@@ -64,10 +64,18 @@ export function parseHelloAssoFormUrl(
   }
   if (adresse.protocol !== "https:" && adresse.protocol !== "http:") return null;
   if (!estHelloAsso(adresse.hostname.toLowerCase())) return null;
-  const segments = adresse.pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment).toLowerCase());
+  let segments: string[];
+  try {
+    segments = adresse.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment).toLowerCase());
+  } catch {
+    // « %E0%A4 » : un pourcentage orphelin fait lever `decodeURIComponent`.
+    // Sans ce garde-fou, une phrase mal collée cassait la page des réglages
+    // et la liste des adhérents, qui lisent ce lien au rendu.
+    return null;
+  }
   if (segments[0] !== "associations" || segments.length < 4) return null;
   const [, organizationSlug, typeSegment, formSlug] = segments;
   const formType = FORM_TYPES.get(typeSegment);

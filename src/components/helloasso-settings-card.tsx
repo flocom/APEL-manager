@@ -12,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -51,6 +51,17 @@ export function HelloAssoSettingsCard({
   const [clientId, setClientId] = useState(status.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
+
+  // Le rappel de la liste des adhérents mène ici par `#helloasso`. Arrivée
+  // par navigation côté client, la page des réglages se charge après coup :
+  // le navigateur a déjà renoncé à l'ancre, on la rejoint donc nous-mêmes.
+  useEffect(() => {
+    if (window.location.hash === "#helloasso") {
+      document
+        .getElementById("helloasso")
+        ?.scrollIntoView({ block: "start" });
+    }
+  }, []);
 
   async function patch(body: HelloAssoSettingsInput, message: string) {
     await api<{ status: HelloAssoStatus }>("/api/settings/helloasso", {
