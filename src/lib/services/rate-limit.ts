@@ -149,6 +149,14 @@ export const PLAFONDS = {
    * vérifier un réglage, pas à marteler leur API.
    */
   syncHelloAsso: { bucket: "helloasso:sync", limit: 20, windowSeconds: HEURE },
+  // Chaque enregistrement des clés demande un jeton à HelloAsso, qui n'en
+  // accorde que 50 par heure : au-delà, les clés sont bloquées une heure, et la
+  // synchronisation avec.
+  saveHelloAssoKeys: {
+    bucket: "helloasso:keys",
+    limit: 10,
+    windowSeconds: HEURE,
+  },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitVerdict =

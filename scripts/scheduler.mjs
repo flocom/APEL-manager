@@ -54,7 +54,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 function readInteger(name, fallback, minimum, maximum) {
-  const value = Number(process.env[name] ?? fallback);
+  // Une variable vide (`HELLOASSO_SYNC_INTERVAL_MINUTES=""`) vaut la valeur par
+  // défaut : `Number("")` donnerait 0, qui désactiverait la synchronisation.
+  const raw = process.env[name]?.trim();
+  const value = raw ? Number(raw) : fallback;
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
     console.warn(
       `${name} est invalide, utilisation de la valeur par défaut ${fallback}.`,

@@ -189,6 +189,13 @@ export async function saveHelloAssoSettings(
     );
   }
 
+  const verdict = await hitRateLimit(PLAFONDS.saveHelloAssoKeys, actor.userId);
+  if (!verdict.ok) {
+    throw rateLimitError(
+      verdict,
+      `Trop d’essais de clés HelloAsso en peu de temps. Réessayez ${delaiLisible(verdict.retryAfterSeconds)}.`,
+    );
+  }
   await verifyHelloAssoCredentials({ clientId, clientSecret });
 
   const values = {

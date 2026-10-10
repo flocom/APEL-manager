@@ -79,7 +79,11 @@ export function HelloAssoSettingsCard({
     // Contrôlé ici en plus du serveur : une erreur zod n'y deviendrait que
     // « Données invalides ».
     if (!id || /\s/.test(id) || id.length > 200) {
-      setErreur("L’identifiant client tient en un seul mot, sans espace.");
+      setErreur(
+        id
+          ? "L’identifiant client tient en un seul mot, sans espace."
+          : "Collez l’identifiant client fourni par HelloAsso.",
+      );
       document.getElementById("helloasso-client-id")?.focus();
       return;
     }

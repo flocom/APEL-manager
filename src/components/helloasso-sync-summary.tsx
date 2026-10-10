@@ -25,7 +25,8 @@ export const REVIEW_REASON_LABELS: Record<
   HelloAssoReviewItem["reason"],
   string
 > = {
-  possible_duplicate: "Déjà réglée par un autre moyen : doublon possible",
+  possible_duplicate:
+    "Un adhérent à ce nom ou à cette adresse a déjà réglé : doublon possible",
   refunded: "Remboursée ou annulée sur HelloAsso",
   pending: "Paiement pas encore encaissé par HelloAsso",
 };

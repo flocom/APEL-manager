@@ -125,9 +125,12 @@ const feePaymentMethodInput = z
  * publique, mise à part comme les autres.
  */
 function helloassoStatusForMcp(status: HelloAssoStatus) {
-  const summary = status.lastSyncSummary;
+  // Pas même les quatre derniers caractères du secret : il ne sort que vers
+  // l'écran des réglages.
+  const { lastSyncSummary: summary, clientSecretLastFour, ...rest } = status;
   return {
-    ...status,
+    ...rest,
+    secretSaved: clientSecretLastFour !== null,
     lastSyncSummary: summary && {
       ...summary,
       review: summary.review.map(({ firstName, lastName, email, ...item }) => ({

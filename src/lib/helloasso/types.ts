@@ -57,7 +57,8 @@ export type HelloAssoReviewItem = {
   amountCents: number;
   /**
    * - `possible_duplicate` : un adhérent de la même année, déjà marqué payé
-   *   par un autre moyen, porte ce nom ou cette adresse — rien n'est importé ;
+   *   (par un autre moyen, ou par une autre adhésion HelloAsso), porte ce nom
+   *   ou cette adresse — rien n'est importé ;
    * - `refunded` : l'adhésion importée a été remboursée ou annulée sur
    *   HelloAsso — la fiche n'est pas modifiée, le bureau décide ;
    * - `pending` : le paiement n'est pas encore encaissé (prélèvement SEPA en
