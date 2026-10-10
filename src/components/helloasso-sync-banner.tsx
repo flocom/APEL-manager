@@ -16,7 +16,7 @@ const REGLAGES = "/dashboard/settings#helloasso";
 
 /**
  * Bandeau HelloAsso de la liste des adhérents. Il n'apparaît que si
- * « Comment régler » cite un formulaire d'adhésion HelloAsso :
+ * « Comment régler » cite un formulaire HelloAsso de cotisation :
  * - sans clés d'API, il rappelle qu'on peut synchroniser les paiements ;
  * - avec les clés, il dit quand la liste a été mise à jour, propose de le
  *   refaire, et signale ce que la synchronisation a laissé de côté.

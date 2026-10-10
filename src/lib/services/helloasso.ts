@@ -525,7 +525,7 @@ export async function syncHelloAsso({
     // Lu avant la transaction : on ne garde pas un verrou pendant les appels
     // réseau.
     const items = await fetchFormItems(credentials, form, from);
-    const plan = planSync(items, from, startedAt);
+    const plan = planSync(items, from, form.formType, startedAt);
 
     const summary = await db.transaction(async (tx) => {
       const result = await applyPlan(tx, plan.memberships, schoolYear, actor);
