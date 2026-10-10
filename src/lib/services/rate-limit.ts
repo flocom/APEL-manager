@@ -141,6 +141,14 @@ export const PLAFONDS = {
    */
   analyseReleves: { bucket: "releves:analyse", limit: 60, windowSeconds: HEURE },
   enregistrementReleves: { bucket: "releves:enregistrement", limit: 30, windowSeconds: HEURE },
+
+  /**
+   * « Synchroniser maintenant » avec HelloAsso, par administrateur (écran et
+   * MCP). Chaque passage relit l'année entière chez HelloAsso, dont la route
+   * d'authentification est elle-même plafonnée : vingt par heure suffisent à
+   * vérifier un réglage, pas à marteler leur API.
+   */
+  syncHelloAsso: { bucket: "helloasso:sync", limit: 20, windowSeconds: HEURE },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitVerdict =

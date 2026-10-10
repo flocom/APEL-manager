@@ -1,8 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { and, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
+import { rejectUnauthorizedCron } from "@/lib/auth/cron";
 import { formatDateTime, formatDuree, startOfLocalDay } from "@/lib/dates";
 import { db } from "@/lib/db";
 import {
@@ -71,23 +70,8 @@ function urlTache(
  */
 export async function GET(req: Request) {
   // Fail-closed : sans secret configuré, l'endpoint refuse de s'exécuter.
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET n'est pas configuré sur le serveur." },
-      { status: 500 },
-    );
-  }
-  const provided = req.headers.get("authorization") ?? "";
-  const expected = `Bearer ${secret}`;
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  if (
-    providedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(providedBuf, expectedBuf)
-  ) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const refus = rejectUnauthorizedCron(req);
+  if (refus) return refus;
 
   const [association, telegramBotToken, baseUrl] = await Promise.all([
     getAssociationSettings(),

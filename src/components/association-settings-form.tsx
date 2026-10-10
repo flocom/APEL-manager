@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  ArrowRight,
   BellRing,
   Bot,
   Building2,
+  CheckCircle2,
   CircleAlert,
   Coins,
   Inbox,
@@ -12,6 +14,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -20,6 +23,7 @@ import { PaymentNote } from "@/components/payment-note";
 import { useToast } from "@/components/toast";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/client";
+import { findMembershipForm, hasHelloAssoLink } from "@/lib/helloasso/form-link";
 import {
   MEMBERSHIP_FEE_BASIS_SUFFIX,
   SIGNUP_NOTICE_MODE_HINTS,
@@ -75,8 +79,11 @@ function eurosVersCents(saisie: string): number | null {
 
 export function AssociationSettingsForm({
   settings,
+  helloassoConfigured,
 }: {
   settings: AssociationSettingsView;
+  /** Clés d'API HelloAsso enregistrées (carte « HelloAsso » plus bas). */
+  helloassoConfigured: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -98,6 +105,13 @@ export function AssociationSettingsForm({
     settings.signupNoticeMode,
   );
   const cotisationCents = eurosVersCents(cotisation);
+  // Lu pendant la frappe : le rappel des clés HelloAsso suit la phrase saisie,
+  // pas seulement celle déjà enregistrée.
+  const formulaireHelloAsso = findMembershipForm(noteCotisation);
+  const formulaireNonEnregistre =
+    formulaireHelloAsso !== null &&
+    formulaireHelloAsso.url !==
+      findMembershipForm(settings.membershipFeeNote)?.url;
   const verdictWhatsapp = checkWhatsappUrl(whatsappGroupUrl);
   // Prévient sans bloquer : un lien raccourci ou une redirection maison reste
   // acceptable, mais l'administrateur doit voir qu'il n'a pas collé l'invitation.
@@ -342,6 +356,7 @@ export function AssociationSettingsForm({
               >
                 <Input
                   id="membership-fee-note"
+                  className="scroll-mt-24 lg:scroll-mt-6"
                   value={noteCotisation}
                   onChange={(e) => setNoteCotisation(e.target.value)}
                   maxLength={300}
@@ -350,6 +365,63 @@ export function AssociationSettingsForm({
                 />
               </Field>
             </div>
+
+            {formulaireHelloAsso && !helloassoConfigured ? (
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border-2 border-sand-200 bg-sand-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <CircleAlert
+                    className="mt-0.5 h-5 w-5 shrink-0 text-sand-700"
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <p className="font-bold text-brand-950">
+                      Synchronisez les adhésions payées sur HelloAsso
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {formulaireNonEnregistre
+                        ? "Enregistrez ces réglages, puis ajoutez vos clés d’API HelloAsso : "
+                        : "Ajoutez vos clés d’API HelloAsso : "}
+                      les familles qui paient en ligne arriveront seules dans la
+                      liste des adhérents.
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href="/dashboard/settings#helloasso"
+                  className="inline-flex shrink-0 items-center gap-1.5 self-start text-sm font-semibold text-brand-700 hover:text-brand-900 hover:underline sm:self-center"
+                >
+                  Ajouter les clés
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </div>
+            ) : formulaireHelloAsso ? (
+              <p className="mt-3 flex items-start gap-2 text-sm font-medium text-sea-800">
+                <CheckCircle2
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>
+                  {formulaireNonEnregistre
+                    ? "Une fois ces réglages enregistrés, les adhésions payées sur ce formulaire HelloAsso seront synchronisées."
+                    : "Les adhésions payées sur ce formulaire HelloAsso sont synchronisées avec la liste des adhérents."}{" "}
+                  <Link
+                    href="/dashboard/settings#helloasso"
+                    className="font-semibold text-brand-700 underline hover:text-brand-900"
+                  >
+                    Voir la synchronisation
+                  </Link>
+                </span>
+              </p>
+            ) : helloassoConfigured && hasHelloAssoLink(noteCotisation) ? (
+              <p className="mt-3 flex items-start gap-2 text-sm font-medium text-sand-800">
+                <CircleAlert
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  aria-hidden="true"
+                />
+                Ce lien HelloAsso n’est pas un formulaire d’adhésion ou de
+                paiement : il ne sera pas synchronisé.
+              </p>
+            ) : null}
 
             {/* L’aperçu n’est pas un ornement : le seul moyen de vérifier qu’on
                 n’a pas saisi 1800 pour 18 €, c’est de lire la phrase publiée. */}

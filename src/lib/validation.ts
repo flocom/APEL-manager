@@ -982,6 +982,27 @@ export const outboundMailSettingsSchema = z.object({
   clearSmtpPassword: z.boolean().default(false),
 });
 
+/**
+ * Clés d'API HelloAsso (`PATCH /api/settings/helloasso`). Un champ vide ou
+ * absent conserve la valeur enregistrée ; `clear` efface les deux.
+ */
+export const helloassoSettingsSchema = z.object({
+  clientId: z
+    .string()
+    .trim()
+    .max(200, "Identifiant client trop long")
+    .regex(/^\S*$/, "L’identifiant client ne contient pas d’espace")
+    .nullable()
+    .optional(),
+  clientSecret: z
+    .string()
+    .trim()
+    .max(500, "Secret client trop long")
+    .nullable()
+    .optional(),
+  clear: z.boolean().default(false),
+});
+
 export const oauthClientSchema = z.object({
   clientId: z
     .string()

@@ -6,6 +6,7 @@ import {
   type EcritureRecetteView,
   type LigneRapprochementView,
 } from "@/components/cotisations-rapprochement";
+import { HelloAssoSyncBanner } from "@/components/helloasso-sync-banner";
 import { PageHeader } from "@/components/ui";
 import { adherentView } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
@@ -19,6 +20,7 @@ import {
   membershipPayments,
 } from "@/lib/db/schema";
 import { etatDe, rapprochement } from "@/lib/services/cotisations";
+import { getHelloAssoStatus } from "@/lib/services/helloasso";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdherentsPage() {
   await requireRole("admin");
-  const [members, lignes, comptes, categories, recettes] =
+  const [members, lignes, comptes, categories, recettes, helloasso] =
     await Promise.all([
       db
         .select()
@@ -81,6 +83,7 @@ export default async function AdherentsPage() {
         .where(eq(accountingEntries.type, "income"))
         .orderBy(desc(accountingEntries.occurredAt))
         .limit(200),
+      getHelloAssoStatus(),
     ]);
 
   const serialized = members.map(adherentView);
@@ -120,6 +123,7 @@ export default async function AdherentsPage() {
         description="Les adhésions, les coordonnées, et le règlement de chaque cotisation jusque dans les comptes."
         icon={ContactRound}
       />
+      <HelloAssoSyncBanner status={helloasso} />
       <AdherentsManager
         members={serialized}
         rapprochements={rapprochements}
