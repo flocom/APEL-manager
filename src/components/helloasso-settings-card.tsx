@@ -132,7 +132,7 @@ export function HelloAssoSettingsCard({
   return (
     <Card
       id="helloasso"
-      className="scroll-mt-24 overflow-hidden lg:scroll-mt-6"
+      className="scroll-mt-36 overflow-hidden lg:scroll-mt-6"
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-slate-100 bg-brand-50 px-5 py-4 sm:px-6">
         <div className="flex items-start gap-3">

@@ -18,6 +18,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { SETTINGS_SECTION_CLASS } from "@/lib/settings-sections";
+
 import { LogoUploadField } from "@/components/logo-upload-field";
 import { PaymentNote } from "@/components/payment-note";
 import { useToast } from "@/components/toast";
@@ -88,6 +90,9 @@ export function AssociationSettingsForm({
   const router = useRouter();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  // Une modification en attente : la barre d’enregistrement le dit, où que
+  // l’on soit dans ce long formulaire.
+  const [modifie, setModifie] = useState(false);
   const [whatsappGroupUrl, setWhatsappGroupUrl] = useState(
     settings.whatsappGroupUrl ?? "",
   );
@@ -174,6 +179,7 @@ export function AssociationSettingsForm({
         },
       });
       toast("Réglages de l’association enregistrés.");
+      setModifie(false);
       router.refresh();
     } catch (error) {
       toast((error as Error).message, "error");
@@ -183,9 +189,16 @@ export function AssociationSettingsForm({
   }
 
   return (
-    <Card className="overflow-hidden">
+    // `overflow-clip` et non `overflow-hidden` : ce dernier ferait de la carte
+    // une zone de défilement, et la barre d’enregistrement ne collerait plus
+    // au bas de l’écran.
+    <Card className="overflow-clip">
       <div className="h-1.5 bg-sea-500" aria-hidden="true" />
-      <form onSubmit={save}>
+      <form
+        onSubmit={save}
+        onInput={() => setModifie(true)}
+        onChange={() => setModifie(true)}
+      >
         <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-slate-100 bg-brand-50 px-5 py-5 sm:px-6">
           <div className="flex items-start gap-4">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-950 text-white">
@@ -228,7 +241,7 @@ export function AssociationSettingsForm({
             </div>
           )}
 
-          <section>
+          <section id="identite" className={SETTINGS_SECTION_CLASS}>
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-100 text-brand-800">
                 <Building2 className="h-4 w-4" aria-hidden="true" />
@@ -300,7 +313,10 @@ export function AssociationSettingsForm({
             </div>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="cotisation"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-100 text-brand-800">
                 <Coins className="h-4 w-4" aria-hidden="true" />
@@ -356,7 +372,7 @@ export function AssociationSettingsForm({
               >
                 <Input
                   id="membership-fee-note"
-                  className="scroll-mt-24 lg:scroll-mt-6"
+                  className="scroll-mt-36 lg:scroll-mt-6"
                   value={noteCotisation}
                   onChange={(e) => setNoteCotisation(e.target.value)}
                   maxLength={300}
@@ -455,7 +471,10 @@ export function AssociationSettingsForm({
             </div>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="inscriptions"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-100 text-sea-800">
                 <Inbox className="h-4 w-4" aria-hidden="true" />
@@ -523,7 +542,10 @@ export function AssociationSettingsForm({
             </p>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="rappels"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-sand-100 text-sand-800">
                 <BellRing className="h-4 w-4" aria-hidden="true" />
@@ -571,7 +593,10 @@ export function AssociationSettingsForm({
             </div>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="telegram"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-100 text-sea-800">
                 <Bot className="h-4 w-4" aria-hidden="true" />
@@ -662,7 +687,10 @@ export function AssociationSettingsForm({
             </div>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="whatsapp"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-100 text-sea-800">
                 <MessageCircle className="h-4 w-4" aria-hidden="true" />
@@ -716,7 +744,10 @@ export function AssociationSettingsForm({
             </Field>
           </section>
 
-          <section className="border-t-2 border-slate-100 pt-7">
+          <section
+            id="anti-robot"
+            className={`${SETTINGS_SECTION_CLASS} border-t-2 border-slate-100 pt-7`}
+          >
             <div className="mb-4 flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-coral-100 text-coral-800">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -829,7 +860,19 @@ export function AssociationSettingsForm({
             </div>
           </section>
 
-          <div className="flex justify-end border-t-2 border-slate-100 pt-5">
+          <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-t-2 border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6">
+            <p
+              className={
+                modifie
+                  ? "mr-auto text-sm font-semibold text-amber-800"
+                  : "mr-auto text-sm text-slate-500"
+              }
+              aria-live="polite"
+            >
+              {modifie
+                ? "Modifications non enregistrées"
+                : "Identité, cotisation, notifications et anti-robot"}
+            </p>
             <Button type="submit" loading={saving} icon={Save}>
               Enregistrer les réglages
             </Button>
