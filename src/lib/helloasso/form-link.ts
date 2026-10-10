@@ -37,14 +37,18 @@ const FORM_TYPES = new Map<string, HelloAssoFormType>([
 ]);
 
 /**
- * Formulaires dont les paiements sont des cotisations : une adhésion, ou un
- * formulaire de paiement que l'association utilise pour la cotisation. Une
- * billetterie ou une boutique collée par erreur dans « Comment régler » ne
- * doit pas créer d'adhérents.
+ * Formulaires dont les paiements peuvent être des cotisations. Le lien vient
+ * de « Comment régler » : c'est celui que le bureau donne aux familles pour
+ * cotiser, quel que soit l'outil HelloAsso choisi — un formulaire d'adhésion,
+ * mais aussi un formulaire de paiement, une boutique (« Adhésion annuelle à
+ * l'APEL ») ou une billetterie. Un don ou une collecte ne paie pas une
+ * cotisation.
  */
 export const SYNCABLE_FORM_TYPES: readonly HelloAssoFormType[] = [
   "Membership",
   "PaymentForm",
+  "Shop",
+  "Event",
 ];
 
 // Slug HelloAsso : lettres minuscules, chiffres et tirets.
@@ -109,8 +113,9 @@ export function findHelloAssoForms(
 }
 
 /**
- * Le formulaire des cotisations : le premier lien HelloAsso d'adhésion (ou de
- * paiement) de la phrase « Comment régler ». `null` s'il n'y en a pas.
+ * Le formulaire des cotisations : le premier lien HelloAsso d'adhésion de la
+ * phrase « Comment régler », sinon le premier lien synchronisable (paiement,
+ * boutique, billetterie). `null` s'il n'y en a pas.
  */
 export function findMembershipForm(
   note: string | null | undefined,
@@ -124,8 +129,8 @@ export function findMembershipForm(
 }
 
 /**
- * Un lien HelloAsso figure dans la phrase, mais aucun n'est synchronisable
- * (billetterie, boutique…) : l'écran le dit au lieu de proposer les clés.
+ * Un lien HelloAsso figure dans la phrase, synchronisable ou non (un don,
+ * une collecte) : l'écran le dit au lieu de proposer les clés.
  */
 export function hasHelloAssoLink(note: string | null | undefined): boolean {
   for (const match of (note ?? "").matchAll(URL_PATTERN)) {

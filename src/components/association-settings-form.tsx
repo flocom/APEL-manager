@@ -418,8 +418,8 @@ export function AssociationSettingsForm({
                   className="mt-0.5 h-4 w-4 shrink-0"
                   aria-hidden="true"
                 />
-                Ce lien HelloAsso n’est pas un formulaire d’adhésion ou de
-                paiement : il ne sera pas synchronisé.
+                Ce lien HelloAsso mène à un don ou à une collecte, pas à une
+                cotisation : il ne sera pas synchronisé.
               </p>
             ) : null}
 

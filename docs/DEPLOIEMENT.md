@@ -167,8 +167,10 @@ RGPD de l'association.
 #### Synchronisation HelloAsso
 
 Quand la phrase « Comment régler » (**Configuration**) contient
-le lien d'un formulaire d'adhésion HelloAsso, les adhésions payées sur ce
-formulaire peuvent alimenter la liste des adhérents. Il faut pour cela les clés
+le lien HelloAsso de la cotisation (formulaire d'adhésion, de paiement,
+boutique ou billetterie, mais pas un don ni une collecte), les adhésions payées
+sur ce formulaire peuvent alimenter la liste des adhérents. Dans une boutique,
+chaque article acheté compte pour une adhésion : réservez-la à la cotisation. Il faut pour cela les clés
 d'API de l'association : sur HelloAsso, **Mon compte › Intégrations et API**,
 copier l'identifiant et le secret client dans **Configuration → HelloAsso**.
 Ils sont vérifiés auprès de HelloAsso à l'enregistrement ; le secret est

@@ -154,8 +154,8 @@ export function HelloAssoSettingsCard({
         <div className="min-w-0 space-y-6">
           <p className="text-sm leading-6 text-slate-600">
             Avec les clés d’API de votre compte HelloAsso, l’application relit
-            les paiements du formulaire d’adhésion de l’année scolaire en cours
-            : elle crée les adhérents qui manquent et marque payés ceux qui
+            les paiements du formulaire de cotisation de l’année scolaire en
+            cours : elle crée les adhérents qui manquent et marque payés ceux qui
             étaient déjà inscrits. La synchronisation se fait automatiquement,
             et à la demande avec le bouton « Synchroniser maintenant ».
           </p>
@@ -202,14 +202,14 @@ export function HelloAssoSettingsCard({
               <div>
                 <p className="font-bold text-brand-950">
                   {status.linkDetected
-                    ? "Ce lien HelloAsso n’est pas un formulaire d’adhésion"
+                    ? "Ce lien HelloAsso ne paie pas une cotisation"
                     : "Aucun formulaire HelloAsso"}
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   {status.linkDetected
-                    ? "Une billetterie ou une boutique ne se synchronise pas. "
+                    ? "Un formulaire de don ou une collecte ne se synchronise pas. "
                     : ""}
-                  Collez le lien de votre formulaire d’adhésion HelloAsso dans{" "}
+                  Collez le lien HelloAsso de votre cotisation (adhésion, boutique, paiement…) dans{" "}
                   <a
                     href={`#${CHAMP_COMMENT_REGLER}`}
                     onClick={allerAuChamp}

@@ -2,6 +2,7 @@ import { fromZonedTime } from "date-fns-tz";
 
 import { APP_TIMEZONE } from "@/lib/dates";
 import type { HelloAssoApiItem } from "@/lib/helloasso/client";
+import type { HelloAssoFormType } from "@/lib/helloasso/form-link";
 
 /**
  * Ce que la synchronisation tire des lignes HelloAsso, sans base ni réseau :
@@ -53,11 +54,19 @@ export type HelloAssoSyncPlan = {
 /** Lignes qui ne sont pas des adhésions mais des dons faits en même temps. */
 const DONATION_TYPES = new Set(["donation", "monthlydonation", "offlinedonation"]);
 /**
- * Lignes qui font un adhérent : une adhésion, ou le paiement d'un formulaire
- * de paiement utilisé pour la cotisation. Le reste (produit, assurance,
- * bonus…) ne crée personne.
+ * Lignes qui font un adhérent, selon le formulaire de « Comment régler » :
+ * l'adhésion d'un formulaire d'adhésion, le paiement d'un formulaire de
+ * paiement, l'article d'une boutique, l'inscription d'une billetterie. Le
+ * reste (assurance, bonus, contribution…) ne crée personne.
  */
-const MEMBERSHIP_TYPES = new Set(["membership", "payment", "monthlypayment"]);
+const MEMBERSHIP_TYPES: Record<HelloAssoFormType, ReadonlySet<string>> = {
+  Membership: new Set(["membership"]),
+  PaymentForm: new Set(["payment", "monthlypayment"]),
+  Shop: new Set(["product"]),
+  Event: new Set(["registration"]),
+  Donation: new Set(),
+  CrowdFunding: new Set(),
+};
 
 const VALID_STATES = new Set(["processed", "registered"]);
 const CANCELLED_STATES = new Set(["canceled", "refused", "abandoned", "deleted"]);
@@ -139,10 +148,16 @@ export function isDonationItem(item: HelloAssoApiItem): boolean {
   return DONATION_TYPES.has(lower(item.type));
 }
 
-/** Une ligne d'adhésion ; sans type annoncé, la ligne d'un formulaire d'adhésion en est une. */
-export function isMembershipItem(item: HelloAssoApiItem): boolean {
+/** Une ligne de cotisation ; sans type annoncé, la ligne du formulaire en est une. */
+export function isMembershipItem(
+  item: HelloAssoApiItem,
+  formType: HelloAssoFormType = "Membership",
+): boolean {
   const type = lower(item.type);
-  return type === "" || MEMBERSHIP_TYPES.has(type);
+  return (
+    (type === "" && MEMBERSHIP_TYPES[formType].size > 0) ||
+    MEMBERSHIP_TYPES[formType].has(type)
+  );
 }
 
 /**
@@ -244,6 +259,7 @@ function orderDateOf(item: HelloAssoApiItem, fallback: Date): Date {
 export function planSync(
   items: HelloAssoApiItem[],
   from: Date,
+  formType: HelloAssoFormType,
   now: Date = new Date(),
 ): HelloAssoSyncPlan {
   const orders = new Map<string, HelloAssoApiItem[]>();
@@ -271,7 +287,7 @@ export function planSync(
         .reduce((sum, l) => sum + itemAmountCents(l), 0),
       MAX_CENTS,
     );
-    const members = lines.filter(isMembershipItem);
+    const members = lines.filter((line) => isMembershipItem(line, formType));
     fetched += members.length;
     let donationPending = donationCents;
 
