@@ -274,6 +274,13 @@
       "when": 1790749536975,
       "tag": "0038_solde_de_depart_et_export",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791637310407,
+      "tag": "0039_synchronisation_helloasso",
+      "breakpoints": true
     }
   ]
 }

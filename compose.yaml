@@ -24,6 +24,9 @@ x-app-environment: &app-environment
   UPLOADS_DIR: ${UPLOADS_DIR:-/app/data/uploads}
   UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-15728640}
   UPLOAD_ORPHAN_MAX_AGE_HOURS: ${UPLOAD_ORPHAN_MAX_AGE_HOURS:-24}
+  # Vide : l'API HelloAsso de production. Bac à sable :
+  # https://api.helloasso-sandbox.com (docs/DEPLOIEMENT.md, « HelloAsso »).
+  HELLOASSO_API_URL: ${HELLOASSO_API_URL:-}
   # Derrière Cloudflare seulement : statistiques de Web Analytics chargées par
   # la page (docs/DEPLOIEMENT.md, « Derrière Cloudflare »).
   CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${CLOUDFLARE_WEB_ANALYTICS_TOKEN:-}
@@ -159,6 +162,10 @@ services:
       SCHEDULER_HOUR_UTC: ${SCHEDULER_HOUR_UTC:-7}
       SCHEDULER_MINUTE_UTC: ${SCHEDULER_MINUTE_UTC:-0}
       RUN_CRON_ON_START: ${RUN_CRON_ON_START:-false}
+      # Synchronisation des adhésions HelloAsso ; 0 la désactive. Sans clés
+      # d'API enregistrées dans Configuration, l'appel ne fait rien.
+      HELLOASSO_SYNC_URL: http://app:3000/api/cron/helloasso
+      HELLOASSO_SYNC_INTERVAL_MINUTES: ${HELLOASSO_SYNC_INTERVAL_MINUTES:-60}
     command: ["node", "scripts/scheduler.mjs"]
     volumes:
       - app_config:/app/data/config

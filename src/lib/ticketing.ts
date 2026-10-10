@@ -55,7 +55,7 @@ function hoteVraisemblable(hostname: string): boolean {
   );
 }
 
-function estHelloAsso(hostname: string): boolean {
+export function estHelloAsso(hostname: string): boolean {
   // Comparaison stricte, jamais un `includes` : « helloasso.com.piege.fr »
   // contient la chaîne sans être HelloAsso.
   return hostname === "helloasso.com" || hostname.endsWith(".helloasso.com");

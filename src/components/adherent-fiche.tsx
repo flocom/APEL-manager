@@ -30,7 +30,12 @@ import {
 } from "@/components/ui";
 import type { AdherentView } from "@/lib/adherent-view";
 import { api } from "@/lib/client";
-import { formatLongDate, formatShortDate, toDateInput } from "@/lib/dates";
+import {
+  currentSchoolYear,
+  formatLongDate,
+  formatShortDate,
+  toDateInput,
+} from "@/lib/dates";
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/labels";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -91,14 +96,6 @@ export interface ComptabiliteAdherentView {
     status: "draft" | "posted";
     partCents: number;
   }[];
-}
-
-function currentSchoolYear() {
-  // Le calendrier de Paris, pas celui de la machine : le serveur (UTC) et le
-  // navigateur doivent tomber sur la même année la nuit du 30 juin.
-  const [annee, mois] = toDateInput(new Date()).split("-").map(Number);
-  const start = mois >= 7 ? annee : annee - 1;
-  return `${start}-${start + 1}`;
 }
 
 function dateInput(value: string | null) {

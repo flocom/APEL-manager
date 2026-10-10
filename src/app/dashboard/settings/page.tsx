@@ -4,6 +4,7 @@ import {
   AssociationSettingsForm,
   type AssociationSettingsView,
 } from "@/components/association-settings-form";
+import { HelloAssoSettingsCard } from "@/components/helloasso-settings-card";
 import {
   MailSettingsForm,
   type MailSettingsView,
@@ -14,6 +15,7 @@ import { UpdateStatusCard } from "@/components/update-status-card";
 import { requireRole } from "@/lib/auth/rbac";
 import { securityConfigWarnings } from "@/lib/security-config";
 import { getAssociationSettings } from "@/lib/services/association-settings";
+import { getHelloAssoStatus } from "@/lib/services/helloasso";
 import { getOutboundMailStatus } from "@/lib/services/mail-settings";
 import { getUpdateStatus } from "@/lib/services/updates";
 
@@ -21,11 +23,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireRole("admin");
-  const [associationStatus, status, updateStatus] = await Promise.all([
-    getAssociationSettings(),
-    getOutboundMailStatus(),
-    getUpdateStatus(),
-  ]);
+  const [associationStatus, status, updateStatus, helloasso] =
+    await Promise.all([
+      getAssociationSettings(),
+      getOutboundMailStatus(),
+      getUpdateStatus(),
+      getHelloAssoStatus(),
+    ]);
   const associationSettings: AssociationSettingsView = {
     associationName: associationStatus.associationName,
     schoolName: associationStatus.schoolName,
@@ -84,9 +88,14 @@ export default async function SettingsPage() {
 
       <SecurityConfigWarnings warnings={securityConfigWarnings()} />
 
-      <AssociationSettingsForm settings={associationSettings} />
+      <AssociationSettingsForm
+        settings={associationSettings}
+        helloassoConfigured={helloasso.configured}
+      />
 
       <MailSettingsForm settings={settings} />
+
+      <HelloAssoSettingsCard status={helloasso} />
 
       <UpdateStatusCard status={updateStatus} />
     </div>

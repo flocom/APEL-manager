@@ -69,6 +69,7 @@ réglages métier et de messagerie sont enregistrés depuis
 | `MCP_RESOURCE_URL` | ⛔ optionnel | URL HTTPS exacte du connecteur, terminée par `/api/mcp`, si elle doit être surchargée |
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
 | `DATABASE_POOL_MAX` | ⛔ optionnel | Taille du pool par processus ; conserver une valeur faible en serverless |
+| `HELLOASSO_API_URL` | ⛔ optionnel | Adresse de l'API HelloAsso. Vide : la production (`https://api.helloasso.com`) ; `https://api.helloasso-sandbox.com` pour le bac à sable |
 
 `SETTINGS_ENCRYPTION_KEY` doit rester **strictement identique** entre les
 déploiements. La changer rendrait illisibles les clés et mots de passe déjà
@@ -162,6 +163,35 @@ Le volet **Adhérents** conserve l'identité, les coordonnées, l'adresse, le
 statut, l'année scolaire et le suivi de cotisation. Ces données sont distinctes
 des comptes de connexion et doivent être gérées conformément aux obligations
 RGPD de l'association.
+
+#### Synchronisation HelloAsso
+
+Quand la phrase « Comment régler » (**Configuration**) contient
+le lien d'un formulaire d'adhésion HelloAsso, les adhésions payées sur ce
+formulaire peuvent alimenter la liste des adhérents. Il faut pour cela les clés
+d'API de l'association : sur HelloAsso, **Mon compte › Intégrations et API**,
+copier l'identifiant et le secret client dans **Configuration → HelloAsso**.
+Ils sont vérifiés auprès de HelloAsso à l'enregistrement ; le secret est
+chiffré et ne ressort plus (ni par l'API, ni par le serveur MCP).
+
+Chaque passage relit les adhésions de l'année scolaire en cours (depuis le
+1er juillet) :
+
+- une adhésion nouvelle crée l'adhérent, ou complète une fiche de la même année
+  encore non réglée (même adresse e-mail ou même nom) : statut actif,
+  cotisation et options, don éventuel, date et mode de règlement « HelloAsso » ;
+  la contribution volontaire à HelloAsso n'est jamais comptée ;
+- une fiche déjà réglée par un autre moyen, une adhésion remboursée après
+  import ou un paiement encore en attente (prélèvement SEPA) sont signalés
+  « à vérifier », sans rien modifier ;
+- une adhésion déjà importée ne l'est pas deux fois.
+
+Rien n'entre en comptabilité : ces cotisations attendent le virement groupé de
+HelloAsso, à pointer dans le rapprochement des cotisations. La synchronisation
+se lance avec le bouton « Synchroniser », et d'elle-même chaque jour à 6 h 30
+UTC sur Vercel (`/api/cron/helloasso`, voir § 6) ou toutes les heures sous
+Docker (`HELLOASSO_SYNC_INTERVAL_MINUTES` du conteneur `scheduler`, 0 pour la
+couper). Sans clés ou sans lien, la tâche planifiée ne fait rien.
 
 ### Comptabilité
 
@@ -267,6 +297,10 @@ documents.
 - Vercel ajoute automatiquement l'en-tête `Authorization: Bearer $CRON_SECRET`
   si `CRON_SECRET` est défini ; l'endpoint refuse les appels non autorisés.
 - Pour tester manuellement : `curl -H "Authorization: Bearer <CRON_SECRET>" https://votre-site/api/cron/notifications`
+- Deuxième tâche, `/api/cron/helloasso`, chaque jour à 6h30 UTC : synchronise
+  les adhésions HelloAsso (§ 5), et ne fait rien tant que les clés d'API ou le
+  lien du formulaire manquent. Le plan gratuit de Vercel n'autorise qu'un
+  passage quotidien par tâche ; le bouton « Synchroniser » reste disponible.
 
 ---
 
@@ -358,6 +392,7 @@ clair, seulement leur empreinte HMAC.
 | Inscriptions bénévoles et réponses aux réunions, par IP | 40 / heure, 150 / jour | **429**. |
 | Confirmations envoyées à une même boîte | 8 / jour | L'inscription ou la réponse est enregistrée ; seule la confirmation ne part pas. Le formulaire d'inscription le dit au bénévole. |
 | Enregistrement de clients OAuth | 10 / heure par IP, puis 200 / heure en tout | **429** `temporarily_unavailable`. |
+| Synchronisation HelloAsso manuelle (écran et MCP) | 20 / heure / administrateur | **429** avec un message qui dit quand réessayer. La tâche planifiée n'est pas comptée. |
 | Diffusions de l'équipe | 5 messages / événement / jour, 3 annulations / événement / jour, 20 diffusions / compte / jour, 5 messages à tous (membres ou adhérents) / compte / jour, 30 notifications / compte / jour | **429** avec un message qui dit quand réessayer. Mêmes plafonds depuis le serveur MCP. |
 
 **Compté avant, rendu après.** Un essai de mot de passe (connexion,
