@@ -327,7 +327,10 @@ export function DashboardNav({
   return (
     <>
       {/* Barre supérieure mobile */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-800 bg-brand-950 px-4 py-3 lg:hidden">
+      <div
+        data-mobile-header
+        className="sticky top-0 z-30 flex items-center justify-between border-b border-brand-800 bg-brand-950 px-4 py-3 lg:hidden"
+      >
         <Logo appName={appName} logoUrl={logoUrl} />
         <button
           type="button"
