@@ -412,96 +412,98 @@ export function AccountingManager({
       {workspace === "entries" && (
         <>
       <Card className="p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <label htmlFor="accounting-search" className="sr-only">
-              Rechercher une écriture
-            </label>
-            <Input
-              id="accounting-search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Libellé, tiers, référence…"
-              className="pl-10"
-            />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              />
+              <label htmlFor="accounting-search" className="sr-only">
+                Rechercher une écriture
+              </label>
+              <Input
+                id="accounting-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Libellé, tiers, référence…"
+                className="pl-10"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 xl:flex xl:shrink-0">
+              <label className="sr-only" htmlFor="accounting-type">
+                Filtrer par type
+              </label>
+              <Select
+                id="accounting-type"
+                className="xl:w-40"
+                value={type}
+                onChange={(event) =>
+                  setType(
+                    event.target.value as
+                      | "all"
+                      | AccountingEntryView["type"],
+                  )
+                }
+              >
+                <option value="all">Tous les types</option>
+                <option value="income">Recettes</option>
+                <option value="expense">Dépenses</option>
+              </Select>
+              <label className="sr-only" htmlFor="accounting-status">
+                Filtrer par statut
+              </label>
+              <Select
+                id="accounting-status"
+                className="xl:w-40"
+                value={status}
+                onChange={(event) =>
+                  setStatus(
+                    event.target.value as
+                      | "all"
+                      | AccountingEntryView["status"],
+                  )
+                }
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="posted">Validées</option>
+                <option value="draft">Brouillons</option>
+              </Select>
+              <label className="sr-only" htmlFor="accounting-category">
+                Filtrer par catégorie
+              </label>
+              <Select
+                id="accounting-category"
+                className="xl:w-52"
+                value={effectiveCategoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+              >
+                <option value="all">Toutes les catégories</option>
+                <option value="none">Sans catégorie</option>
+                {(["income", "expense"] as const).map((group) => {
+                  const groupCategories = localCategories.filter(
+                    (category) => category.type === group,
+                  );
+                  if (groupCategories.length === 0) return null;
+                  return (
+                    <optgroup
+                      key={group}
+                      label={group === "income" ? "Recettes" : "Dépenses"}
+                    >
+                      {groupCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                          {!category.isActive ? " · désactivée" : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </Select>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:flex">
-            <label className="sr-only" htmlFor="accounting-type">
-              Filtrer par type
-            </label>
-            <Select
-              id="accounting-type"
-              value={type}
-              onChange={(event) =>
-                setType(
-                  event.target.value as
-                    | "all"
-                    | AccountingEntryView["type"],
-                )
-              }
-              className="lg:w-40"
-            >
-              <option value="all">Tous les types</option>
-              <option value="income">Recettes</option>
-              <option value="expense">Dépenses</option>
-            </Select>
-            <label className="sr-only" htmlFor="accounting-status">
-              Filtrer par statut
-            </label>
-            <Select
-              id="accounting-status"
-              value={status}
-              onChange={(event) =>
-                setStatus(
-                  event.target.value as
-                    | "all"
-                    | AccountingEntryView["status"],
-                )
-              }
-              className="lg:w-40"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="posted">Validées</option>
-              <option value="draft">Brouillons</option>
-            </Select>
-            <label className="sr-only" htmlFor="accounting-category">
-              Filtrer par catégorie
-            </label>
-            <Select
-              id="accounting-category"
-              value={effectiveCategoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-              className="lg:w-48"
-            >
-              <option value="all">Toutes les catégories</option>
-              <option value="none">Sans catégorie</option>
-              {(["income", "expense"] as const).map((group) => {
-                const groupCategories = localCategories.filter(
-                  (category) => category.type === group,
-                );
-                if (groupCategories.length === 0) return null;
-                return (
-                  <optgroup
-                    key={group}
-                    label={group === "income" ? "Recettes" : "Dépenses"}
-                  >
-                    {groupCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                        {!category.isActive ? " · désactivée" : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                );
-              })}
-            </Select>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:shrink-0">
+          <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:justify-end">
             <Button
               type="button"
               variant="outline"
