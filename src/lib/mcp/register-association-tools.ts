@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { ASSOCIATION_DOCUMENT_TYPES, PAYMENT_METHODS } from "@/lib/labels";
+import type { HelloAssoStatus } from "@/lib/helloasso/types";
 import {
   accountingCategories,
   associationMembers,
@@ -52,6 +53,11 @@ import {
   saveAssociationSettings,
 } from "@/lib/services/association-settings";
 import { recordAudit } from "@/lib/services/audit";
+import {
+  assertHelloAssoSyncAllowed,
+  getHelloAssoStatus,
+  syncHelloAsso,
+} from "@/lib/services/helloasso";
 import { assertBroadcastAllowed } from "@/lib/services/rate-limit";
 import {
   archiveAssociationDocument,
@@ -112,6 +118,25 @@ const feePaymentMethodInput = z
   .describe(
     "Mode de règlement de la cotisation : especes, cheque, virement, helloasso ou autre ; null s’il n’est pas connu. Espèces, chèque, virement et autre se portent directement en comptabilité ; helloasso attend le virement groupé de HelloAsso, à rapprocher ensuite. À renseigner avec feePaidAt.",
   );
+
+/**
+ * L'état HelloAsso tel que le lit l'assistant. Les adhésions « à vérifier »
+ * portent le nom et l'adresse saisis par le payeur sur HelloAsso : une saisie
+ * publique, mise à part comme les autres.
+ */
+function helloassoStatusForMcp(status: HelloAssoStatus) {
+  const summary = status.lastSyncSummary;
+  return {
+    ...status,
+    lastSyncSummary: summary && {
+      ...summary,
+      review: summary.review.map(({ firstName, lastName, email, ...item }) => ({
+        ...item,
+        ...saisiePublique({ name: `${firstName} ${lastName}`, email }),
+      })),
+    },
+  };
+}
 
 export function registerAssociationTools(
   server: McpServer,
@@ -310,6 +335,44 @@ export function registerAssociationTools(
           etat: etatDe(ligne),
         })),
       });
+    },
+  );
+
+  server.registerTool(
+    "get_helloasso_status",
+    {
+      title: "État de la synchronisation HelloAsso",
+      description:
+        "Dit si les clés d’API HelloAsso sont enregistrées, quel formulaire est synchronisé (le lien HelloAsso de « Comment régler »), et le bilan de la dernière synchronisation : adhérents créés, fiches complétées, adhésions à vérifier. Ne révèle jamais le secret client, qui ne se saisit que dans l’interface administrateur.",
+      inputSchema: z.object({}),
+      annotations: readOnlyTool,
+    },
+    async () => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      return toolResult({ status: helloassoStatusForMcp(await getHelloAssoStatus()) });
+    },
+  );
+
+  server.registerTool(
+    "sync_helloasso_memberships",
+    {
+      title: "Synchroniser les adhésions HelloAsso",
+      description:
+        "Relit sur HelloAsso les adhésions de l’année scolaire en cours et met à jour la liste des adhérents : crée les nouveaux, porte le paiement sur une fiche existante non réglée (même adresse e-mail ou même nom), et signale à vérifier les doublons possibles, les remboursements et les paiements en attente. N’écrit rien en comptabilité : les cotisations HelloAsso attendent le virement groupé. Exige des clés d’API enregistrées dans l’interface.",
+      inputSchema: z.object({}),
+      annotations: { ...writeTool, openWorldHint: true },
+    },
+    async () => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      await assertHelloAssoSyncAllowed(principal.userId);
+      const { summary, status } = await syncHelloAsso({
+        trigger: "manual",
+        actor: mcpAuditActor(principal),
+      });
+      return toolResult(
+        { status: helloassoStatusForMcp(status) },
+        `Synchronisation HelloAsso terminée : ${summary.created} adhérent(s) créé(s), ${summary.updated} fiche(s) complétée(s), ${summary.unchanged} déjà à jour, ${summary.review.length} à vérifier.`,
+      );
     },
   );
 

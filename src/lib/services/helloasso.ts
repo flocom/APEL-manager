@@ -63,11 +63,13 @@ const SYNC_LOCK = "helloasso:sync";
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function settingsRecord() {
-  const [row] = await db
-    .select()
-    .from(helloassoSettings)
-    .where(eq(helloassoSettings.id, SETTINGS_ID))
-    .limit(1);
+  const row = (
+    await db
+      .select()
+      .from(helloassoSettings)
+      .where(eq(helloassoSettings.id, SETTINGS_ID))
+      .limit(1)
+  ).at(0);
   return row ?? null;
 }
 
