@@ -45,6 +45,7 @@ import {
 } from "@/lib/validation";
 
 import { insertAccountingEntry, uniqueViolation } from "./accounting";
+import { remettreJustificatifDansLaBoite } from "./accounting-receipts";
 import { recordAudit, type AuditActor } from "./audit";
 import {
   delaiLisible,
@@ -1813,6 +1814,9 @@ export async function undoBankImport(id: string, actor: AuditActor) {
             status: accountingEntries.status,
             type: accountingEntries.type,
             amountCents: accountingEntries.amountCents,
+            label: accountingEntries.label,
+            occurredAt: accountingEntries.occurredAt,
+            attachmentUrl: accountingEntries.attachmentUrl,
           })
           .from(accountingEntries)
           .where(inArray(accountingEntries.id, entryIds))
@@ -1828,6 +1832,11 @@ export async function undoBankImport(id: string, actor: AuditActor) {
     }
 
     await tx.delete(bankStatementImports).where(eq(bankStatementImports.id, id));
+    // Un justificatif associé depuis l'import revient dans la boîte au lieu de
+    // partir avec son brouillon.
+    for (const entry of entries) {
+      await remettreJustificatifDansLaBoite(tx, entry, actor, "annulation_import");
+    }
     if (entries.length) {
       await tx.delete(accountingEntries).where(
         and(
@@ -2084,11 +2093,24 @@ export async function relinkImportedEntry(
       .update(bankStatementLines)
       .set({ entryId: targetEntryId, decision: "linked" })
       .where(eq(bankStatementLines.id, line.lineId));
-    if (target.status === "draft" && !target.accountId && line.accountId) {
+    // Le justificatif associé au brouillon importé suit l'opération vers
+    // l'écriture choisie, si elle n'en a pas — validée ou non, comme depuis la
+    // boîte (src/lib/accounting/receipts.ts) ; sinon il retourne dans la boîte.
+    const justificatifSuit = Boolean(source.attachmentUrl) && !target.attachmentUrl;
+    const compteSuit = target.status === "draft" && !target.accountId && Boolean(line.accountId);
+    if (justificatifSuit || compteSuit) {
       await tx
         .update(accountingEntries)
-        .set({ accountId: line.accountId, version: target.version + 1, updatedAt: new Date() })
+        .set({
+          ...(compteSuit ? { accountId: line.accountId } : {}),
+          ...(justificatifSuit ? { attachmentUrl: source.attachmentUrl } : {}),
+          version: target.version + 1,
+          // Une écriture validée garde son `updatedAt`, date de validation du FEC.
+          ...(target.status === "draft" ? { updatedAt: new Date() } : {}),
+        })
         .where(eq(accountingEntries.id, targetEntryId));
+    } else if (source.attachmentUrl) {
+      await remettreJustificatifDansLaBoite(tx, source, actor, "rattachement");
     }
     await tx.delete(accountingEntries).where(eq(accountingEntries.id, entryId));
     const count = (decision: string) =>
@@ -2107,6 +2129,7 @@ export async function relinkImportedEntry(
         importId: line.importId,
         lineId: line.lineId,
         deletedEntry: { id: entryId, type: source.type, amountCents: source.amountCents },
+        ...(justificatifSuit ? { attachmentMoved: source.attachmentUrl } : {}),
       },
       tx,
     );

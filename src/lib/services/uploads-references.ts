@@ -5,6 +5,7 @@ import { isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   accountingEntries,
+  accountingReceipts,
   associationDocuments,
   associationSettings,
   bankStatementImports,
@@ -42,7 +43,7 @@ const HISTORY_TABLES = ["audit_logs"];
  * base serait une perte de données.
  */
 async function knownReferencedIds(): Promise<Set<string>> {
-  const [entries, documents, attachments, settings, supports, statements] = await Promise.all([
+  const [entries, documents, attachments, settings, supports, statements, receipts] = await Promise.all([
     db
       .select({ url: accountingEntries.attachmentUrl })
       .from(accountingEntries)
@@ -58,6 +59,8 @@ async function knownReferencedIds(): Promise<Set<string>> {
       .where(isNotNull(associationSettings.logoUrl)),
     db.select({ content: communicationSupports.content }).from(communicationSupports),
     db.select({ url: bankStatementImports.fileUrl }).from(bankStatementImports),
+    // Reçus de la boîte à justificatifs, en attente de leur écriture.
+    db.select({ url: accountingReceipts.fileUrl }).from(accountingReceipts),
   ]);
 
   const ids = new Set<string>();
@@ -68,6 +71,7 @@ async function knownReferencedIds(): Promise<Set<string>> {
     ...attachments,
     ...settings,
     ...statements,
+    ...receipts,
   ]) {
     const match = row.url ? pattern.exec(row.url) : null;
     if (match) ids.add(match[1]);

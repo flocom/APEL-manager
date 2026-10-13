@@ -58,6 +58,13 @@ const nextConfig = {
   experimental: {
     // Tree-shaking ciblé des gros barrels (icônes, dates) → bundles plus légers.
     optimizePackageImports: ["lucide-react", "date-fns"],
+    // Next tronque à 10 Mo le corps des requêtes qui passent par le
+    // middleware — toutes les routes /api —, et un justificatif scanné ou
+    // photographié dépasse vite cette taille : son envoi échouait en erreur
+    // serveur. La vraie limite est ailleurs : UPLOAD_MAX_BYTES par fichier
+    // (src/lib/uploads.ts) et CADDY_MAX_UPLOAD_SIZE par requête (20 Mo par
+    // défaut, docker/Caddyfile). Ce plafond-ci ne fait que ne plus les devancer.
+    middlewareClientMaxBodySize: "25mb",
   },
   async redirects() {
     return [

@@ -35,6 +35,11 @@ import {
   updateAccountingEntry,
   updateFinancialAccount,
 } from "@/lib/services/accounting";
+import {
+  attachReceipt,
+  listReceipts,
+  receiptView,
+} from "@/lib/services/accounting-receipts";
 import { listBankStatementImports } from "@/lib/services/bank-imports";
 import {
   anneesScolaires,
@@ -709,6 +714,45 @@ export function registerAssociationTools(
       requireMcpAccess(principal, "mcp:read", "admin");
       const items = await listBankStatementImports(limit);
       return toolResult({ items });
+    },
+  );
+
+  server.registerTool(
+    "list_accounting_receipts",
+    {
+      title: "Lister la boîte à justificatifs",
+      description:
+        "Liste les reçus (PDF, photos) déposés dans la boîte à justificatifs et qui attendent encore leur écriture, du plus récent au plus ancien : fichier, libellé, montant en centimes et date du reçu quand ils ont été renseignés. Un reçu s’associe à une écriture qui n’a pas encore de justificatif, au brouillon ou validée, avec attach_accounting_receipt. Le dépôt des reçus se fait depuis l’écran Comptabilité.",
+      inputSchema: z.object({}),
+      annotations: readOnlyTool,
+    },
+    async () => {
+      requireMcpAccess(principal, "mcp:read", "admin");
+      const items = (await listReceipts()).map(receiptView);
+      return toolResult({ items, count: items.length });
+    },
+  );
+
+  server.registerTool(
+    "attach_accounting_receipt",
+    {
+      title: "Associer un reçu à une écriture",
+      description:
+        "Fait d’un reçu de la boîte à justificatifs (list_accounting_receipts) le justificatif d’une écriture, puis le retire de la boîte. L’écriture ne doit pas déjà avoir de justificatif : une pièce n’est jamais remplacée (refus sinon). Une écriture validée peut recevoir le justificatif qui lui manque — seule modification qu’elle accepte, le justificatif ne changeant ni le montant, ni la date, ni le compte. Rapprochez montant et date du reçu de ceux de l’écriture (list_accounting_entries) avant d’associer.",
+      inputSchema: z.object({
+        receiptId: z.string().uuid(),
+        entryId: z.string().uuid(),
+      }),
+      annotations: writeTool,
+    },
+    async ({ receiptId, entryId }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const entry = await attachReceipt(
+        receiptId,
+        entryId,
+        mcpAuditActor(principal),
+      );
+      return toolResult({ entry }, "Reçu associé à l’écriture.");
     },
   );
 

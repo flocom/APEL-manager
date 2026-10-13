@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import {
   accountingCategories,
   accountingEntries,
+  accountingReceipts,
   events,
   financialAccounts,
 } from "@/lib/db/schema";
@@ -19,6 +20,7 @@ import {
   type AccountingEntryInput,
 } from "@/lib/validation";
 
+import { remettreJustificatifDansLaBoite } from "./accounting-receipts";
 import { recordAudit, type AuditActor } from "./audit";
 
 export async function listFinancialAccounts() {
@@ -269,15 +271,22 @@ export async function getAccountingSummary({
   // pour de bon l'affichage de la page Comptabilité, du bilan d'événement et
   // de la ressource MCP. `centimesDepuisSql` refuse ensuite tout total qu'un
   // nombre JavaScript ne représenterait pas exactement.
-  const [summary] = await db
-    .select({
-      incomeCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'income' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
-      expenseCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'expense' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
-      draftCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'draft')::int`,
-      missingAttachmentCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'posted' and ${accountingEntries.attachmentUrl} is null)::int`,
-    })
-    .from(accountingEntries)
-    .where(eventId ? eq(accountingEntries.eventId, eventId) : undefined);
+  const [[summary], [box]] = await Promise.all([
+    db
+      .select({
+        incomeCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'income' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
+        expenseCents: sql<string>`coalesce(sum(case when ${accountingEntries.type} = 'expense' and ${accountingEntries.status} = 'posted' then ${accountingEntries.amountCents}::bigint else 0 end), 0)::bigint`,
+        draftCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'draft')::int`,
+        missingAttachmentCount: sql<number>`count(*) filter (where ${accountingEntries.status} = 'posted' and ${accountingEntries.attachmentUrl} is null)::int`,
+      })
+      .from(accountingEntries)
+      .where(eventId ? eq(accountingEntries.eventId, eventId) : undefined),
+    // La boîte à justificatifs n'est rattachée à aucun événement : c'est
+    // toujours le nombre de reçus qui y attendent, filtre ou non.
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(accountingReceipts),
+  ]);
 
   const incomeCents = centimesDepuisSql(summary?.incomeCents);
   const expenseCents = centimesDepuisSql(summary?.expenseCents);
@@ -287,6 +296,7 @@ export async function getAccountingSummary({
     balanceCents: incomeCents - expenseCents,
     draftCount: Number(summary?.draftCount ?? 0),
     missingAttachmentCount: Number(summary?.missingAttachmentCount ?? 0),
+    pendingReceiptCount: Number(box?.count ?? 0),
   };
 }
 
@@ -415,6 +425,10 @@ export async function updateAccountingEntry(
 ) {
   const current = await getAccountingEntry(id);
   if (!current) throw new HttpError(404, "Écriture comptable introuvable.");
+  // Une écriture validée est immuable, justificatif compris : on ne remplace
+  // ni ne retire une pièce par ce chemin. Seule exception, ailleurs et
+  // étroite : `attachReceipt` (boîte à justificatifs) donne son justificatif
+  // à une écriture validée qui n'en a pas, sans rien toucher d'autre.
   if (current.status === "posted") {
     throw new HttpError(
       409,
@@ -798,15 +812,24 @@ export async function deleteDraftAccountingEntry(
   id: string,
   actor: AuditActor,
 ) {
-  const [deleted] = await db
-    .delete(accountingEntries)
-    .where(
-      and(
-        eq(accountingEntries.id, id),
-        eq(accountingEntries.status, "draft"),
-      ),
-    )
-    .returning({ id: accountingEntries.id });
+  const deleted = await db.transaction(async (tx) => {
+    const [draft] = await tx
+      .select()
+      .from(accountingEntries)
+      .where(
+        and(
+          eq(accountingEntries.id, id),
+          eq(accountingEntries.status, "draft"),
+        ),
+      )
+      .for("update");
+    if (!draft) return false;
+    // Son justificatif ne disparaît pas avec lui : il retourne dans la boîte.
+    await remettreJustificatifDansLaBoite(tx, draft, actor, "suppression");
+    await tx.delete(accountingEntries).where(eq(accountingEntries.id, id));
+    await recordAudit(actor, "accounting.delete_draft", "accounting_entry", id, {}, tx);
+    return true;
+  });
   if (!deleted) {
     const exists = await getAccountingEntry(id);
     if (!exists) throw new HttpError(404, "Écriture comptable introuvable.");
@@ -815,5 +838,4 @@ export async function deleteDraftAccountingEntry(
       "Seules les écritures au brouillon peuvent être supprimées.",
     );
   }
-  await recordAudit(actor, "accounting.delete_draft", "accounting_entry", id);
 }
