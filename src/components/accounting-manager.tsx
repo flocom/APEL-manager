@@ -15,6 +15,7 @@ import {
   PartyPopper,
   Pencil,
   Plus,
+  ReceiptText,
   Search,
   Tags,
   Trash2,
@@ -28,6 +29,8 @@ import { BankLinkDialog } from "@/components/accounting/bank-link-dialog";
 import { CategorySelect } from "@/components/accounting/category-picker";
 import { AccountingExportDialog } from "@/components/accounting/export-dialog";
 import { AccountingModal } from "@/components/accounting/modal";
+import { ReceiptLinkDialog } from "@/components/accounting/receipt-link-dialog";
+import { ReceiptsInbox } from "@/components/accounting/receipts-inbox";
 import {
   type AccountingCategoryPayload,
   type AccountingCategoryView,
@@ -56,6 +59,7 @@ import {
 } from "@/components/ui";
 import type { BankImportSummary } from "@/lib/banking/import-types";
 import { treasuryBalance } from "@/lib/accounting/balances";
+import type { ReceiptView } from "@/lib/accounting/receipts";
 import { api } from "@/lib/client";
 import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
@@ -95,12 +99,18 @@ export function AccountingManager({
   categories,
   events,
   imports,
+  receipts,
+  receiptMaxBytes,
 }: {
   entries: AccountingEntryView[];
   accounts: AccountingAccountView[];
   categories: AccountingCategoryView[];
   events: AccountingEventView[];
   imports: BankImportSummary[];
+  /** Boîte à justificatifs : les reçus déposés qui attendent leur écriture. */
+  receipts: ReceiptView[];
+  /** Plafond du serveur pour un reçu téléversé, en octets. */
+  receiptMaxBytes: number;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -111,7 +121,7 @@ export function AccountingManager({
   >("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [workspace, setWorkspace] = useState<
-    "entries" | "accounts" | "categories"
+    "entries" | "receipts" | "accounts" | "categories"
   >("entries");
   const [editor, setEditor] = useState<
     "new" | AccountingEntryView | null
@@ -122,6 +132,7 @@ export function AccountingManager({
     useState<AccountingEntryView | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [linking, setLinking] = useState<AccountingEntryView | null>(null);
+  const [attaching, setAttaching] = useState<AccountingEntryView | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // Copie locale des catégories : une catégorie créée depuis le formulaire,
@@ -187,6 +198,10 @@ export function AccountingManager({
     .filter((entry) => entry.type === "expense")
     .reduce((sum, entry) => sum + entry.amountCents, 0);
   const draftCount = entries.filter((entry) => entry.status === "draft").length;
+  // « Associer un reçu » n'a de sens que sur une écriture sans justificatif,
+  // et tant que la boîte en contient.
+  const canAttachReceipt = (entry: AccountingEntryView) =>
+    receipts.length > 0 && !entry.attachmentUrl;
   const activeAccountCount = accounts.filter(
     (account) => account.isActive,
   ).length;
@@ -286,10 +301,13 @@ export function AccountingManager({
   return (
     <div className="space-y-6">
       <Card className="p-1.5">
+        {/* Quatre onglets : deux par ligne tant que la place manque (le menu
+            latéral occupe une partie de l'écran à partir de lg), sur une
+            seule ligne ensuite. */}
         <div
           role="tablist"
           aria-label="Navigation de la comptabilité"
-          className="grid grid-cols-3 gap-1.5"
+          className="grid grid-cols-2 gap-1.5 xl:grid-cols-4"
         >
           <AccountingWorkspaceTab
             active={workspace === "entries"}
@@ -297,6 +315,17 @@ export function AccountingManager({
             label="Écritures"
             helper={`${entries.length} mouvement${entries.length > 1 ? "s" : ""}`}
             onClick={() => setWorkspace("entries")}
+          />
+          <AccountingWorkspaceTab
+            active={workspace === "receipts"}
+            icon={ReceiptText}
+            label="Justificatifs"
+            helper={
+              receipts.length === 0
+                ? "Aucun en attente"
+                : `${receipts.length} en attente`
+            }
+            onClick={() => setWorkspace("receipts")}
           />
           <AccountingWorkspaceTab
             active={workspace === "accounts"}
@@ -315,7 +344,13 @@ export function AccountingManager({
         </div>
       </Card>
 
-      {workspace === "accounts" ? (
+      {workspace === "receipts" ? (
+        <ReceiptsInbox
+          receipts={receipts}
+          entries={entries}
+          maxFileBytes={receiptMaxBytes}
+        />
+      ) : workspace === "accounts" ? (
         <FinancialAccountsManager
           accounts={accounts}
           entries={entries}
@@ -535,6 +570,38 @@ export function AccountingManager({
         </div>
       </Card>
 
+      {receipts.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border-2 border-brand-200 bg-brand-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-700 text-white">
+              <ReceiptText className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="font-bold text-brand-950">
+                {receipts.length === 1
+                  ? "1 reçu attend son écriture."
+                  : `${receipts.length} reçus attendent leur écriture.`}
+              </p>
+              <p className="mt-0.5 text-sm text-slate-600">
+                {receipts.length === 1
+                  ? "Associez-le depuis la boîte, ou avec « Associer un reçu » sur l’écriture qu’il justifie."
+                  : "Associez-les depuis la boîte, ou avec « Associer un reçu » sur l’écriture qu’ils justifient."}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            icon={ReceiptText}
+            onClick={() => setWorkspace("receipts")}
+            className="w-full shrink-0 sm:w-auto"
+          >
+            Voir les justificatifs
+          </Button>
+        </div>
+      )}
+
       {entries.length === 0 ? (
         <EmptyState
           icon={Landmark}
@@ -590,6 +657,9 @@ export function AccountingManager({
                 }
                 onEdit={() => setEditor(entry)}
                 onLink={() => setLinking(entry)}
+                onAttachReceipt={
+                  canAttachReceipt(entry) ? () => setAttaching(entry) : undefined
+                }
                 onDelete={() => setPendingDelete(entry)}
               />
             ))}
@@ -649,14 +719,36 @@ export function AccountingManager({
                           <p className="mt-1 text-xs text-slate-500">
                             {entry.counterparty || entry.reference || "Sans tiers"}
                           </p>
-                          {entry.eventTitle && (
-                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-                              <PartyPopper
-                                className="h-3 w-3"
-                                aria-hidden="true"
-                              />
-                              {entry.eventTitle}
-                            </p>
+                          {(entry.eventTitle || entry.attachmentUrl) && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {entry.eventTitle && (
+                                <p className="inline-flex items-center gap-1.5 rounded-md bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
+                                  <PartyPopper
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                  {entry.eventTitle}
+                                </p>
+                              )}
+                              {entry.attachmentUrl && (
+                                <a
+                                  href={entry.attachmentUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"
+                                >
+                                  <Paperclip
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                  Justificatif
+                                  <span className="sr-only">
+                                    {" "}
+                                    de « {entry.label} » (nouvel onglet)
+                                  </span>
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -693,7 +785,7 @@ export function AccountingManager({
                     </td>
                     <td className="px-5 py-4">
                       {entry.status === "draft" ? (
-                        <div className="flex justify-end gap-1">
+                        <div className="flex flex-wrap justify-end gap-1">
                           <Button
                             type="button"
                             size="sm"
@@ -715,6 +807,18 @@ export function AccountingManager({
                               Rattacher
                             </Button>
                           )}
+                          {canAttachReceipt(entry) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              icon={Paperclip}
+                              onClick={() => setAttaching(entry)}
+                              title="Choisir son justificatif dans la boîte à justificatifs"
+                            >
+                              Associer un reçu
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             size="sm"
@@ -727,7 +831,22 @@ export function AccountingManager({
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex justify-end">
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {/* Une écriture validée peut encore recevoir le
+                              justificatif qui lui manque : il ne touche à
+                              rien de ce que la validation verrouille. */}
+                          {canAttachReceipt(entry) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              icon={Paperclip}
+                              onClick={() => setAttaching(entry)}
+                              title="Choisir son justificatif dans la boîte à justificatifs"
+                            >
+                              Associer un reçu
+                            </Button>
+                          )}
                           <Badge color="slate" icon={LockKeyhole}>
                             Verrouillée
                           </Badge>
@@ -744,6 +863,19 @@ export function AccountingManager({
 
           {exporting && (
             <AccountingExportDialog entries={entries} onClose={() => setExporting(false)} />
+          )}
+
+          {attaching && (
+            <ReceiptLinkDialog
+              mode="entry"
+              entry={attaching}
+              receipts={receipts}
+              onClose={() => setAttaching(null)}
+              onAttached={() => {
+                setAttaching(null);
+                router.refresh();
+              }}
+            />
           )}
 
           {linking && (
@@ -804,7 +936,7 @@ function AccountingWorkspaceTab({
     >
       <span
         className={cn(
-          // Masquée sur téléphone : trois onglets côte à côte n'y laissent
+          // Masquée sur téléphone : deux onglets côte à côte n'y laissent
           // la place que du libellé.
           "hidden h-9 w-9 shrink-0 place-items-center rounded-lg sm:grid",
           active ? "bg-white/10 text-brand-100" : "bg-slate-100 text-slate-500",
@@ -835,6 +967,7 @@ function AccountingMobileCard({
   categoryName,
   onEdit,
   onLink,
+  onAttachReceipt,
   onDelete,
 }: {
   entry: AccountingEntryView;
@@ -842,6 +975,8 @@ function AccountingMobileCard({
   categoryName: string | null;
   onEdit: () => void;
   onLink: () => void;
+  /** Absent quand l'écriture a déjà un justificatif ou que la boîte est vide. */
+  onAttachReceipt?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -922,12 +1057,38 @@ function AccountingMobileCard({
                 Rattacher à une écriture existante
               </Button>
             )}
+            {onAttachReceipt && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={Paperclip}
+                onClick={onAttachReceipt}
+                className="col-span-2"
+              >
+                Associer un reçu
+              </Button>
+            )}
           </div>
         ) : (
-          <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-500">
-            <LockKeyhole className="h-4 w-4" aria-hidden="true" />
-            Écriture validée et verrouillée
-          </p>
+          <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+            <p className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+              Écriture validée et verrouillée
+            </p>
+            {onAttachReceipt && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={Paperclip}
+                onClick={onAttachReceipt}
+                className="w-full"
+              >
+                Associer un reçu
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </Card>

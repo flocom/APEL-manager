@@ -273,6 +273,36 @@ supprime pas : elle se désactive, l'historique reste classé.
   paiements par carte (« PAIEMENT CB 2206 ») sert aussi à reconnaître ces
   écritures dès l'import.
 
+#### Boîte à justificatifs
+
+Un reçu arrive souvent avant son écriture : la dépense passera sur le relevé du
+mois, ou sera saisie plus tard. « Boîte à justificatifs » accueille ces reçus
+(PDF, JPEG, PNG, WebP seulement ; jusqu'à 20 à la fois, chacun sous
+`UPLOAD_MAX_BYTES`), avec un
+libellé, un montant et une date facultatifs qui aident à retrouver l'écriture.
+
+- **Association** : un reçu s'associe à une écriture saisie à la main ou
+  importée d'un relevé. Il devient son justificatif et quitte la boîte ; le
+  dépôt, l'association et la suppression restent au journal d'audit.
+- **Écriture validée** : elle peut recevoir le justificatif qui lui manque —
+  seule modification qu'elle accepte, le justificatif ne changeant ni le
+  montant, ni la date, ni le compte. Sa date de validation, reprise dans le
+  FEC, ne bouge pas.
+- **Brouillon qui disparaît** : supprimer un brouillon justifié, annuler
+  l'import qui l'a créé ou le rattacher à une écriture déjà saisie ne perd
+  pas son justificatif. Au rattachement, il suit l'opération vers l'écriture
+  choisie si elle n'en a pas ; sinon, il revient dans la boîte, avec le
+  libellé, le montant et la date du brouillon.
+- **Pas de remplacement** : une écriture qui a déjà un justificatif est
+  refusée ; on ne remplace pas une pièce sans la voir.
+- **Fichiers** : les reçus restent dans les pièces privées de la comptabilité
+  (lecture réservée aux administrateurs). Un reçu en attente n'est jamais
+  effacé par le nettoyage des orphelins ; un reçu supprimé de la boîte emporte
+  son fichier, sauf s'il est encore cité ailleurs.
+- **Synthèse et MCP** : la synthèse comptable compte les reçus en attente
+  (`pendingReceiptCount`) ; Claude peut lister la boîte et associer un reçu,
+  pas en déposer.
+
 #### Soldes et contrôle avec les relevés
 
 Chaque compte de trésorerie a un **solde de départ** (montant et jour), rempli

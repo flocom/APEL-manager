@@ -281,6 +281,13 @@
       "when": 1791637310407,
       "tag": "0039_synchronisation_helloasso",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791879252481,
+      "tag": "0040_boite_justificatifs",
+      "breakpoints": true
     }
   ]
 }
