@@ -281,6 +281,13 @@
       "when": 1791637310407,
       "tag": "0039_synchronisation_helloasso",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791903767123,
+      "tag": "0040_fiches_adherents_udapel",
+      "breakpoints": true
     }
   ]
 }
