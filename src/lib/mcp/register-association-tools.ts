@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ASSOCIATION_DOCUMENT_TYPES, PAYMENT_METHODS } from "@/lib/labels";
 import type { HelloAssoStatus } from "@/lib/helloasso/types";
+import { memberCompleteness } from "@/lib/member-info/completeness";
 import {
   accountingCategories,
   associationMembers,
@@ -106,6 +107,43 @@ const localDateTime = z
 const DETAILS_SAISIS = new Set(["email", "name", "deviceLabel"]);
 
 /**
+ * Les champs d'adresse et de civilité attendus par le tableau des familles
+ * adhérentes de l'Apel départementale, décrits pour l'assistant : il doit
+ * savoir où ranger un lieu-dit, un numéro « bis » ou une résidence.
+ */
+const memberInfoInputs = {
+  civility: z
+    .enum(["M", "Mme", "Mrme"])
+    .nullable()
+    .optional()
+    .describe(
+      "Civilité : M (Monsieur), Mme (Madame ou Mademoiselle), Mrme (un couple, Monsieur et Madame).",
+    ),
+  streetNumber: optionalNullableString.describe(
+    "Numéro dans la voie, avec son indice : « 6 », « 12 bis ».",
+  ),
+  addressLine1: optionalNullableString.describe(
+    "Nom de la voie, sans le numéro : « route de Mouilleron », « rue des Lilas ».",
+  ),
+  addressLine2: optionalNullableString.describe(
+    "Complément : résidence, bâtiment, lotissement.",
+  ),
+  locality: optionalNullableString.describe(
+    "Lieu-dit, ou commune déléguée d’une commune nouvelle. Suffit sans nom de voie.",
+  ),
+  postalCode: optionalNullableString.describe(
+    "Code postal seul (cinq chiffres en France).",
+  ),
+  city: optionalNullableString.describe("Ville seule, sans le code postal."),
+  otherSchoolName: optionalNullableString.describe(
+    "Établissement où la part nationale est réglée, quand nationalFeeElsewhere est vrai.",
+  ),
+};
+
+const nationalFeeElsewhereDescription =
+  "Vrai quand la famille règle la part nationale de la cotisation (17,50 €) dans un autre établissement, par exemple pour un aîné scolarisé ailleurs. Renseigner alors otherSchoolName.";
+
+/**
  * Le mode de règlement d'une cotisation. Décrit pour l'assistant, qui ne lit
  * que `.describe()` : sans lui, il ignorerait que HelloAsso n'entre pas en
  * comptabilité comme un chèque — l'argent y arrive plus tard, dans un virement
@@ -151,16 +189,22 @@ export function registerAssociationTools(
     {
       title: "Lister les adhérents",
       description:
-        "Liste les adhérents juridiques de l’APEL, distincts des comptes utilisateurs. Chaque fiche porte sa cotisation (membershipFeeCents) et le don éventuellement versé en plus (donationCents), en centimes.",
+        "Liste les adhérents juridiques de l’APEL, distincts des comptes utilisateurs. Chaque fiche porte sa cotisation (membershipFeeCents) et le don éventuellement versé en plus (donationCents), en centimes, et ce qui lui manque pour le tableau de l’Apel départementale : missing.required (adresse postale, civilité… obligatoires) et missing.recommended (téléphone, e-mail, numéro de voie).",
       inputSchema: z.object({
         status: z.enum(["active", "pending", "inactive"]).optional(),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/).optional(),
         query: z.string().max(120).optional(),
+        incompleteOnly: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Vrai : seulement les fiches où manque une information obligatoire.",
+          ),
         limit: z.number().int().min(1).max(500).default(100),
       }),
       annotations: readOnlyTool,
     },
-    async ({ status, schoolYear, query, limit }) => {
+    async ({ status, schoolYear, query, incompleteOnly, limit }) => {
       requireMcpAccess(principal, "mcp:read", "admin");
       let items = await listAssociationMembers();
       if (status) items = items.filter((item) => item.status === status);
@@ -175,7 +219,19 @@ export function registerAssociationTools(
             .includes(needle),
         );
       }
-      return toolResult({ items: items.slice(0, limit), count: items.length });
+      let withMissing = items.map((item) => {
+        const { required, recommended } = memberCompleteness(item);
+        return { ...item, missing: { required, recommended } };
+      });
+      if (incompleteOnly) {
+        withMissing = withMissing.filter(
+          (item) => item.missing.required.length > 0,
+        );
+      }
+      return toolResult({
+        items: withMissing.slice(0, limit),
+        count: withMissing.length,
+      });
     },
   );
 
@@ -190,11 +246,12 @@ export function registerAssociationTools(
         lastName: z.string().min(1).max(120),
         email: optionalNullableString,
         phone: optionalNullableString,
-        addressLine1: optionalNullableString,
-        addressLine2: optionalNullableString,
-        postalCode: optionalNullableString,
-        city: optionalNullableString,
+        ...memberInfoInputs,
         country: z.string().default("France"),
+        nationalFeeElsewhere: z
+          .boolean()
+          .default(false)
+          .describe(nationalFeeElsewhereDescription),
         status: z.enum(["active", "pending", "inactive"]).default("pending"),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/),
         membershipFeeCents: z.number().int().min(0).default(0),
@@ -230,7 +287,7 @@ export function registerAssociationTools(
     {
       title: "Modifier un adhérent",
       description:
-        "Met à jour les coordonnées, la cotisation, le don supplémentaire, le règlement (date et mode) ou le statut d’un adhérent.",
+        "Met à jour les coordonnées (civilité, adresse postale, téléphone, e-mail), la part nationale réglée ailleurs, la cotisation, le don supplémentaire, le règlement (date et mode) ou le statut d’un adhérent.",
       inputSchema: z.object({
         id: z.string().uuid(),
         version: z.number().int().min(0).optional(),
@@ -238,11 +295,12 @@ export function registerAssociationTools(
         lastName: z.string().min(1).max(120).optional(),
         email: optionalNullableString,
         phone: optionalNullableString,
-        addressLine1: optionalNullableString,
-        addressLine2: optionalNullableString,
-        postalCode: optionalNullableString,
-        city: optionalNullableString,
+        ...memberInfoInputs,
         country: z.string().optional(),
+        nationalFeeElsewhere: z
+          .boolean()
+          .optional()
+          .describe(nationalFeeElsewhereDescription),
         status: z.enum(["active", "pending", "inactive"]).optional(),
         schoolYear: z.string().regex(/^\d{4}-\d{4}$/).optional(),
         membershipFeeCents: z.number().int().min(0).optional(),

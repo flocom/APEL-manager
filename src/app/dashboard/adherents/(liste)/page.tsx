@@ -8,9 +8,12 @@ import {
 } from "@/components/cotisations-rapprochement";
 import { HelloAssoSyncBanner } from "@/components/helloasso-sync-banner";
 import { PageHeader } from "@/components/ui";
+import { UdapelExportButton } from "@/components/udapel-export-button";
 import { adherentView } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
+import { currentSchoolYear } from "@/lib/dates";
 import { db } from "@/lib/db";
+import { memberCompleteness } from "@/lib/member-info/completeness";
 import { centimesDepuisSql } from "@/lib/money";
 import {
   accountingCategories,
@@ -88,6 +91,26 @@ export default async function AdherentsPage() {
 
   const serialized = members.map(adherentView);
 
+  // L'année des adhésions en cours : l'année scolaire si des familles y ont
+  // déjà adhéré, sinon la plus récente — en septembre, avant les premières
+  // adhésions, le bureau termine encore le tableau de l'année passée.
+  const annees = Array.from(new Set(members.map((m) => m.schoolYear))).sort(
+    (a, b) => b.localeCompare(a),
+  );
+  const anneeScolaire = currentSchoolYear();
+  const anneeParDefaut = annees.includes(anneeScolaire)
+    ? anneeScolaire
+    : (annees[0] ?? anneeScolaire);
+  // Le tableau ne reprend que les adhésions actives : le compte des fiches à
+  // compléter suit la même règle.
+  const incompletesParAnnee: Record<string, number> = {};
+  for (const member of members) {
+    if (member.status !== "active") continue;
+    if (memberCompleteness(member).complete) continue;
+    incompletesParAnnee[member.schoolYear] =
+      (incompletesParAnnee[member.schoolYear] ?? 0) + 1;
+  }
+
   const rapprochements: LigneRapprochementView[] = lignes.map((ligne) => ({
     memberId: ligne.memberId,
     nom: ligne.nom,
@@ -122,10 +145,17 @@ export default async function AdherentsPage() {
         title="Adhérents"
         description="Les adhésions, les coordonnées, et le règlement de chaque cotisation jusque dans les comptes."
         icon={ContactRound}
-      />
+      >
+        <UdapelExportButton
+          schoolYears={annees}
+          defaultYear={anneeParDefaut}
+          incompleteByYear={incompletesParAnnee}
+        />
+      </PageHeader>
       <HelloAssoSyncBanner status={helloasso} />
       <AdherentsManager
         members={serialized}
+        anneeParDefaut={anneeParDefaut}
         rapprochements={rapprochements}
         comptes={comptes}
         categoriesRecette={categories}
