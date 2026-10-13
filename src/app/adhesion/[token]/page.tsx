@@ -11,11 +11,16 @@ import { getPublicMemberForm } from "@/lib/services/member-update-requests";
 export const dynamic = "force-dynamic";
 
 // Une page personnelle, atteinte par un lien reçu par e-mail : rien à
-// indexer, et le jeton de l'adresse ne part chez aucun autre site.
+// indexer, et le jeton de l'adresse ne part chez aucun autre site — ni en
+// référent (`same-origin`), ni dans les statistiques de visite (le layout
+// racine ne les charge pas ici, voir lib/cloudflare-web-analytics.ts).
+// `same-origin` plutôt que `no-referrer` : l'enregistrement reste une requête
+// du site qui dit d'où elle vient, ce que le contrôle d'origine du middleware
+// attend des navigateurs qui n'envoient pas `Sec-Fetch-Site`.
 export const metadata: Metadata = {
   title: "Compléter ma fiche d’adhérent",
-  robots: { index: false, follow: false },
-  referrer: "no-referrer",
+  robots: { index: false, follow: false, nocache: true },
+  referrer: "same-origin",
 };
 
 /**

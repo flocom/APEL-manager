@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import Script from "next/script";
 
 import { NavigationProgress } from "@/components/navigation-progress";
 import { ToastProvider } from "@/components/toast";
-import { SCRIPT_WEB_ANALYTICS, jetonWebAnalytics } from "@/lib/cloudflare-web-analytics";
+import {
+  EN_TETE_SANS_STATISTIQUES,
+  SCRIPT_WEB_ANALYTICS,
+  jetonWebAnalytics,
+} from "@/lib/cloudflare-web-analytics";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
 import "./globals.css";
@@ -51,12 +56,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const jetonStatistiques = jetonWebAnalytics();
+  // Rien n'est mesuré sur une page dont l'adresse porte un jeton personnel
+  // (le middleware le signale) : le script enverrait le jeton à Cloudflare.
+  const pagePrivee = (await headers()).get(EN_TETE_SANS_STATISTIQUES) === "1";
+  const jetonStatistiques = pagePrivee ? null : jetonWebAnalytics();
   return (
     <html lang="fr" className={inter.variable}>
       <body className="min-h-screen bg-[#f4f7f7] font-sans text-slate-950 antialiased">

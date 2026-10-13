@@ -676,11 +676,14 @@ export async function getPublicMemberForm(
   };
 }
 
+/** Les messages lus par la famille, en français (zod les écrit en anglais). */
+const tropLong = (max: number) => `${max} caractères au plus.`;
+
 const texteFacultatif = (max: number) =>
   z
     .string()
     .trim()
-    .max(max)
+    .max(max, tropLong(max))
     .nullable()
     .optional()
     .transform((value) => emptyToNull(value));
@@ -699,7 +702,7 @@ export const publicMemberUpdateSchema = z
       .string()
       .trim()
       .toLowerCase()
-      .max(254)
+      .max(254, tropLong(254))
       .nullable()
       .optional()
       .transform((value) => emptyToNull(value))
@@ -711,9 +714,21 @@ export const publicMemberUpdateSchema = z
     addressLine1: texteFacultatif(200),
     addressLine2: texteFacultatif(200),
     locality: texteFacultatif(120),
-    postalCode: z.string().trim().min(1, "Indiquez le code postal.").max(20),
-    city: z.string().trim().min(1, "Indiquez la ville.").max(120),
-    country: z.string().trim().min(2, "Indiquez le pays.").max(120),
+    postalCode: z
+      .string({ errorMap: () => ({ message: "Indiquez le code postal." }) })
+      .trim()
+      .min(1, "Indiquez le code postal.")
+      .max(20, tropLong(20)),
+    city: z
+      .string({ errorMap: () => ({ message: "Indiquez la ville." }) })
+      .trim()
+      .min(1, "Indiquez la ville.")
+      .max(120, tropLong(120)),
+    country: z
+      .string({ errorMap: () => ({ message: "Indiquez le pays." }) })
+      .trim()
+      .min(2, "Indiquez le pays.")
+      .max(120, tropLong(120)),
     nationalFeeElsewhere: z.boolean(),
     otherSchoolName: texteFacultatif(200),
   })

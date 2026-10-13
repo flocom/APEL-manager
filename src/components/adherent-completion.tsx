@@ -124,6 +124,8 @@ export function FicheACompleter({ member }: { member: AdherentView }) {
 
   const aCompleter =
     completude.required.length > 0 || completude.recommended.length > 0;
+  // Le serveur refuse le lien d'une fiche archivée : le bouton le dit avant.
+  const archivee = member.status === "inactive";
   // Rien à compléter et aucun lien parti : la carte n'apprendrait rien.
   if (!aCompleter && (liens === null || liens.length === 0)) return null;
 
@@ -193,14 +195,16 @@ export function FicheACompleter({ member }: { member: AdherentView }) {
                 variant={completude.complete ? "outline" : "primary"}
                 icon={Send}
                 loading={envoi}
-                disabled={!member.email}
+                disabled={!member.email || archivee}
                 onClick={envoyer}
                 className="w-full"
               >
                 Envoyer le lien pour compléter
               </Button>
               <p className="mt-1.5 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">
-                {member.email
+                {archivee
+                  ? "Fiche archivée : réactivez-la pour envoyer un lien à la famille."
+                  : member.email
                   ? enAttente
                     ? `Un lien est déjà en attente : le nouveau, envoyé à ${member.email}, le remplacera.`
                     : `La famille reçoit à ${member.email} un lien personnel, valable 30 jours, pour compléter sa fiche.`

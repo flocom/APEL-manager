@@ -7,8 +7,6 @@ import { currentSchoolYear } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { associationMembers } from "@/lib/db/schema";
 import {
-  CIVILITIES,
-  CIVILITY_LABELS,
   isCivility,
   memberCompleteness,
   splitStreetNumber,
@@ -297,16 +295,6 @@ function feuille(
     ligne3[c] = { value: c === onglet.cadre.debut ? contexte.apelEtCommune : null, style: cadre };
   }
 
-  // Ligne 4, vide sur le modèle : les codes de civilité attendus, et la
-  // légende du jaune quand il y en a.
-  const civilites = CIVILITIES.map((code) => `${code} = ${CIVILITY_LABELS[code]}`).join(" · ");
-  const ligne4: XlsxCellInput[] = [
-    {
-      value: `Civilité : ${civilites}.${incompletes ? " En jaune : information obligatoire manquante, à compléter avant l'envoi." : ""}`,
-      style: { italic: true, size: 8, color: "555555", vertical: "center" },
-    },
-  ];
-
   const enTetes = onglet.enTetes.map((value) => ({ value, style: EN_TETE }));
   const premiere = 6;
   const fin = premiere + lignes.length - 1;
@@ -320,7 +308,9 @@ function feuille(
         { cells: ligne1, height: 33.75 },
         { cells: ligne2, height: 15 },
         { cells: ligne3, height: 21 },
-        { cells: ligne4, height: 15.75 },
+        // Ligne 4 vide, comme sur le modèle : l'Apel départementale peut
+        // reprendre le fichier tel quel.
+        { cells: [], height: 15.75 },
         { cells: enTetes, height: 25.5 },
         ...lignes.map((ligne) => ligne.cells),
       ],

@@ -1417,10 +1417,16 @@ export function memberUpdateRequestEmail(ctx: {
     subject: `Adhésion ${ctx.schoolYear} à ${association} : complétez vos coordonnées`,
     html: layout(
       "Complétez votre fiche d’adhérent",
-      `Il manque quelques informations à votre fiche d’adhérent ${ctx.schoolYear}.`,
+      manque.length
+        ? `Il manque quelques informations à votre fiche d’adhérent ${ctx.schoolYear}.`
+        : `Vérifiez votre fiche d’adhérent ${ctx.schoolYear}.`,
       `${p(`Bonjour ${esc(salutation)},`)}
        ${mot ? `${citation(escLignes(mot))}${pDiscret("— Le bureau")}` : ""}
-       ${p(`Pour votre adhésion ${esc(ctx.schoolYear)} à <strong>${esc(association)}</strong>, il manque encore quelques informations à votre fiche :`)}
+       ${p(
+         manque.length
+           ? `Pour votre adhésion ${esc(ctx.schoolYear)} à <strong>${esc(association)}</strong>, il manque encore quelques informations à votre fiche :`
+           : `Pour votre adhésion ${esc(ctx.schoolYear)} à <strong>${esc(association)}</strong>, merci de vérifier les coordonnées de votre fiche.`,
+       )}
        ${listeHtml}
        ${encart(esc(pourquoi))}
        ${p("Ce lien personnel ouvre votre fiche, sans compte ni mot de passe. Vérifiez ce qui est déjà rempli, complétez, puis enregistrez :")}
@@ -1432,7 +1438,9 @@ export function memberUpdateRequestEmail(ctx: {
     text: [
       `Bonjour ${salutation},`,
       mot ? `${mot}\n— Le bureau` : null,
-      `Pour votre adhésion ${ctx.schoolYear} à ${association}, il manque encore quelques informations à votre fiche :`,
+      manque.length
+        ? `Pour votre adhésion ${ctx.schoolYear} à ${association}, il manque encore quelques informations à votre fiche :`
+        : `Pour votre adhésion ${ctx.schoolYear} à ${association}, merci de vérifier les coordonnées de votre fiche.`,
       manque.map((label) => `- ${label}`).join("\n"),
       pourquoi,
       `Complétez votre fiche avec ce lien personnel (valable jusqu'au ${expire}, sans compte ni mot de passe) :\n${ctx.formUrl}`,

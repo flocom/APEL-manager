@@ -2,9 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { REQUESTED_PATH_HEADER } from "@/lib/auth/return-path";
 import {
+  EN_TETE_SANS_STATISTIQUES,
   ENVOI_WEB_ANALYTICS,
   SCRIPT_WEB_ANALYTICS,
   jetonWebAnalytics,
+  pageSansStatistiques,
 } from "@/lib/cloudflare-web-analytics";
 
 /**
@@ -40,6 +42,13 @@ export function middleware(request: NextRequest) {
     // Seules les pages gardées s'en servent ; ailleurs, une valeur envoyée
     // par le navigateur n'a pas à traîner jusqu'au rendu.
     headers.delete(REQUESTED_PATH_HEADER);
+  }
+  // Pas de statistiques sur une page dont l'adresse porte un jeton personnel
+  // (lib/cloudflare-web-analytics.ts).
+  if (pageSansStatistiques(pathname)) {
+    headers.set(EN_TETE_SANS_STATISTIQUES, "1");
+  } else {
+    headers.delete(EN_TETE_SANS_STATISTIQUES);
   }
 
   const response = NextResponse.next({ request: { headers } });
