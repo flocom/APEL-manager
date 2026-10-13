@@ -44,6 +44,17 @@ const MOBILE_HEADER_FALLBACK = 73;
 // (`scroll-mt-36`, sous l'en-tête et les onglets) : la ligne passe dessous.
 const ACTIVE_LINE = 170;
 
+/**
+ * La zone qui défile : sur ordinateur, la colonne principale ; sur
+ * téléphone, la page (`null`).
+ */
+function scrollerOf(element: HTMLElement) {
+  const main = element.closest("main");
+  return main !== null && main.scrollHeight > main.clientHeight + 1
+    ? main
+    : null;
+}
+
 function groupsOf(items: SettingsNavItem[]) {
   const groups: { title?: string; items: SettingsNavItem[] }[] = [];
   for (const item of items) {
@@ -101,11 +112,9 @@ export function SettingsNav({
       // Sur ordinateur, c'est la colonne principale qui défile ; sur
       // téléphone, la page. La ligne se mesure depuis le haut de la zone
       // visible, en-tête mobile compris.
-      const scroller = sections[0].closest("main");
-      const scrollsInside =
-        scroller !== null && scroller.scrollHeight > scroller.clientHeight + 1;
-      const top = scrollsInside ? scroller.getBoundingClientRect().top : 0;
-      const atBottom = scrollsInside
+      const scroller = scrollerOf(sections[0]);
+      const top = scroller ? scroller.getBoundingClientRect().top : 0;
+      const atBottom = scroller
         ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
         : window.innerHeight + window.scrollY >=
           document.documentElement.scrollHeight - 4;
@@ -170,7 +179,25 @@ export function SettingsNav({
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     lockRef.current = { id, until: Date.now() + (reduce ? 100 : 900) };
     setActive(id);
-    target.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    const behavior = reduce ? "auto" : "smooth";
+    const scroller = scrollerOf(target);
+    if (scroller) {
+      // Sur ordinateur, seule la colonne défile. `scrollIntoView` ferait
+      // défiler tous les ancêtres, page comprise : arrivée en butée avec une
+      // section trop courte pour remonter en haut (la dernière), la colonne
+      // passerait la main à la page, qui glisserait sous la barre latérale.
+      const marge = parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+      scroller.scrollTo({
+        top:
+          scroller.scrollTop +
+          target.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top -
+          marge,
+        behavior,
+      });
+    } else {
+      target.scrollIntoView({ behavior, block: "start" });
+    }
     window.history.replaceState(null, "", `#${id}`);
     // Le focus suit, pour le clavier et les lecteurs d'écran, sans
     // redéclencher de défilement.
