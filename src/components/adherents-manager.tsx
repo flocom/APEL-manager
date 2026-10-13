@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   CircleDollarSign,
   ContactRound,
+  Download,
   Mail,
   Pencil,
   Phone,
@@ -23,6 +24,7 @@ import {
   STATUS_COLORS,
   STATUS_LABELS,
 } from "@/components/adherent-fiche";
+import { AdherentsExportDialog } from "@/components/adherents-export-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   CotisationsRapprochement,
@@ -68,6 +70,7 @@ export function AdherentsManager({
   comptes,
   categoriesRecette,
   ecrituresRecette,
+  tarifCotisationCents,
 }: {
   members: AdherentView[];
   /** L'état comptable de chaque adhésion, toutes années confondues. */
@@ -75,6 +78,8 @@ export function AdherentsManager({
   comptes: { id: string; name: string }[];
   categoriesRecette: { id: string; name: string }[];
   ecrituresRecette: EcritureRecetteView[];
+  /** Tarif publié dans la configuration, référence de l'export départemental. */
+  tarifCotisationCents: number | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -87,6 +92,7 @@ export function AdherentsManager({
   const [schoolYear, setSchoolYear] = useState(depart.annee);
   const [pendingDelete, setPendingDelete] = useState<AdherentView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const schoolYears = useMemo(
     () =>
@@ -320,6 +326,17 @@ export function AdherentsManager({
               ))}
             </Select>
           </div>
+          {schoolYears.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              icon={Download}
+              onClick={() => setExporting(true)}
+              className="w-full lg:w-auto"
+            >
+              Exporter
+            </Button>
+          )}
           <Link
             href={nouvelle}
             className={cn(buttonClasses("primary"), "w-full lg:w-auto")}
@@ -479,6 +496,16 @@ export function AdherentsManager({
             ecrituresRecette={ecrituresRecette}
           />
         </section>
+      )}
+
+      {exporting && (
+        <AdherentsExportDialog
+          members={members}
+          schoolYears={schoolYears}
+          initialYear={schoolYears.includes(anneeCible) ? anneeCible : schoolYears[0]}
+          tarifCotisationCents={tarifCotisationCents}
+          onClose={() => setExporting(false)}
+        />
       )}
 
       <ConfirmDialog

@@ -38,7 +38,8 @@ la base de l’instance déployée et se saisissent depuis l’application.
   mois, responsables, descriptions mises en forme et réorganisation par
   glisser-déposer.
 - **Membres et adhérents** — rôles administrateur, organisateur et membre,
-  coordonnées, année scolaire, statut et suivi des cotisations.
+  coordonnées, année scolaire, statut et suivi des cotisations, export Excel
+  de la liste des adhérents pour l’APEL départementale.
 - **Comptabilité associative** — recettes, dépenses, comptes, catégories
   (créées à la volée, renommées, désactivées), validation des écritures et
   justificatifs privés. Chaque écriture peut être rattachée à un événement, qui
