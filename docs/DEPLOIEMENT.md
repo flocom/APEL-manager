@@ -195,6 +195,28 @@ UTC sur Vercel (`/api/cron/helloasso`, voir § 6) ou toutes les heures sous
 Docker (`HELLOASSO_SYNC_INTERVAL_MINUTES` du conteneur `scheduler`, 0 pour la
 couper). Sans clés ou sans lien, la tâche planifiée ne fait rien.
 
+#### Export pour l'APEL départementale
+
+Chaque année, l'APEL d'établissement transmet à l'APEL départementale la liste
+de ses adhérents : elle tient le fichier du mouvement, adresse le magazine
+*Famille & éducation* et appelle la part de cotisation qui lui revient. Le
+bouton **Exporter** de la liste des adhérents produit ce fichier pour une année
+scolaire, en Excel (`.xlsx`, ce que demandent les départementales) ou en CSV :
+
+- en tête, l'association, l'établissement et la date d'export ;
+- une ligne par famille : nom et prénom du parent, e-mail, adresse postale,
+  cotisation ;
+- en pied, le nombre d'adhésions multiplié par la cotisation, et le total.
+
+N'y partent que les adhésions actives (les fiches en attente sur demande). Une
+famille dont la cotisation est inférieure à la cotisation pleine de l'année
+(la plus fréquente) est considérée comme adhérente par un autre établissement,
+où sa part au mouvement est déjà remontée : elle est écartée par défaut, ou
+incluse et signalée dans une colonne. Les dons, les notes, le téléphone et le
+règlement restent dans l'application. Chaque export est consigné au journal
+d'audit. Le modèle exact varie d'un département à l'autre : demandez le vôtre à
+votre APEL départementale et complétez-le au besoin à partir de ce fichier.
+
 ### Comptabilité
 
 Le volet **Comptabilité** suit les recettes et dépenses en centimes, les comptes
