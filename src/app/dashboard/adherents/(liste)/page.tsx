@@ -10,6 +10,7 @@ import { HelloAssoSyncBanner } from "@/components/helloasso-sync-banner";
 import { PageHeader } from "@/components/ui";
 import { adherentView } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
+import { currentSchoolYear } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { centimesDepuisSql } from "@/lib/money";
 import {
@@ -90,6 +91,16 @@ export default async function AdherentsPage() {
 
   const serialized = members.map(adherentView);
 
+  // L'année des adhésions en cours : l'année scolaire si des familles y ont
+  // déjà adhéré, sinon la plus récente — en septembre, avant les premières
+  // adhésions, le bureau termine encore le tableau de l'année passée.
+  const annees = Array.from(new Set(members.map((m) => m.schoolYear))).sort(
+    (a, b) => b.localeCompare(a),
+  );
+  const anneeScolaire = currentSchoolYear();
+  const anneeParDefaut = annees.includes(anneeScolaire)
+    ? anneeScolaire
+    : (annees[0] ?? anneeScolaire);
   const rapprochements: LigneRapprochementView[] = lignes.map((ligne) => ({
     memberId: ligne.memberId,
     nom: ligne.nom,
@@ -128,6 +139,7 @@ export default async function AdherentsPage() {
       <HelloAssoSyncBanner status={helloasso} />
       <AdherentsManager
         members={serialized}
+        anneeParDefaut={anneeParDefaut}
         rapprochements={rapprochements}
         comptes={comptes}
         categoriesRecette={categories}

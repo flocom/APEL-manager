@@ -1,10 +1,17 @@
 import { APP_NAME } from "@/lib/app-config";
+import { formatLongDate } from "@/lib/dates";
 import type { EmailLogo } from "@/lib/notifications/logo";
 import {
   droppedAccountRequestNotices,
   totalDroppedAccountRequests,
   type DroppedAccountRequests,
 } from "@/lib/labels";
+import {
+  CIVILITY_LABELS,
+  MEMBER_INFO_FIELD_LABELS,
+  type Civility,
+  type MemberInfoField,
+} from "@/lib/member-info/completeness";
 import {
   bouton,
   citation,
@@ -1359,5 +1366,89 @@ Nous avons bien reçu ce que vous nous avez écrit sur le site de ${association}
 
 Votre message :
 ${ctx.message}`,
+  };
+}
+
+/**
+ * Le lien personnel envoyé à une famille dont la fiche d'adhérent est
+ * incomplète (`src/lib/services/member-update-requests.ts`).
+ *
+ * Tout ce qui vient de la fiche — nom, civilité — ou du bureau — son mot
+ * facultatif — est échappé : ces valeurs ont pu être saisies sur HelloAsso
+ * par le payeur lui-même. La liste de ce qui manque reprend les libellés de
+ * la fiche, pour que la famille retrouve sur la page les mêmes mots.
+ */
+export function memberUpdateRequestEmail(ctx: {
+  civility: Civility | null;
+  firstName: string;
+  lastName: string;
+  schoolYear: string;
+  missing: MemberInfoField[];
+  /** Mot facultatif du bureau, en tête du message. */
+  message?: string | null;
+  formUrl: string;
+  expiresAt: Date;
+  contactEmail?: string | null;
+  identity?: NotificationIdentity;
+}): EmailContent {
+  const association = ctx.identity?.associationName || APP_NAME;
+  // « Bonjour Monsieur et Madame Martin », comme sur une enveloppe ; sans
+  // civilité connue, le prénom et le nom de la fiche.
+  const salutation = ctx.civility
+    ? `${CIVILITY_LABELS[ctx.civility]} ${ctx.lastName}`
+    : `${ctx.firstName} ${ctx.lastName}`;
+  const manque = ctx.missing.map((field) => MEMBER_INFO_FIELD_LABELS[field]);
+  const expire = formatLongDate(ctx.expiresAt);
+  const mot = ctx.message?.trim() || null;
+  const contact = ctx.contactEmail?.trim() || null;
+  const pourquoi =
+    "L’adresse postale est indispensable pour enregistrer votre adhésion auprès de l’Apel départementale.";
+
+  const listeHtml = manque.length
+    ? fiche(
+        manque.map((label, index) => ({
+          label: index === 0 ? "Il manque" : "",
+          valeur: esc(label),
+        })),
+      )
+    : "";
+
+  return {
+    subject: `Adhésion ${ctx.schoolYear} à ${association} : complétez vos coordonnées`,
+    html: layout(
+      "Complétez votre fiche d’adhérent",
+      manque.length
+        ? `Il manque quelques informations à votre fiche d’adhérent ${ctx.schoolYear}.`
+        : `Vérifiez votre fiche d’adhérent ${ctx.schoolYear}.`,
+      `${p(`Bonjour ${esc(salutation)},`)}
+       ${mot ? `${citation(escLignes(mot))}${pDiscret("— Le bureau")}` : ""}
+       ${p(
+         manque.length
+           ? `Pour votre adhésion ${esc(ctx.schoolYear)} à <strong>${esc(association)}</strong>, il manque encore quelques informations à votre fiche :`
+           : `Pour votre adhésion ${esc(ctx.schoolYear)} à <strong>${esc(association)}</strong>, merci de vérifier les coordonnées de votre fiche.`,
+       )}
+       ${listeHtml}
+       ${encart(esc(pourquoi))}
+       ${p("Ce lien personnel ouvre votre fiche, sans compte ni mot de passe. Vérifiez ce qui est déjà rempli, complétez, puis enregistrez :")}
+       ${bouton(esc(ctx.formUrl), "Compléter ma fiche")}
+       ${pDiscret(`Le lien est valable jusqu’au <strong>${esc(expire)}</strong>. Il ne sert que pour votre famille : ne le transférez pas.`)}
+       ${contact ? pDiscret(`Une question ? Répondez à ce message ou écrivez à ${lien(`mailto:${esc(contact)}`, esc(contact))}.`) : pDiscret("Une question ? Répondez simplement à ce message.")}`,
+      ctx.identity,
+    ),
+    text: [
+      `Bonjour ${salutation},`,
+      mot ? `${mot}\n— Le bureau` : null,
+      manque.length
+        ? `Pour votre adhésion ${ctx.schoolYear} à ${association}, il manque encore quelques informations à votre fiche :`
+        : `Pour votre adhésion ${ctx.schoolYear} à ${association}, merci de vérifier les coordonnées de votre fiche.`,
+      manque.map((label) => `- ${label}`).join("\n"),
+      pourquoi,
+      `Complétez votre fiche avec ce lien personnel (valable jusqu'au ${expire}, sans compte ni mot de passe) :\n${ctx.formUrl}`,
+      contact
+        ? `Une question ? Répondez à ce message ou écrivez à ${contact}.`
+        : "Une question ? Répondez simplement à ce message.",
+    ]
+      .filter((bloc): bloc is string => Boolean(bloc))
+      .join("\n\n"),
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Table2 } from "lucide-react";
 import { useState } from "react";
 
 import { AccountingModal } from "@/components/accounting/modal";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/adherent-export";
 import type { AdherentView } from "@/lib/adherent-view";
 import { currentSchoolYear } from "@/lib/dates";
+import { memberCompleteness } from "@/lib/member-info/completeness";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,11 @@ import { cn } from "@/lib/utils";
  * le total des cotisations, les familles écartées parce qu'elles adhèrent par
  * un autre établissement, et les fiches qui partiraient incomplètes — une
  * adresse manquante, c'est un magazine qui n'arrive pas.
+ *
+ * Deux tableaux : celui de l'Apel départementale, à son modèle (deux onglets,
+ * selon l'établissement où la famille règle la part nationale, cochée sur sa
+ * fiche ; voir `buildUdapelWorkbook`), et une liste simple avec cotisations et
+ * total, en Excel ou en CSV.
  */
 export function AdherentsExportDialog({
   members,
@@ -38,7 +44,7 @@ export function AdherentsExportDialog({
   onClose: () => void;
 }) {
   const [annee, setAnnee] = useState(initialYear);
-  const [format, setFormat] = useState<"xlsx" | "csv">("xlsx");
+  const [format, setFormat] = useState<"udapel" | "xlsx" | "csv">("udapel");
   const [enAttente, setEnAttente] = useState(false);
   const [autresEtablissements, setAutresEtablissements] = useState(false);
 
@@ -66,7 +72,19 @@ export function AdherentsExportDialog({
   );
   const sansEmail = retenus.filter((m) => !m.email).length;
 
-  const href = `/api/adherents/export?${new URLSearchParams({
+  // Le tableau de l'Apel départementale : les adhésions actives, réparties
+  // selon la case « part nationale réglée via un autre établissement ».
+  const udapel = members.filter(
+    (m) => m.schoolYear === annee && m.status === "active",
+  );
+  const udapelAilleurs = udapel.filter((m) => m.nationalFeeElsewhere).length;
+  const udapelIncompletes = udapel.filter(
+    (m) => !memberCompleteness(m).complete,
+  );
+
+  const href = format === "udapel"
+    ? `/api/adherents/export/udapel?${new URLSearchParams({ schoolYear: annee }).toString()}`
+    : `/api/adherents/export?${new URLSearchParams({
     annee,
     format,
     ...(enAttente ? { enAttente: "1" } : {}),
@@ -104,14 +122,20 @@ export function AdherentsExportDialog({
 
         <fieldset>
           <legend className="mb-2 text-sm font-bold text-slate-900">Format</legend>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             {(
               [
                 {
+                  value: "udapel",
+                  icon: Table2,
+                  title: "Tableau UDAPEL",
+                  text: "Le modèle de l’Apel départementale : deux onglets, selon l’établissement où la part nationale est réglée.",
+                },
+                {
                   value: "xlsx",
                   icon: FileSpreadsheet,
-                  title: "Excel (.xlsx)",
-                  text: "Le format que demandent les APEL départementales.",
+                  title: "Liste Excel",
+                  text: "Une ligne par famille, avec la cotisation et le total.",
                 },
                 {
                   value: "csv",
@@ -152,6 +176,29 @@ export function AdherentsExportDialog({
           </div>
         </fieldset>
 
+        {format === "udapel" ? (
+          <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+            <p>
+              <strong>{udapel.length}</strong> famille{udapel.length > 1 ? "s" : ""} adhérente
+              {udapel.length > 1 ? "s" : ""} (fiches actives) :{" "}
+              <strong>{udapel.length - udapelAilleurs}</strong> dans l’onglet « via votre Apel »,{" "}
+              <strong>{udapelAilleurs}</strong> dans l’onglet « via une autre Apel ».
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Une famille passe dans le second onglet quand sa fiche indique que la part
+              nationale est réglée dans un autre établissement.
+            </p>
+            {udapelIncompletes.length > 0 && (
+              <p className="mt-2 font-semibold text-amber-800">
+                {udapelIncompletes.length} fiche{udapelIncompletes.length > 1 ? "s sont incomplètes" : " est incomplète"}{" "}
+                ({noms(udapelIncompletes)}) : les cases manquantes sont surlignées en jaune
+                dans le tableau. La relance des fiches incomplètes permet de les faire compléter
+                par les familles.
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
         {(pending > 0 || reduites.length > 0) && (
           <div className="space-y-3">
             {pending > 0 && (
@@ -217,19 +264,21 @@ export function AdherentsExportDialog({
             </p>
           )}
         </div>
+          </>
+        )}
 
         <div className="flex flex-col-reverse gap-2 border-t-2 border-slate-100 pt-5 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onClose}>
             Fermer
           </Button>
-          {retenus.length === 0 ? (
+          {(format === "udapel" ? udapel.length : retenus.length) === 0 ? (
             <Button type="button" icon={Download} disabled>
               Télécharger
             </Button>
           ) : (
             <a href={href} download className={buttonClasses("primary")}>
               <Download className="h-4 w-4" aria-hidden="true" />
-              Télécharger la liste
+              {format === "udapel" ? "Télécharger le tableau" : "Télécharger la liste"}
             </a>
           )}
         </div>

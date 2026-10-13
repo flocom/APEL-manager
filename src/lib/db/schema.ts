@@ -688,11 +688,32 @@ export const associationMembers = pgTable(
     lastName: text("last_name").notNull(),
     email: text("email"),
     phone: text("phone"),
+    /**
+     * Civilité, comme l'Apel départementale l'attend dans son tableau des
+     * familles adhérentes : `M`, `Mme` ou `Mrme` (un couple).
+     */
+    civility: text("civility"),
+    /** Numéro dans la voie, avec son indice (« 6 », « 12 bis »). */
+    streetNumber: text("street_number"),
+    /** La voie : « route de Mouilleron-le-Captif », « rue des Lilas ». */
     addressLine1: text("address_line_1"),
+    /** Complément : résidence, bâtiment, lotissement. */
     addressLine2: text("address_line_2"),
+    /** Lieu-dit, ou commune déléguée d'une commune nouvelle. */
+    locality: text("locality"),
     postalCode: text("postal_code"),
     city: text("city"),
     country: text("country").notNull().default("France"),
+    /**
+     * La part nationale de la cotisation (versée au mouvement des Apel) est
+     * réglée par la famille dans un autre établissement — un aîné scolarisé
+     * ailleurs. La famille figure alors dans le second onglet du tableau de
+     * l'Apel départementale, avec le nom de cet établissement.
+     */
+    nationalFeeElsewhere: boolean("national_fee_elsewhere")
+      .notNull()
+      .default(false),
+    otherSchoolName: text("other_school_name"),
     status: associationMemberStatusEnum("status")
       .notNull()
       .default("pending"),
@@ -746,6 +767,48 @@ export const associationMembers = pgTable(
     donationCheck: check(
       "association_members_donation_cents_check",
       sql`${t.donationCents} >= 0`,
+    ),
+    civilityCheck: check(
+      "association_members_civility_check",
+      sql`${t.civility} is null or ${t.civility} in ('M', 'Mme', 'Mrme')`,
+    ),
+  }),
+);
+
+/**
+ * Lien envoyé à un adhérent pour qu'il complète lui-même sa fiche (adresse
+ * postale, civilité, téléphone…), sans compte ni mot de passe.
+ *
+ * Seule l'empreinte du jeton est gardée. Un nouveau lien remplace le
+ * précédent (`revokedAt`) ; un lien sert jusqu'à son expiration, pour qu'une
+ * famille puisse corriger une faute de frappe. `completedAt` note le premier
+ * enregistrement.
+ */
+export const memberUpdateRequests = pgTable(
+  "member_update_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => associationMembers.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    /** Adresse à laquelle le lien est parti (l'adhérent peut la changer). */
+    sentTo: text("sent_to").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex("member_update_requests_token_idx").on(t.tokenHash),
+    memberIdx: index("member_update_requests_member_idx").on(
+      t.memberId,
+      t.createdAt,
     ),
   }),
 );

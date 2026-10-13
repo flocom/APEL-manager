@@ -14,17 +14,28 @@ import { recordAudit, type AuditActor } from "./audit";
 function normalizedValues(
   data: ReturnType<typeof associationMemberSchema.parse>,
 ) {
+  const nationalFeeElsewhere = data.nationalFeeElsewhere ?? false;
   return {
     userId: data.userId ?? null,
     firstName: data.firstName,
     lastName: data.lastName,
     email: emptyToNull(data.email),
     phone: emptyToNull(data.phone),
+    civility: data.civility ?? null,
+    streetNumber: emptyToNull(data.streetNumber),
     addressLine1: emptyToNull(data.addressLine1),
     addressLine2: emptyToNull(data.addressLine2),
+    locality: emptyToNull(data.locality),
     postalCode: emptyToNull(data.postalCode),
     city: emptyToNull(data.city),
     country: data.country,
+    nationalFeeElsewhere,
+    // L'établissement n'a de sens que si la part nationale est réglée
+    // ailleurs : un nom resté d'une saisie abandonnée ne part pas dans le
+    // tableau de l'Apel départementale.
+    otherSchoolName: nationalFeeElsewhere
+      ? emptyToNull(data.otherSchoolName)
+      : null,
     status: data.status,
     schoolYear: data.schoolYear,
     membershipFeeCents: data.membershipFeeCents,
@@ -84,14 +95,26 @@ export async function updateAssociationMember(
   if (data.lastName !== undefined) updates.lastName = data.lastName;
   if (data.email !== undefined) updates.email = emptyToNull(data.email);
   if (data.phone !== undefined) updates.phone = emptyToNull(data.phone);
+  if (data.civility !== undefined) updates.civility = data.civility ?? null;
+  if (data.streetNumber !== undefined)
+    updates.streetNumber = emptyToNull(data.streetNumber);
   if (data.addressLine1 !== undefined)
     updates.addressLine1 = emptyToNull(data.addressLine1);
   if (data.addressLine2 !== undefined)
     updates.addressLine2 = emptyToNull(data.addressLine2);
+  if (data.locality !== undefined)
+    updates.locality = emptyToNull(data.locality);
   if (data.postalCode !== undefined)
     updates.postalCode = emptyToNull(data.postalCode);
   if (data.city !== undefined) updates.city = emptyToNull(data.city);
   if (data.country !== undefined) updates.country = data.country;
+  if (data.nationalFeeElsewhere !== undefined)
+    updates.nationalFeeElsewhere = data.nationalFeeElsewhere;
+  if (data.otherSchoolName !== undefined)
+    updates.otherSchoolName = emptyToNull(data.otherSchoolName);
+  // Part nationale de nouveau réglée chez nous : l'ancien établissement
+  // n'a plus lieu d'être, comme à la création.
+  if (data.nationalFeeElsewhere === false) updates.otherSchoolName = null;
   if (data.status !== undefined) updates.status = data.status;
   if (data.schoolYear !== undefined) updates.schoolYear = data.schoolYear;
   if (data.membershipFeeCents !== undefined)

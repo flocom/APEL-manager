@@ -6,11 +6,14 @@ import {
   CircleDollarSign,
   ContactRound,
   Download,
+  Filter,
   Mail,
+  MapPinOff,
   Pencil,
   Phone,
   Plus,
   Search,
+  Send,
   UserRoundCheck,
   UsersRound,
 } from "lucide-react";
@@ -18,6 +21,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { CompletudeBadge } from "@/components/adherent-completion";
 import {
   EtatComptable,
   montantAdhesion,
@@ -25,6 +29,7 @@ import {
   STATUS_LABELS,
 } from "@/components/adherent-fiche";
 import { AdherentsExportDialog } from "@/components/adherents-export-dialog";
+import { RelanceDialog } from "@/components/adherents-relance";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   CotisationsRapprochement,
@@ -50,6 +55,7 @@ import {
 } from "@/lib/adherent-view";
 import { api } from "@/lib/client";
 import { formatShortDate } from "@/lib/dates";
+import { memberCompleteness } from "@/lib/member-info/completeness";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +72,7 @@ const LISTE = "/dashboard/adherents";
 
 export function AdherentsManager({
   members,
+  anneeParDefaut,
   rapprochements,
   comptes,
   categoriesRecette,
@@ -73,6 +80,12 @@ export function AdherentsManager({
   tarifCotisationCents,
 }: {
   members: AdherentView[];
+  /**
+   * L'année des adhésions en cours (l'année scolaire si elle a des fiches,
+   * sinon la plus récente) : celle que visent les relances quand la liste
+   * n'est pas filtrée sur une année.
+   */
+  anneeParDefaut: string;
   /** L'état comptable de chaque adhésion, toutes années confondues. */
   rapprochements: LigneRapprochementView[];
   comptes: { id: string; name: string }[];
@@ -90,6 +103,8 @@ export function AdherentsManager({
   const [query, setQuery] = useState(depart.q);
   const [status, setStatus] = useState(depart.statut);
   const [schoolYear, setSchoolYear] = useState(depart.annee);
+  const [fiche, setFiche] = useState(depart.fiche);
+  const [relance, setRelance] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AdherentView | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -98,6 +113,15 @@ export function AdherentsManager({
     () =>
       Array.from(new Set(members.map((member) => member.schoolYear))).sort(
         (a, b) => b.localeCompare(a),
+      ),
+    [members],
+  );
+
+  /** Ce qui manque d'obligatoire à chaque fiche, calculé une fois. */
+  const incompletes = useMemo(
+    () =>
+      new Map(
+        members.map((member) => [member.id, memberCompleteness(member)]),
       ),
     [members],
   );
@@ -121,9 +145,36 @@ export function AdherentsManager({
       const matchesStatus = status === "all" || member.status === status;
       const matchesYear =
         schoolYear === "all" || member.schoolYear === schoolYear;
-      return matchesQuery && matchesStatus && matchesYear;
+      const matchesFiche =
+        fiche === "all" || !incompletes.get(member.id)?.complete;
+      return matchesQuery && matchesStatus && matchesYear && matchesFiche;
     });
-  }, [members, query, schoolYear, status]);
+  }, [members, query, schoolYear, status, fiche, incompletes]);
+
+  /**
+   * Les fiches à compléter de l'année visée — les adhésions en cours, hors
+   * fiches archivées, comme les relances les comptent. L'adresse postale est
+   * comptée à part : sans elle, la famille ne peut pas être déclarée à l'Apel
+   * départementale.
+   */
+  const anneeRelance = schoolYear === "all" ? anneeParDefaut : schoolYear;
+  const aCompleter = useMemo(() => {
+    const fiches = members.filter(
+      (member) =>
+        member.schoolYear === anneeRelance &&
+        member.status !== "inactive" &&
+        !incompletes.get(member.id)?.complete,
+    );
+    return {
+      total: fiches.length,
+      sansAdresse: fiches.filter(
+        (member) => !incompletes.get(member.id)?.addressComplete,
+      ).length,
+    };
+  }, [members, anneeRelance, incompletes]);
+  const anneesRelance = schoolYears.includes(anneeParDefaut)
+    ? schoolYears
+    : [anneeParDefaut, ...schoolYears];
 
   const activeCount = members.filter(
     (member) => member.status === "active",
@@ -191,7 +242,12 @@ export function AdherentsManager({
     [rapprochements, anneeCible],
   );
 
-  const filtres: FiltresAdherents = { q: query, statut: status, annee: schoolYear };
+  const filtres: FiltresAdherents = {
+    q: query,
+    statut: status,
+    annee: schoolYear,
+    fiche,
+  };
   const suffixe = requeteFiltres(filtres);
 
   /**
@@ -203,6 +259,7 @@ export function AdherentsManager({
     setQuery(suivants.q);
     setStatus(suivants.statut);
     setSchoolYear(suivants.annee);
+    setFiche(suivants.fiche);
     window.history.replaceState(null, "", `${LISTE}${requeteFiltres(suivants)}`);
   }
 
@@ -271,9 +328,56 @@ export function AdherentsManager({
         />
       </section>
 
+      {aCompleter.total > 0 && (
+        <section
+          aria-labelledby="adherents-a-completer"
+          className="flex flex-col gap-3 rounded-2xl border-2 border-sand-300 bg-sand-50 p-4 lg:flex-row lg:items-center lg:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <MapPinOff
+              className="mt-0.5 h-5 w-5 shrink-0 text-sand-700"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 text-sm leading-6 text-sand-900">
+              <h2 id="adherents-a-completer" className="font-bold">
+                {aCompleter.total} fiche{aCompleter.total > 1 ? "s" : ""}{" "}
+                incomplète{aCompleter.total > 1 ? "s" : ""} en {anneeRelance}
+                {aCompleter.sansAdresse > 0 &&
+                  `, dont ${aCompleter.sansAdresse} sans adresse postale complète`}
+              </h2>
+              <p>
+                L’adresse postale et la civilité sont obligatoires pour déclarer
+                les familles à l’Apel départementale.
+              </p>
+            </div>
+          </div>
+          <div className="grid shrink-0 gap-2 sm:flex">
+            {fiche !== "incomplete" && (
+              <Button
+                type="button"
+                variant="outline"
+                icon={Filter}
+                onClick={() =>
+                  filtrer({ fiche: "incomplete", annee: anneeRelance })
+                }
+              >
+                Afficher ces fiches
+              </Button>
+            )}
+            <Button type="button" icon={Send} onClick={() => setRelance(true)}>
+              Relancer les fiches incomplètes
+            </Button>
+          </div>
+        </section>
+      )}
+
       <Card className="p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
+        {/* Trois filtres et la recherche ne tiennent sur une ligne qu'à
+            partir des très grands écrans : en dessous, la recherche garde
+            toute la largeur au lieu d'être écrasée, et les filtres se rangent
+            sous elle avec le bouton d'ajout. */}
+        <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
+          <div className="relative min-w-0 flex-1 2xl:min-w-56">
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -290,7 +394,7 @@ export function AdherentsManager({
               className="pl-10"
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto_auto] 2xl:flex">
             <label className="sr-only" htmlFor="adherents-status">
               Filtrer par statut
             </label>
@@ -302,7 +406,7 @@ export function AdherentsManager({
                   statut: event.target.value as FiltresAdherents["statut"],
                 })
               }
-              className="lg:w-44"
+              className="2xl:w-44"
             >
               <option value="all">Tous les statuts</option>
               <option value="active">Actifs</option>
@@ -316,7 +420,7 @@ export function AdherentsManager({
               id="adherents-year"
               value={schoolYear}
               onChange={(event) => filtrer({ annee: event.target.value })}
-              className="lg:w-44"
+              className="2xl:w-44"
             >
               <option value="all">Toutes les années</option>
               {schoolYears.map((year) => (
@@ -325,25 +429,37 @@ export function AdherentsManager({
                 </option>
               ))}
             </Select>
-          </div>
-          {schoolYears.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              icon={Download}
-              onClick={() => setExporting(true)}
-              className="w-full lg:w-auto"
+            <label className="sr-only" htmlFor="adherents-fiche">
+              Filtrer par complétude de la fiche
+            </label>
+            <Select
+              id="adherents-fiche"
+              value={fiche}
+              onChange={(event) =>
+                filtrer({
+                  fiche: event.target.value as FiltresAdherents["fiche"],
+                })
+              }
+              className="2xl:w-48"
             >
-              Exporter
-            </Button>
-          )}
-          <Link
-            href={nouvelle}
-            className={cn(buttonClasses("primary"), "w-full lg:w-auto")}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Ajouter
-          </Link>
+              <option value="all">Toutes les fiches</option>
+              <option value="incomplete">Fiches incomplètes</option>
+            </Select>
+            {schoolYears.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                icon={Download}
+                onClick={() => setExporting(true)}
+              >
+                Exporter
+              </Button>
+            )}
+            <Link href={nouvelle} className={buttonClasses("primary")}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Ajouter
+            </Link>
+          </div>
         </div>
       </Card>
 
@@ -414,15 +530,18 @@ export function AdherentsManager({
                         {member.firstName} {member.lastName}
                       </Link>
                       <p className="mt-1 text-xs text-slate-500">
-                        {member.email || member.phone || "Coordonnées à compléter"}
+                        {member.email || member.phone || "Ni e-mail ni téléphone"}
                       </p>
+                      <div className="mt-1.5 empty:hidden">
+                        <CompletudeBadge member={member} />
+                      </div>
                     </td>
                     <td className="px-5 py-4">
                       <Badge color={STATUS_COLORS[member.status]}>
                         {STATUS_LABELS[member.status]}
                       </Badge>
                     </td>
-                    <td className="px-5 py-4 font-medium text-slate-700">
+                    <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-700">
                       {member.schoolYear}
                     </td>
                     <td className="px-5 py-4">
@@ -498,6 +617,14 @@ export function AdherentsManager({
         </section>
       )}
 
+      {relance && (
+        <RelanceDialog
+          schoolYears={anneesRelance}
+          defaultYear={anneeRelance}
+          onClose={() => setRelance(false)}
+        />
+      )}
+
       {exporting && (
         <AdherentsExportDialog
           members={members}
@@ -552,6 +679,9 @@ function AdherentMobileCard({
             <p className="mt-1 text-xs text-slate-500">
               Adhésion {member.schoolYear}
             </p>
+            <div className="mt-1.5 empty:hidden">
+              <CompletudeBadge member={member} />
+            </div>
           </div>
           <Badge color={STATUS_COLORS[member.status]}>
             {STATUS_LABELS[member.status]}

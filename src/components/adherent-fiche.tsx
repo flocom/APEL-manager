@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
+import { FicheACompleter } from "@/components/adherent-completion";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   ETATS,
@@ -37,6 +38,11 @@ import {
   toDateInput,
 } from "@/lib/dates";
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } from "@/lib/labels";
+import {
+  CIVILITIES,
+  CIVILITY_LABELS,
+  splitStreetNumber,
+} from "@/lib/member-info/completeness";
 import { formatEuros } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -123,16 +129,24 @@ function corpsDuFormulaire(form: FormData) {
   const feeInEuros = Number(String(form.get("membershipFee") ?? "0"));
   // Champ laissé vide : pas de don, et non une erreur de saisie.
   const donationInEuros = Number(String(form.get("donation") || "0"));
+  const nationalFeeElsewhere = form.get("nationalFeeElsewhere") === "on";
   return {
+    civility: form.get("civility") || null,
     firstName: form.get("firstName"),
     lastName: form.get("lastName"),
     email: form.get("email") || null,
     phone: form.get("phone") || null,
+    streetNumber: form.get("streetNumber") || null,
     addressLine1: form.get("addressLine1") || null,
     addressLine2: form.get("addressLine2") || null,
+    locality: form.get("locality") || null,
     postalCode: form.get("postalCode") || null,
     city: form.get("city") || null,
     country: form.get("country") || "France",
+    nationalFeeElsewhere,
+    otherSchoolName: nationalFeeElsewhere
+      ? form.get("otherSchoolName") || null
+      : null,
     status: form.get("status"),
     schoolYear: form.get("schoolYear"),
     membershipFeeCents: Math.round(feeInEuros * 100),
@@ -207,15 +221,20 @@ export function AdherentFiche({
     }
   }
 
+  // Dans l'ordre d'une enveloppe : la voie, le complément, le lieu-dit, puis
+  // le code postal et la ville.
   const adresse = [
-    member.addressLine1,
+    [member.streetNumber, member.addressLine1].filter(Boolean).join(" "),
     member.addressLine2,
+    member.locality,
     [member.postalCode, member.city].filter(Boolean).join(" "),
     member.country !== "France" ? member.country : null,
   ].filter(Boolean);
 
   return (
     <div className="space-y-6">
+      <FicheACompleter member={member} />
+
       <Card className="overflow-hidden">
         <div className="h-1.5 bg-sea-500" aria-hidden="true" />
         <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-3">
@@ -227,6 +246,11 @@ export function AdherentFiche({
               Contact
             </h2>
             <ul className="mt-3 space-y-1 text-sm text-slate-700">
+              {member.civility && (
+                <li className="py-1 text-slate-600">
+                  {CIVILITY_LABELS[member.civility]}
+                </li>
+              )}
               {member.email && (
                 <li>
                   <a
@@ -265,7 +289,9 @@ export function AdherentFiche({
                 </li>
               )}
               {!member.email && !member.phone && adresse.length === 0 && (
-                <li className="py-2 text-slate-500">Coordonnées à compléter</li>
+                <li className="py-2 text-slate-500">
+                  Aucune coordonnée enregistrée
+                </li>
               )}
             </ul>
           </section>
@@ -308,6 +334,14 @@ export function AdherentFiche({
                   {member.donationCents > 0
                     ? formatEuros(member.donationCents)
                     : "Aucun"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Part nationale</dt>
+                <dd className="font-semibold text-slate-900">
+                  {member.nationalFeeElsewhere
+                    ? `Via un autre établissement${member.otherSchoolName ? ` : ${member.otherSchoolName}` : ""}`
+                    : "Via notre Apel"}
                 </dd>
               </div>
             </dl>
@@ -501,8 +535,29 @@ function AdherentForm({
   secondaire: React.ReactNode;
   cotisationParDefautCents?: number | null;
 }) {
+  const [partAilleurs, setPartAilleurs] = useState(
+    member?.nationalFeeElsewhere ?? false,
+  );
+  // Les fiches d'avant le champ « N° » portent le numéro dans la voie
+  // (« 12 bis rue des Lilas ») : le formulaire le présente déjà séparé, et
+  // l'enregistrement le range à sa place, comme le tableau de l'Apel
+  // départementale l'attend.
+  const voie =
+    member && !member.streetNumber
+      ? splitStreetNumber(member.addressLine1)
+      : {
+          number: member?.streetNumber ?? null,
+          street: member?.addressLine1 ?? null,
+        };
+
   return (
-    <form onSubmit={onSubmit} className="space-y-7 p-5 sm:p-6">
+    <form
+      onSubmit={onSubmit}
+      // « Annuler les modifications » remet aussi la case de la part
+      // nationale, et donc le champ qu'elle fait apparaître.
+      onReset={() => setPartAilleurs(member?.nationalFeeElsewhere ?? false)}
+      className="space-y-7 p-5 sm:p-6"
+    >
       <section aria-labelledby="adherent-identity-title">
         <h3
           id="adherent-identity-title"
@@ -510,8 +565,23 @@ function AdherentForm({
         >
           Identité et contact
         </h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Prénom" htmlFor="firstName">
+        <div className="grid gap-4 sm:grid-cols-6">
+          <Field label="Civilité" htmlFor="civility" className="sm:col-span-2">
+            <Select
+              id="civility"
+              name="civility"
+              defaultValue={member?.civility ?? ""}
+              autoComplete="honorific-prefix"
+            >
+              <option value="">Non renseignée</option>
+              {CIVILITIES.map((civilite) => (
+                <option key={civilite} value={civilite}>
+                  {CIVILITY_LABELS[civilite]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Prénom" htmlFor="firstName" className="sm:col-span-2">
             <Input
               id="firstName"
               name="firstName"
@@ -520,7 +590,7 @@ function AdherentForm({
               autoComplete="given-name"
             />
           </Field>
-          <Field label="Nom" htmlFor="lastName">
+          <Field label="Nom" htmlFor="lastName" className="sm:col-span-2">
             <Input
               id="lastName"
               name="lastName"
@@ -529,7 +599,7 @@ function AdherentForm({
               autoComplete="family-name"
             />
           </Field>
-          <Field label="Adresse e-mail" htmlFor="email">
+          <Field label="Adresse e-mail" htmlFor="email" className="sm:col-span-3">
             <Input
               id="email"
               name="email"
@@ -538,7 +608,7 @@ function AdherentForm({
               autoComplete="email"
             />
           </Field>
-          <Field label="Téléphone" htmlFor="phone">
+          <Field label="Téléphone" htmlFor="phone" className="sm:col-span-3">
             <Input
               id="phone"
               name="phone"
@@ -547,22 +617,52 @@ function AdherentForm({
               autoComplete="tel"
             />
           </Field>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="adherent-address-title"
+        aria-describedby="adherent-address-hint"
+        className="border-t-2 border-slate-100 pt-6"
+      >
+        <h3
+          id="adherent-address-title"
+          className="text-sm font-bold uppercase tracking-[0.14em] text-slate-500"
+        >
+          Adresse postale
+        </h3>
+        <p id="adherent-address-hint" className="mb-4 mt-1 text-sm text-slate-600">
+          Obligatoire pour déclarer la famille à l’Apel départementale : une
+          voie ou un lieu-dit, le code postal, la ville et le pays.
+        </p>
+        <div className="grid grid-cols-6 gap-4">
+          <Field label="N°" htmlFor="streetNumber" className="col-span-2 sm:col-span-1">
+            <Input
+              id="streetNumber"
+              name="streetNumber"
+              defaultValue={voie.number ?? ""}
+              placeholder="12 bis"
+              maxLength={20}
+            />
+          </Field>
           <Field
-            label="Adresse"
+            label="Voie"
             htmlFor="addressLine1"
-            className="sm:col-span-2"
+            hint="Rue, avenue, route…, sans le numéro."
+            className="col-span-4 sm:col-span-5"
           >
             <Input
               id="addressLine1"
               name="addressLine1"
-              defaultValue={member?.addressLine1 ?? ""}
+              defaultValue={voie.street ?? ""}
               autoComplete="address-line1"
             />
           </Field>
           <Field
-            label="Complément d'adresse"
+            label="Complément"
             htmlFor="addressLine2"
-            className="sm:col-span-2"
+            hint="Résidence, bâtiment, lotissement."
+            className="col-span-6 sm:col-span-3"
           >
             <Input
               id="addressLine2"
@@ -571,15 +671,30 @@ function AdherentForm({
               autoComplete="address-line2"
             />
           </Field>
-          <Field label="Code postal" htmlFor="postalCode">
+          <Field
+            label="Lieu-dit ou commune déléguée"
+            htmlFor="locality"
+            hint="Suffit s’il n’y a pas de nom de voie."
+            className="col-span-6 sm:col-span-3"
+          >
+            <Input
+              id="locality"
+              name="locality"
+              defaultValue={member?.locality ?? ""}
+              autoComplete="address-line3"
+            />
+          </Field>
+          <Field label="Code postal" htmlFor="postalCode" className="col-span-2">
             <Input
               id="postalCode"
               name="postalCode"
               defaultValue={member?.postalCode ?? ""}
               autoComplete="postal-code"
+              inputMode="numeric"
+              maxLength={20}
             />
           </Field>
-          <Field label="Ville" htmlFor="city">
+          <Field label="Ville" htmlFor="city" className="col-span-4 sm:col-span-2">
             <Input
               id="city"
               name="city"
@@ -587,7 +702,7 @@ function AdherentForm({
               autoComplete="address-level2"
             />
           </Field>
-          <Field label="Pays" htmlFor="country" className="sm:col-span-2">
+          <Field label="Pays" htmlFor="country" className="col-span-6 sm:col-span-2">
             <Input
               id="country"
               name="country"
@@ -703,10 +818,45 @@ function AdherentForm({
               }
             />
           </Field>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <label className="flex min-h-11 items-start gap-3 rounded-xl border-2 border-slate-100 px-3.5 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                name="nationalFeeElsewhere"
+                checked={partAilleurs}
+                onChange={(event) => setPartAilleurs(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>
+                <span className="font-semibold text-slate-900">
+                  Part nationale (17,50 €) réglée via un autre établissement
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Par exemple pour un aîné scolarisé ailleurs. La famille
+                  figure alors dans le second onglet du tableau de l’Apel
+                  départementale.
+                </span>
+              </span>
+            </label>
+          </div>
+          {partAilleurs && (
+            <Field
+              label="Établissement où la part nationale est réglée"
+              htmlFor="otherSchoolName"
+              className="sm:col-span-2 lg:col-span-4"
+            >
+              <Input
+                id="otherSchoolName"
+                name="otherSchoolName"
+                defaultValue={member?.otherSchoolName ?? ""}
+                maxLength={200}
+              />
+            </Field>
+          )}
           <Field
             label="Notes internes"
             htmlFor="notes"
-            className="sm:col-span-2 lg:col-span-3"
+            className="sm:col-span-2 lg:col-span-4"
           >
             <Textarea
               id="notes"

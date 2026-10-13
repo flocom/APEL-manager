@@ -34,3 +34,23 @@ export function jetonWebAnalytics(): string | null {
   const jeton = process.env.CLOUDFLARE_WEB_ANALYTICS_TOKEN?.trim();
   return jeton && /^[A-Za-z0-9_-]{16,128}$/.test(jeton) ? jeton : null;
 }
+
+/**
+ * Pages dont l'adresse porte un jeton personnel : le script de mesure envoie
+ * l'adresse de chaque page vue à Cloudflare, jeton compris. Il n'y est donc
+ * pas chargé. Le middleware le signale au layout racine par
+ * `EN_TETE_SANS_STATISTIQUES`, toujours réécrit (une valeur envoyée par le
+ * navigateur ne compte pas).
+ */
+export const PAGES_SANS_STATISTIQUES = [
+  "/adhesion/",
+  "/reset/",
+  "/annulation/",
+  "/inscription/",
+];
+
+export const EN_TETE_SANS_STATISTIQUES = "x-apel-sans-statistiques";
+
+export function pageSansStatistiques(pathname: string): boolean {
+  return PAGES_SANS_STATISTIQUES.some((prefixe) => pathname.startsWith(prefixe));
+}

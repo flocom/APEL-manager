@@ -157,6 +157,24 @@ export const PLAFONDS = {
     limit: 10,
     windowSeconds: HEURE,
   },
+
+  /**
+   * Relances des fiches d'adhérents à compléter. L'envoi groupé part vers
+   * des dizaines de familles : cinq par heure et par administrateur laissent
+   * corriger un mot du bureau et renvoyer, pas boucler. Le lien d'une seule
+   * fiche ne repart pas avant dix minutes — un double clic n'envoie pas deux
+   * e-mails, ni ne révoque le lien que la famille vient d'ouvrir.
+   */
+  relancesGroupees: { bucket: "relances:groupees", limit: 5, windowSeconds: HEURE },
+  relanceCompte: { bucket: "relances:compte", limit: 60, windowSeconds: HEURE },
+  relanceFiche: { bucket: "relances:fiche", limit: 1, windowSeconds: 10 * MINUTE },
+  /**
+   * Enregistrements du formulaire public `/adhesion/[token]`. Par connexion :
+   * le wifi de l'école peut porter plusieurs familles à la fois. Par lien :
+   * une famille corrige une faute de frappe, pas cinquante.
+   */
+  adhesionIpHeure: { bucket: "adhesion:ip:h", limit: 30, windowSeconds: HEURE },
+  adhesionJetonHeure: { bucket: "adhesion:jeton:h", limit: 10, windowSeconds: HEURE },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitVerdict =
