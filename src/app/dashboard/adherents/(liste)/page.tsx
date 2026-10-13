@@ -8,12 +8,10 @@ import {
 } from "@/components/cotisations-rapprochement";
 import { HelloAssoSyncBanner } from "@/components/helloasso-sync-banner";
 import { PageHeader } from "@/components/ui";
-import { UdapelExportButton } from "@/components/udapel-export-button";
 import { adherentView } from "@/lib/adherent-view";
 import { requireRole } from "@/lib/auth/rbac";
 import { currentSchoolYear } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { memberCompleteness } from "@/lib/member-info/completeness";
 import { centimesDepuisSql } from "@/lib/money";
 import {
   accountingCategories,
@@ -23,6 +21,7 @@ import {
   membershipPayments,
 } from "@/lib/db/schema";
 import { etatDe, rapprochement } from "@/lib/services/cotisations";
+import { getAssociationSettings } from "@/lib/services/association-settings";
 import { getHelloAssoStatus } from "@/lib/services/helloasso";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +43,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdherentsPage() {
   await requireRole("admin");
-  const [members, lignes, comptes, categories, recettes, helloasso] =
+  const [members, lignes, comptes, categories, recettes, helloasso, settings] =
     await Promise.all([
       db
         .select()
@@ -87,6 +86,7 @@ export default async function AdherentsPage() {
         .orderBy(desc(accountingEntries.occurredAt))
         .limit(200),
       getHelloAssoStatus(),
+      getAssociationSettings(),
     ]);
 
   const serialized = members.map(adherentView);
@@ -101,16 +101,6 @@ export default async function AdherentsPage() {
   const anneeParDefaut = annees.includes(anneeScolaire)
     ? anneeScolaire
     : (annees[0] ?? anneeScolaire);
-  // Le tableau ne reprend que les adhésions actives : le compte des fiches à
-  // compléter suit la même règle.
-  const incompletesParAnnee: Record<string, number> = {};
-  for (const member of members) {
-    if (member.status !== "active") continue;
-    if (memberCompleteness(member).complete) continue;
-    incompletesParAnnee[member.schoolYear] =
-      (incompletesParAnnee[member.schoolYear] ?? 0) + 1;
-  }
-
   const rapprochements: LigneRapprochementView[] = lignes.map((ligne) => ({
     memberId: ligne.memberId,
     nom: ligne.nom,
@@ -145,13 +135,7 @@ export default async function AdherentsPage() {
         title="Adhérents"
         description="Les adhésions, les coordonnées, et le règlement de chaque cotisation jusque dans les comptes."
         icon={ContactRound}
-      >
-        <UdapelExportButton
-          schoolYears={annees}
-          defaultYear={anneeParDefaut}
-          incompleteByYear={incompletesParAnnee}
-        />
-      </PageHeader>
+      />
       <HelloAssoSyncBanner status={helloasso} />
       <AdherentsManager
         members={serialized}
@@ -160,6 +144,7 @@ export default async function AdherentsPage() {
         comptes={comptes}
         categoriesRecette={categories}
         ecrituresRecette={ecrituresRecette}
+        tarifCotisationCents={settings.membershipFeeCents}
       />
     </div>
   );

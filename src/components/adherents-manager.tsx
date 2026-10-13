@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   CircleDollarSign,
   ContactRound,
+  Download,
   Filter,
   Mail,
   MapPinOff,
@@ -27,6 +28,7 @@ import {
   STATUS_COLORS,
   STATUS_LABELS,
 } from "@/components/adherent-fiche";
+import { AdherentsExportDialog } from "@/components/adherents-export-dialog";
 import { RelanceDialog } from "@/components/adherents-relance";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -75,6 +77,7 @@ export function AdherentsManager({
   comptes,
   categoriesRecette,
   ecrituresRecette,
+  tarifCotisationCents,
 }: {
   members: AdherentView[];
   /**
@@ -88,6 +91,8 @@ export function AdherentsManager({
   comptes: { id: string; name: string }[];
   categoriesRecette: { id: string; name: string }[];
   ecrituresRecette: EcritureRecetteView[];
+  /** Tarif publié dans la configuration, référence de l'export départemental. */
+  tarifCotisationCents: number | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -102,6 +107,7 @@ export function AdherentsManager({
   const [relance, setRelance] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AdherentView | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const schoolYears = useMemo(
     () =>
@@ -388,7 +394,7 @@ export function AdherentsManager({
               className="pl-10"
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] 2xl:flex">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto_auto] 2xl:flex">
             <label className="sr-only" htmlFor="adherents-status">
               Filtrer par statut
             </label>
@@ -439,6 +445,16 @@ export function AdherentsManager({
               <option value="all">Toutes les fiches</option>
               <option value="incomplete">Fiches incomplètes</option>
             </Select>
+            {schoolYears.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                icon={Download}
+                onClick={() => setExporting(true)}
+              >
+                Exporter
+              </Button>
+            )}
             <Link href={nouvelle} className={buttonClasses("primary")}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Ajouter
@@ -606,6 +622,16 @@ export function AdherentsManager({
           schoolYears={anneesRelance}
           defaultYear={anneeRelance}
           onClose={() => setRelance(false)}
+        />
+      )}
+
+      {exporting && (
+        <AdherentsExportDialog
+          members={members}
+          schoolYears={schoolYears}
+          initialYear={schoolYears.includes(anneeCible) ? anneeCible : schoolYears[0]}
+          tarifCotisationCents={tarifCotisationCents}
+          onClose={() => setExporting(false)}
         />
       )}
 

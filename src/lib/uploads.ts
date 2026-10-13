@@ -308,6 +308,25 @@ export async function readUpload(id: string, filename: string) {
   }
 }
 
+/**
+ * Nom, type et taille d'un fichier déjà déposé, d'après son adresse ; `null`
+ * si l'adresse n'en désigne pas un ou si le fichier n'est plus sur le disque.
+ */
+export async function describeStoredUpload(url: string) {
+  const id = storedUploadIdFromUrl(url);
+  if (!id) return null;
+  const filename = url.slice(url.lastIndexOf("/") + 1);
+  const policy = filePolicy(filename);
+  if (!policy) return null;
+  try {
+    const info = await stat(path.join(uploadDirectory(id), filename));
+    return { id, filename, contentType: policy.contentType, size: info.size };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 export async function removeUpload(id: string) {
   if (!uploadScopeFromId(id)) return;
   await rm(uploadDirectory(id), { recursive: true, force: true });

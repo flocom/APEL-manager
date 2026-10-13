@@ -107,6 +107,13 @@ const SANS_CONTROLE_D_ORIGINE = [
 /** Les seules routes qui reçoivent autre chose que du JSON. */
 const TELEVERSEMENTS = ["/api/uploads"];
 
+/**
+ * Dépôt de reçus dans la boîte à justificatifs : multipart, mais à cette
+ * adresse exacte seulement — la modification, la suppression et l'association
+ * d'un reçu, plus bas dans le même chemin, restent en JSON.
+ */
+const TELEVERSEMENTS_EXACTS = new Set(["/api/accounting/receipts"]);
+
 const METHODES_QUI_MODIFIENT = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function commencePar(pathname: string, prefixes: string[]) {
@@ -170,7 +177,7 @@ function verifierOrigine(request: NextRequest): NextResponse | null {
   }
 
   const type = request.headers.get("content-type")?.toLowerCase() ?? "";
-  if (commencePar(pathname, TELEVERSEMENTS)) {
+  if (commencePar(pathname, TELEVERSEMENTS) || TELEVERSEMENTS_EXACTS.has(pathname)) {
     // Un formulaire d'un autre site sait envoyer du multipart : l'origine
     // doit donc être prouvée, pas seulement non démentie.
     if (!site && !origine) return refusOrigine();

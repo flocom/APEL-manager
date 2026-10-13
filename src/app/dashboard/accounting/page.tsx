@@ -15,43 +15,57 @@ import {
   financialAccounts,
 } from "@/lib/db/schema";
 import { listAccountingCategoriesWithUsage } from "@/lib/services/accounting";
+import {
+  listReceipts,
+  receiptView,
+} from "@/lib/services/accounting-receipts";
 import { listBankStatementImports } from "@/lib/services/bank-imports";
+import { maxUploadBytes } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountingPage() {
   await requireRole("admin");
-  const [entries, accounts, categories, eventOptions, imports, importedLines] =
-    await Promise.all([
-      db
-        .select()
-        .from(accountingEntries)
-        .orderBy(desc(accountingEntries.occurredAt)),
-      db.select().from(financialAccounts),
-      // Avec leur usage (nombre d'écritures, total validé) pour l'onglet
-      // Catégories.
-      listAccountingCategoriesWithUsage(),
-      db
-        .select({
-          id: events.id,
-          title: events.title,
-          startAt: events.startAt,
-        })
-        .from(events)
-        .orderBy(desc(events.startAt)),
-      listBankStatementImports(),
-      // Écritures créées par un import : elles peuvent encore être
-      // rattachées à une écriture déjà saisie.
-      db
-        .select({ entryId: bankStatementLines.entryId })
-        .from(bankStatementLines)
-        .where(
-          and(
-            eq(bankStatementLines.decision, "imported"),
-            isNotNull(bankStatementLines.entryId),
-          ),
+  const [
+    entries,
+    accounts,
+    categories,
+    eventOptions,
+    imports,
+    importedLines,
+    receipts,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(accountingEntries)
+      .orderBy(desc(accountingEntries.occurredAt)),
+    db.select().from(financialAccounts),
+    // Avec leur usage (nombre d'écritures, total validé) pour l'onglet
+    // Catégories.
+    listAccountingCategoriesWithUsage(),
+    db
+      .select({
+        id: events.id,
+        title: events.title,
+        startAt: events.startAt,
+      })
+      .from(events)
+      .orderBy(desc(events.startAt)),
+    listBankStatementImports(),
+    // Écritures créées par un import : elles peuvent encore être
+    // rattachées à une écriture déjà saisie.
+    db
+      .select({ entryId: bankStatementLines.entryId })
+      .from(bankStatementLines)
+      .where(
+        and(
+          eq(bankStatementLines.decision, "imported"),
+          isNotNull(bankStatementLines.entryId),
         ),
-    ]);
+      ),
+    // Boîte à justificatifs : les reçus qui attendent leur écriture.
+    listReceipts(),
+  ]);
   const fromBankImport = new Set(importedLines.map((line) => line.entryId));
   const eventTitles = new Map(
     eventOptions.map((event) => [event.id, event.title]),
@@ -111,6 +125,8 @@ export default async function AccountingPage() {
         )}
         categories={categories}
         imports={imports}
+        receipts={receipts.map(receiptView)}
+        receiptMaxBytes={maxUploadBytes()}
         events={eventOptions.map(({ id, title, startAt }) => ({
           id,
           title,

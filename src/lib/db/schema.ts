@@ -1089,6 +1089,51 @@ export const bankStatementLines = pgTable(
   }),
 );
 
+/**
+ * Boîte à justificatifs : un reçu déposé avant que son écriture existe (voir
+ * `src/lib/accounting/receipts.ts`).
+ *
+ * La ligne ne vit que le temps de l'attente. Associé à son écriture, le
+ * fichier devient l'`attachmentUrl` de celle-ci et la ligne est supprimée :
+ * l'historique (dépôt, association, suppression) reste au journal d'audit.
+ * Le libellé, le montant et la date sont facultatifs : ils ne servent qu'à
+ * retrouver l'écriture, rien ne les recopie dans la comptabilité.
+ */
+export const accountingReceipts = pgTable(
+  "accounting_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** `/api/uploads/accounting-<uuid>/<nom>` : un fichier n'attend qu'une fois. */
+    fileUrl: text("file_url").notNull().unique(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    /** Ce que c'est, en quelques mots (« Courses kermesse »). */
+    label: text("label"),
+    /** Montant lu sur le reçu, en centimes : il aide à trouver l'écriture. */
+    amountCents: integer("amount_cents"),
+    /** Jour du reçu, enregistré à minuit, heure de Paris. */
+    receiptDate: timestamp("receipt_date", { withTimezone: true }),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    createdAtIdx: index("accounting_receipts_created_at_idx").on(t.createdAt),
+    amountCheck: check(
+      "accounting_receipts_amount_cents_check",
+      sql`${t.amountCents} is null or ${t.amountCents} > 0`,
+    ),
+  }),
+);
+
 /** PV d'AG, attestation nominative, ou document officiel de l'association. */
 export const associationDocuments = pgTable(
   "association_documents",
@@ -1942,6 +1987,16 @@ export const accountingEntriesRelations = relations(
   }),
 );
 
+export const accountingReceiptsRelations = relations(
+  accountingReceipts,
+  ({ one }) => ({
+    uploader: one(users, {
+      fields: [accountingReceipts.uploadedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
 export const associationDocumentsRelations = relations(
   associationDocuments,
   ({ one }) => ({
@@ -2054,6 +2109,7 @@ export type AccountingEntry = typeof accountingEntries.$inferSelect;
 export type NewAccountingEntry = typeof accountingEntries.$inferInsert;
 export type BankStatementImport = typeof bankStatementImports.$inferSelect;
 export type BankStatementLine = typeof bankStatementLines.$inferSelect;
+export type AccountingReceipt = typeof accountingReceipts.$inferSelect;
 export type AssociationDocument = typeof associationDocuments.$inferSelect;
 export type NewAssociationDocument = typeof associationDocuments.$inferInsert;
 export type AssociationSettings = typeof associationSettings.$inferSelect;

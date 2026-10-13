@@ -195,6 +195,28 @@ UTC sur Vercel (`/api/cron/helloasso`, voir § 6) ou toutes les heures sous
 Docker (`HELLOASSO_SYNC_INTERVAL_MINUTES` du conteneur `scheduler`, 0 pour la
 couper). Sans clés ou sans lien, la tâche planifiée ne fait rien.
 
+#### Export pour l'APEL départementale
+
+Chaque année, l'APEL d'établissement transmet à l'APEL départementale la liste
+de ses adhérents : elle tient le fichier du mouvement, adresse le magazine
+*Famille & éducation* et appelle la part de cotisation qui lui revient. Le
+bouton **Exporter** de la liste des adhérents produit ce fichier pour une année
+scolaire, en Excel (`.xlsx`, ce que demandent les départementales) ou en CSV :
+
+- en tête, l'association, l'établissement et la date d'export ;
+- une ligne par famille : nom et prénom du parent, e-mail, adresse postale,
+  cotisation ;
+- en pied, le nombre d'adhésions multiplié par la cotisation, et le total.
+
+N'y partent que les adhésions actives (les fiches en attente sur demande). Une
+famille dont la cotisation est inférieure à la cotisation pleine de l'année
+(la plus fréquente) est considérée comme adhérente par un autre établissement,
+où sa part au mouvement est déjà remontée : elle est écartée par défaut, ou
+incluse et signalée dans une colonne. Les dons, les notes, le téléphone et le
+règlement restent dans l'application. Chaque export est consigné au journal
+d'audit. Le modèle exact varie d'un département à l'autre : demandez le vôtre à
+votre APEL départementale et complétez-le au besoin à partir de ce fichier.
+
 ### Comptabilité
 
 Le volet **Comptabilité** suit les recettes et dépenses en centimes, les comptes
@@ -250,6 +272,36 @@ supprime pas : elle se désactive, l'historique reste classé.
   brouillon importé est supprimé. La date d'achat imprimée dans le libellé des
   paiements par carte (« PAIEMENT CB 2206 ») sert aussi à reconnaître ces
   écritures dès l'import.
+
+#### Boîte à justificatifs
+
+Un reçu arrive souvent avant son écriture : la dépense passera sur le relevé du
+mois, ou sera saisie plus tard. « Boîte à justificatifs » accueille ces reçus
+(PDF, JPEG, PNG, WebP seulement ; jusqu'à 20 à la fois, chacun sous
+`UPLOAD_MAX_BYTES`), avec un
+libellé, un montant et une date facultatifs qui aident à retrouver l'écriture.
+
+- **Association** : un reçu s'associe à une écriture saisie à la main ou
+  importée d'un relevé. Il devient son justificatif et quitte la boîte ; le
+  dépôt, l'association et la suppression restent au journal d'audit.
+- **Écriture validée** : elle peut recevoir le justificatif qui lui manque —
+  seule modification qu'elle accepte, le justificatif ne changeant ni le
+  montant, ni la date, ni le compte. Sa date de validation, reprise dans le
+  FEC, ne bouge pas.
+- **Brouillon qui disparaît** : supprimer un brouillon justifié, annuler
+  l'import qui l'a créé ou le rattacher à une écriture déjà saisie ne perd
+  pas son justificatif. Au rattachement, il suit l'opération vers l'écriture
+  choisie si elle n'en a pas ; sinon, il revient dans la boîte, avec le
+  libellé, le montant et la date du brouillon.
+- **Pas de remplacement** : une écriture qui a déjà un justificatif est
+  refusée ; on ne remplace pas une pièce sans la voir.
+- **Fichiers** : les reçus restent dans les pièces privées de la comptabilité
+  (lecture réservée aux administrateurs). Un reçu en attente n'est jamais
+  effacé par le nettoyage des orphelins ; un reçu supprimé de la boîte emporte
+  son fichier, sauf s'il est encore cité ailleurs.
+- **Synthèse et MCP** : la synthèse comptable compte les reçus en attente
+  (`pendingReceiptCount`) ; Claude peut lister la boîte et associer un reçu,
+  pas en déposer.
 
 #### Soldes et contrôle avec les relevés
 
