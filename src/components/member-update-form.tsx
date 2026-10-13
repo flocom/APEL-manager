@@ -1,15 +1,16 @@
 "use client";
 
-import { CheckCircle2, Save } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { CheckCircle2, CircleAlert, Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { Button, Field, Input } from "@/components/ui";
+import { Button, buttonClasses, Field, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/client";
 import {
   CIVILITIES,
   isFrance,
   MEMBER_INFO_FIELD_LABELS,
   memberCompleteness,
+  REQUIRED_MEMBER_INFO_FIELDS,
   type Civility,
   type MemberInfoField,
 } from "@/lib/member-info/completeness";
@@ -97,6 +98,9 @@ export function MemberUpdateForm({
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [enregistre, setEnregistre] = useState<MemberInfoField[] | null>(null);
+  // La fenêtre de confirmation : sans elle, le bouton redevenait cliquable et
+  // la page restait la même — rien ne disait à la famille que c'était fait.
+  const [confirmation, setConfirmation] = useState(false);
 
   const etat = useMemo(() => memberCompleteness(valeurs), [valeurs]);
   const aSurligner = useMemo(() => {
@@ -146,6 +150,7 @@ export function MemberUpdateForm({
         { body: corps },
       );
       setEnregistre(reponse.missing);
+      setConfirmation(true);
     } catch (e) {
       const issues =
         e instanceof ApiError &&
@@ -226,9 +231,12 @@ export function MemberUpdateForm({
             Merci, votre fiche est enregistrée.
           </p>
           <p className="mt-1 text-sm font-medium leading-6 text-slate-700">
-            {enregistre.length === 0
+            {enregistre.every((f) => !REQUIRED_MEMBER_INFO_FIELDS.includes(f))
               ? "Elle est complète : vous n’avez rien d’autre à faire."
-              : `Il manque encore : ${enregistre.map((f) => MEMBER_INFO_FIELD_LABELS[f].toLocaleLowerCase("fr")).join(", ")}. Vous pouvez compléter ci-dessous et enregistrer à nouveau.`}
+              : `Il manque encore : ${enregistre
+                  .filter((f) => REQUIRED_MEMBER_INFO_FIELDS.includes(f))
+                  .map((f) => MEMBER_INFO_FIELD_LABELS[f].toLocaleLowerCase("fr"))
+                  .join(", ")}. Vous pouvez compléter ci-dessous et enregistrer à nouveau.`}
           </p>
         </div>
       ) : manquentObligatoires.length > 0 || manquentFacultatifs.length > 0 ? (
@@ -418,6 +426,7 @@ export function MemberUpdateForm({
       </fieldset>
 
       <Button
+        id="adhesion-enregistrer"
         type="submit"
         icon={Save}
         loading={envoi}
@@ -425,6 +434,119 @@ export function MemberUpdateForm({
       >
         Enregistrer ma fiche
       </Button>
+
+      {confirmation && enregistre && (
+        <ConfirmationEnregistrement
+          manquants={enregistre}
+          onClose={() => {
+            setConfirmation(false);
+            // Le bouton, désactivé pendant l'envoi, a perdu le focus : on le
+            // lui rend, pour le clavier et les lecteurs d'écran.
+            requestAnimationFrame(() =>
+              document.getElementById("adhesion-enregistrer")?.focus(),
+            );
+          }}
+        />
+      )}
     </form>
+  );
+}
+
+/**
+ * Fenêtre affichée par-dessus le formulaire après l'enregistrement. Fiche
+ * complète : la famille sait qu'elle peut fermer la page. Sinon, elle lit ce
+ * qui manque encore et revient au formulaire, dont le bandeau le rappelle.
+ * Échap, le fond ou le bouton referment.
+ */
+function ConfirmationEnregistrement({
+  manquants,
+  onClose,
+}: {
+  manquants: MemberInfoField[];
+  onClose: () => void;
+}) {
+  const boutonRef = useRef<HTMLButtonElement>(null);
+  const fermerRef = useRef(onClose);
+  fermerRef.current = onClose;
+  // Seul l'obligatoire compte : il ne manque que le téléphone, la fiche est
+  // bonne pour l'Apel départementale, et la famille ne doit pas s'inquiéter.
+  const requis = manquants.filter((f) => REQUIRED_MEMBER_INFO_FIELDS.includes(f));
+  const facultatifs = manquants.filter((f) => !requis.includes(f));
+  const complete = requis.length === 0;
+  const liste = (champs: MemberInfoField[]) =>
+    champs.map((f) => MEMBER_INFO_FIELD_LABELS[f].toLocaleLowerCase("fr")).join(", ");
+
+  useEffect(() => {
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    boutonRef.current?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") fermerRef.current();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = overflow;
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute inset-0 cursor-default bg-brand-950/60"
+        onClick={onClose}
+      />
+      <section
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-fiche-titre"
+        aria-describedby="confirmation-fiche-texte"
+        className="relative w-full max-w-md rounded-2xl border-2 border-slate-200 bg-white p-6 text-center shadow-xl sm:p-8"
+      >
+        <span
+          className={cn(
+            "mx-auto grid h-14 w-14 place-items-center rounded-full",
+            complete ? "bg-sea-100 text-sea-700" : "bg-amber-100 text-amber-700",
+          )}
+          aria-hidden="true"
+        >
+          {complete ? (
+            <CheckCircle2 className="h-8 w-8" />
+          ) : (
+            <CircleAlert className="h-8 w-8" />
+          )}
+        </span>
+        <h2
+          id="confirmation-fiche-titre"
+          className="mt-4 text-xl font-black text-brand-950"
+        >
+          {complete ? "Merci, c’est enregistré !" : "Fiche enregistrée"}
+        </h2>
+        <p
+          id="confirmation-fiche-texte"
+          className="mt-2 text-sm font-medium leading-6 text-slate-700"
+        >
+          {complete
+            ? "Votre fiche d’adhérent est complète. Vous n’avez rien d’autre à faire : vous pouvez fermer cette page."
+            : `Vos informations sont enregistrées, mais il manque encore : ${liste(requis)}.`}
+        </p>
+        {complete && facultatifs.length > 0 && (
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Facultatif, si vous le souhaitez : {liste(facultatifs)}.
+          </p>
+        )}
+        <button
+          ref={boutonRef}
+          type="button"
+          onClick={onClose}
+          className={cn(buttonClasses("primary"), "mt-6 min-h-12 w-full")}
+        >
+          {complete ? "Fermer" : "Compléter ma fiche"}
+        </button>
+      </section>
+    </div>
   );
 }

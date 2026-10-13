@@ -37,6 +37,16 @@ export type MemberInfoField =
   | "email"
   | "streetNumber";
 
+/** Champs sans lesquels la famille ne peut pas être déclarée (`required`). */
+export const REQUIRED_MEMBER_INFO_FIELDS: readonly MemberInfoField[] = [
+  "civility",
+  "street",
+  "postalCode",
+  "city",
+  "country",
+  "otherSchoolName",
+];
+
 /** Libellés lus par le bureau et par les familles (« Il manque : … »). */
 export const MEMBER_INFO_FIELD_LABELS: Record<MemberInfoField, string> = {
   civility: "Civilité",
