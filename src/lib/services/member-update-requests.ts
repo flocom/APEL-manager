@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { HttpError } from "@/lib/auth/guards";
@@ -317,11 +317,6 @@ export async function previewOrSendRelances(
       nationalFeeElsewhere: associationMembers.nationalFeeElsewhere,
       otherSchoolName: associationMembers.otherSchoolName,
       schoolYear: associationMembers.schoolYear,
-      lastRequestedAt: sql<Date | string | null>`(
-        select max(${memberUpdateRequests.createdAt})
-        from ${memberUpdateRequests}
-        where ${memberUpdateRequests.memberId} = ${associationMembers.id}
-      )`,
     })
     .from(associationMembers)
     .where(
@@ -331,6 +326,24 @@ export async function previewOrSendRelances(
       ),
     )
     .orderBy(asc(associationMembers.lastName), asc(associationMembers.firstName));
+
+  // La dernière relance de chaque fiche de l'année, révoquée ou non.
+  const dernieres = new Map(
+    (
+      await db
+        .select({
+          memberId: memberUpdateRequests.memberId,
+          last: max(memberUpdateRequests.createdAt),
+        })
+        .from(memberUpdateRequests)
+        .innerJoin(
+          associationMembers,
+          eq(associationMembers.id, memberUpdateRequests.memberId),
+        )
+        .where(eq(associationMembers.schoolYear, request.schoolYear))
+        .groupBy(memberUpdateRequests.memberId)
+    ).map((ligne) => [ligne.memberId, ligne.last]),
+  );
 
   const targets: Array<MemberRelanceTarget & { civility: string | null }> = [];
   const withoutEmail: MemberRelanceTarget[] = [];
@@ -344,10 +357,7 @@ export async function previewOrSendRelances(
         recommended.some((field) => field !== "email"));
     if (!concerne) continue;
 
-    // Le `max()` d'une sous-requête revient en texte avec le pilote postgres.
-    const derniere = membre.lastRequestedAt
-      ? new Date(membre.lastRequestedAt)
-      : null;
+    const derniere = dernieres.get(membre.id) ?? null;
     const email = emailValide(membre.email);
     const cible: MemberRelanceTarget = {
       memberId: membre.id,
@@ -823,12 +833,16 @@ export async function submitPublicMemberUpdate(
       .where(eq(associationMembers.id, avant.id))
       .returning();
 
+    // Le premier enregistrement seulement : une correction ne le déplace pas.
     await tx
       .update(memberUpdateRequests)
-      .set({
-        completedAt: sql`coalesce(${memberUpdateRequests.completedAt}, ${now})`,
-      })
-      .where(eq(memberUpdateRequests.id, request.id));
+      .set({ completedAt: now })
+      .where(
+        and(
+          eq(memberUpdateRequests.id, request.id),
+          isNull(memberUpdateRequests.completedAt),
+        ),
+      );
 
     // Pas d'auteur : c'est la famille, par son lien. Les noms des champs
     // seulement, jamais ce qu'elle a écrit.

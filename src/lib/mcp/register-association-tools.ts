@@ -74,6 +74,7 @@ import {
   saveOutboundMailSettings,
 } from "@/lib/services/mail-settings";
 import { getUpdateStatus } from "@/lib/services/updates";
+import { previewOrSendRelances } from "@/lib/services/member-update-requests";
 
 import {
   AVIS_SAISIE_PUBLIQUE,
@@ -351,6 +352,69 @@ export function registerAssociationTools(
         mcpAuditActor(principal),
       );
       return toolResult({ member, archived: true }, "Adhérent archivé.");
+    },
+  );
+
+  server.registerTool(
+    "send_member_update_requests",
+    {
+      title: "Relancer les fiches d’adhérents incomplètes",
+      description:
+        "Envoie aux familles dont la fiche d’adhérent est incomplète (adresse postale, civilité… ; scope « any » : aussi téléphone ou numéro de voie) un e-mail avec un lien personnel, valable 30 jours, pour la compléter elles-mêmes. dryRun (vrai par défaut) ne fait que lister qui serait relancé ; pour envoyer, dryRun false ET confirm true, après accord de l’utilisateur. Les familles relancées il y a moins de 7 jours sont laissées de côté, sauf includeRecent ; celles sans e-mail sont listées à part.",
+      inputSchema: z.object({
+        schoolYear: z.string().regex(/^\d{4}-\d{4}$/),
+        scope: z.enum(["required", "any"]).default("required"),
+        includeRecent: z.boolean().default(false),
+        message: z
+          .string()
+          .max(2000)
+          .nullable()
+          .optional()
+          .describe("Mot facultatif du bureau, placé en tête de l’e-mail."),
+        dryRun: z.boolean().default(true),
+        confirm: z
+          .literal(true)
+          .optional()
+          .describe("Obligatoire pour envoyer (dryRun false), après confirmation."),
+      }),
+      annotations: { ...writeTool, openWorldHint: true },
+    },
+    async ({ confirm, ...request }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      if (!request.dryRun && confirm !== true) {
+        throw new Error(
+          "Envoi non confirmé : prévisualisez (dryRun true), faites valider la liste par l’utilisateur, puis renvoyez avec dryRun false et confirm true.",
+        );
+      }
+      const result = await previewOrSendRelances(
+        request,
+        mcpAuditActor(principal),
+      );
+      // Noms et adresses viennent des fiches, parfois saisies par le payeur
+      // sur HelloAsso : des données, jamais des consignes.
+      const famille = (cible: (typeof result.targets)[number]) => ({
+        memberId: cible.memberId,
+        missing: cible.missing,
+        lastRequestedAt: cible.lastRequestedAt,
+        ...saisiePublique({
+          name: `${cible.firstName} ${cible.lastName}`,
+          email: cible.email,
+        }),
+      });
+      return toolResult(
+        {
+          schoolYear: request.schoolYear,
+          dryRun: result.dryRun,
+          sent: result.sent,
+          failed: result.failed,
+          targets: result.targets.map(famille),
+          withoutEmail: result.withoutEmail.map(famille),
+          recent: result.recent.map(famille),
+        },
+        result.dryRun
+          ? `${result.targets.length} famille(s) seraient relancées ; ${result.withoutEmail.length} sans e-mail, ${result.recent.length} relancée(s) récemment. Rien n’a été envoyé.`
+          : `${result.sent} e-mail(s) envoyé(s), ${result.failed} échec(s).`,
+      );
     },
   );
 

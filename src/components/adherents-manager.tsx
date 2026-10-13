@@ -366,8 +366,12 @@ export function AdherentsManager({
       )}
 
       <Card className="p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
+        {/* Trois filtres et la recherche ne tiennent sur une ligne qu'à
+            partir des très grands écrans : en dessous, la recherche garde
+            toute la largeur au lieu d'être écrasée, et les filtres se rangent
+            sous elle avec le bouton d'ajout. */}
+        <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
+          <div className="relative min-w-0 flex-1 2xl:min-w-56">
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -384,7 +388,7 @@ export function AdherentsManager({
               className="pl-10"
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:flex">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] 2xl:flex">
             <label className="sr-only" htmlFor="adherents-status">
               Filtrer par statut
             </label>
@@ -396,7 +400,7 @@ export function AdherentsManager({
                   statut: event.target.value as FiltresAdherents["statut"],
                 })
               }
-              className="lg:w-44"
+              className="2xl:w-44"
             >
               <option value="all">Tous les statuts</option>
               <option value="active">Actifs</option>
@@ -410,7 +414,7 @@ export function AdherentsManager({
               id="adherents-year"
               value={schoolYear}
               onChange={(event) => filtrer({ annee: event.target.value })}
-              className="lg:w-44"
+              className="2xl:w-44"
             >
               <option value="all">Toutes les années</option>
               {schoolYears.map((year) => (
@@ -430,19 +434,16 @@ export function AdherentsManager({
                   fiche: event.target.value as FiltresAdherents["fiche"],
                 })
               }
-              className="lg:w-48"
+              className="2xl:w-48"
             >
               <option value="all">Toutes les fiches</option>
               <option value="incomplete">Fiches incomplètes</option>
             </Select>
+            <Link href={nouvelle} className={buttonClasses("primary")}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Ajouter
+            </Link>
           </div>
-          <Link
-            href={nouvelle}
-            className={cn(buttonClasses("primary"), "w-full lg:w-auto")}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Ajouter
-          </Link>
         </div>
       </Card>
 
@@ -524,7 +525,7 @@ export function AdherentsManager({
                         {STATUS_LABELS[member.status]}
                       </Badge>
                     </td>
-                    <td className="px-5 py-4 font-medium text-slate-700">
+                    <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-700">
                       {member.schoolYear}
                     </td>
                     <td className="px-5 py-4">

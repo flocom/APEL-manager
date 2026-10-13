@@ -3,7 +3,7 @@
 import { CheckCircle2, Eye, MailX, Send, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { AccountingModal } from "@/components/accounting/modal";
 import { libellesManquants } from "@/components/adherent-completion";
@@ -51,6 +51,7 @@ export function RelanceDialog({
   const [confirmer, setConfirmer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const resultatRef = useRef<HTMLDivElement>(null);
 
   /** Toute modification des choix rend l'aperçu caduc. */
   function choisir(modifs: Partial<Options>) {
@@ -75,6 +76,14 @@ export function RelanceDialog({
       );
       if (dryRun) {
         setApercu(resultat);
+        // Sur un téléphone, la liste arrive sous les choix, hors de l'écran :
+        // on l'amène sous les yeux.
+        requestAnimationFrame(() =>
+          resultatRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          }),
+        );
       } else {
         setBilan(resultat);
         router.refresh();
@@ -217,7 +226,9 @@ export function RelanceDialog({
             </p>
           )}
 
-          {apercu && <Apercu apercu={apercu} />}
+          <div ref={resultatRef} className="scroll-mt-4 empty:hidden">
+            {apercu && <Apercu apercu={apercu} />}
+          </div>
 
           {confirmer && apercu && (
             <div
