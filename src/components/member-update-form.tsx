@@ -3,7 +3,9 @@
 import { CheckCircle2, CircleAlert, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { Button, buttonClasses, Field, Input } from "@/components/ui";
+import type { AddressSuggestion } from "@/lib/address-types";
 import { api, ApiError } from "@/lib/client";
 import {
   CIVILITIES,
@@ -117,6 +119,29 @@ export function MemberUpdateForm({
     if (erreurs[champ]) {
       setErreurs(({ [champ]: _retire, ...reste }) => reste);
     }
+  }
+
+  /** Une adresse choisie dans la recherche remplit les champs d'un coup. */
+  function remplirAdresse(adresse: AddressSuggestion) {
+    setValeurs((avant) => ({
+      ...avant,
+      streetNumber: adresse.streetNumber ?? "",
+      addressLine1: adresse.street ?? "",
+      // Un lieu-dit saisi à la main (commune déléguée) reste, sauf si la
+      // proposition en est un.
+      locality: adresse.locality ?? (adresse.street ? avant.locality : ""),
+      postalCode: adresse.postalCode ?? avant.postalCode,
+      city: adresse.city ?? avant.city,
+      country: adresse.country ?? avant.country,
+    }));
+    setEnregistre(null);
+    setErreurs((avant) => {
+      const reste = { ...avant };
+      for (const champ of ["streetNumber", "addressLine1", "locality", "postalCode", "city", "country"]) {
+        delete reste[champ];
+      }
+      return reste;
+    });
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -324,6 +349,16 @@ export function MemberUpdateForm({
         <legend className="mb-2 text-sm font-extrabold text-brand-950">
           Adresse postale
         </legend>
+        <Field
+          label="Rechercher votre adresse"
+          htmlFor="adhesion-recherche-adresse"
+          hint="Tapez le début de l’adresse puis choisissez-la dans la liste : les champs ci-dessous se remplissent. Vous pouvez aussi les remplir à la main."
+        >
+          <AddressAutocomplete
+            id="adhesion-recherche-adresse"
+            onPick={remplirAdresse}
+          />
+        </Field>
         <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3">
           {texte("streetNumber", {
             label: "N°",

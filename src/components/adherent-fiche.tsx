@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { FicheACompleter } from "@/components/adherent-completion";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -29,6 +30,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+import type { AddressSuggestion } from "@/lib/address-types";
 import type { AdherentView } from "@/lib/adherent-view";
 import { api } from "@/lib/client";
 import {
@@ -102,6 +104,33 @@ export interface ComptabiliteAdherentView {
     status: "draft" | "posted";
     partCents: number;
   }[];
+}
+
+/**
+ * Remplit un champ non contrôlé du formulaire comme le ferait une frappe :
+ * la valeur passe par le setter natif, puis un événement `input` prévient
+ * React et le suivi des modifications.
+ */
+function definirChamp(id: string, valeur: string) {
+  const champ = document.getElementById(id);
+  if (!(champ instanceof HTMLInputElement)) return;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+    champ,
+    valeur,
+  );
+  champ.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Une adresse choisie dans la recherche remplit les champs d'adresse. */
+function remplirAdresse(adresse: AddressSuggestion) {
+  definirChamp("streetNumber", adresse.streetNumber ?? "");
+  definirChamp("addressLine1", adresse.street ?? "");
+  // Un lieu-dit saisi à la main (commune déléguée) reste, sauf si la
+  // proposition en est un.
+  if (adresse.locality || !adresse.street) definirChamp("locality", adresse.locality ?? "");
+  if (adresse.postalCode) definirChamp("postalCode", adresse.postalCode);
+  if (adresse.city) definirChamp("city", adresse.city);
+  if (adresse.country) definirChamp("country", adresse.country);
 }
 
 function dateInput(value: string | null) {
@@ -635,6 +664,17 @@ function AdherentForm({
           Obligatoire pour déclarer la famille à l’Apel départementale : une
           voie ou un lieu-dit, le code postal, la ville et le pays.
         </p>
+        <Field
+          label="Rechercher l’adresse"
+          htmlFor="adherent-recherche-adresse"
+          hint="Choisissez une proposition : les champs ci-dessous se remplissent, et restent modifiables."
+          className="mb-4"
+        >
+          <AddressAutocomplete
+            id="adherent-recherche-adresse"
+            onPick={remplirAdresse}
+          />
+        </Field>
         <div className="grid grid-cols-6 gap-4">
           <Field label="N°" htmlFor="streetNumber" className="col-span-2 sm:col-span-1">
             <Input
