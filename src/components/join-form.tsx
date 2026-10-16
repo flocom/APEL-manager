@@ -1,6 +1,6 @@
 "use client";
 
-import { Send } from "lucide-react";
+import { ArrowUpRight, Send } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -51,7 +51,7 @@ const INTENTIONS: {
 ];
 
 /**
- * Les deux portes de la page mènent ici. Le pré-cochage écoute le clic autant
+ * Les boutons « Je veux adhérer » et « Me signaler » de la page mènent ici. Le pré-cochage écoute le clic autant
  * que le hash : re-cliquer sur l'ancre déjà atteinte n'émet aucun
  * `hashchange`, et c'est exactement le parcours du parent qui redescend,
  * change d'avis, puis remonte cliquer « Je veux adhérer ».
@@ -218,7 +218,26 @@ export function JoinForm({
           ) : null}
           .
         </p>
-        {sent === "coup_de_main" && (
+        {/* Le malentendu qui a tout déclenché : une maman avait envoyé ce
+            formulaire et se croyait inscrite sur le site. On le dit ici, au
+            moment même où elle pourrait le croire. */}
+        <div className="mt-4 rounded-xl bg-white p-4">
+          <p className="text-sm font-semibold leading-6 text-brand-950">
+            Votre message est envoyé au bureau. Ce n’est pas un compte : pour
+            voir et prendre des tâches, créez un compte.
+          </p>
+          <Link
+            href="/register"
+            className="group mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-950 px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200"
+          >
+            Créer un compte
+            <ArrowUpRight
+              className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
+              aria-hidden="true"
+            />
+          </Link>
+        </div>
+        {(sent === "coup_de_main" || sent === "les_deux") && (
           <p className="mt-3 text-sm font-medium leading-6 text-slate-700">
             En attendant, vous pouvez déjà voir les créneaux ouverts :{" "}
             <a className="font-bold text-brand-800 underline" href="#agenda">

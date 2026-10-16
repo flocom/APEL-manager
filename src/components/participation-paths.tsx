@@ -246,6 +246,23 @@ export function ParticipationPaths({
             <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">
               Choisir un créneau sur un événement, sans compte.
             </p>
+            <ul className="mt-4 space-y-2 text-sm font-medium leading-6 text-slate-700">
+              <li className="flex gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sea-600"
+                />
+                Sans être adhérent : votre nom et votre e-mail suffisent.
+              </li>
+              <li className="flex gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-sea-600"
+                />
+                Un lien dans l’e-mail de confirmation libère le créneau si la
+                semaine tourne autrement.
+              </li>
+            </ul>
 
             {/* Le prochain rendez-vous appartient à cette carte-ci : c'est la
                 seule des trois à offrir une action immédiate et datée. */}

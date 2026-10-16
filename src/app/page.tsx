@@ -258,8 +258,14 @@ export default async function HomePage() {
             <ParticipationPaths
               membershipFeeNote={settings.membershipFeeNote}
               cotisation={cotisation}
-              adherer={{ href: adhererHref }}
-              coupDeMain={{ href: "#evenements" }}
+              adherer={{
+                href: adhererHref,
+                aide: "Le détail et le formulaire sont sur la page Adhérer.",
+              }}
+              coupDeMain={{
+                href: "#evenements",
+                aide: "Les prochains rendez-vous sont juste en dessous.",
+              }}
               prochain={prochain}
             />
           </div>
