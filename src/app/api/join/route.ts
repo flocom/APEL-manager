@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { handleApiError, HttpError } from "@/lib/auth/guards";
+import { getBaseUrl } from "@/lib/base-url";
 import { clientIpAddress } from "@/lib/client-ip";
 import { sendEmail } from "@/lib/notifications/email";
 import {
@@ -113,6 +114,9 @@ export async function POST(req: Request) {
         emailKey(data.email),
       );
       if (!parAdresse.ok) return NextResponse.json({ ok: true });
+      // Le lien vers la création de compte n'a de sens qu'absolu : sans
+      // adresse configurée, la copie le remplace par une indication.
+      const baseUrl = await getBaseUrl();
       await sendEmail({
         to: data.email,
         replyTo: destination,
@@ -122,6 +126,7 @@ export async function POST(req: Request) {
           intention: data.intention,
           feePublished: settings.membershipFeePublished,
           contactEmail: destination,
+          registerUrl: baseUrl ? `${baseUrl}/register` : null,
           identity,
         }),
       });

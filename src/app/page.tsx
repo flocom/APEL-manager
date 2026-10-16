@@ -1,4 +1,5 @@
 import {
+  ArrowDown,
   ArrowRight,
   CalendarDays,
   CalendarX2,
@@ -13,20 +14,24 @@ import {
 import Link from "next/link";
 
 import { FormattedText } from "@/components/formatted-text";
+import { ParticipationPaths } from "@/components/participation-paths";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { TICKETING_KIND_ICONS } from "@/components/ticketing-kind-icon";
 import { getUpcomingPublishedEvents } from "@/lib/data";
-import { formatDateTime } from "@/lib/dates";
+import { formatDateTime, formatLongDateTime } from "@/lib/dates";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 import {
   effectiveTicketingKind,
   publicTicketingUrl,
   ticketingWording,
 } from "@/lib/ticketing";
+import { MEMBERSHIP_FEE_BASIS_SUFFIX } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
+// Le déroulé d'un coup de main sur un rendez-vous — pas d'une adhésion ni d'un
+// compte : « Je m'inscris » laissait croire à une inscription à l'association.
 const participationSteps = [
   {
     icon: CalendarDays,
@@ -37,8 +42,8 @@ const participationSteps = [
   {
     icon: MousePointerClick,
     number: "02",
-    title: "Je m’inscris",
-    description: "Je laisse mes coordonnées en moins d’une minute.",
+    title: "Je laisse mes coordonnées",
+    description: "Mon nom et mon e-mail, en moins d’une minute, sans compte.",
   },
   {
     icon: HeartHandshake,
@@ -68,6 +73,37 @@ export default async function HomePage() {
       ),
     0,
   );
+  // De quoi remplir « Comment participer ? » : des chaînes, rien de plus.
+  const cotisation = settings.membershipFeePublished
+    ? {
+        montant: (settings.membershipFeeCents! / 100).toLocaleString("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+        }),
+        suffixe: MEMBERSHIP_FEE_BASIS_SUFFIX[settings.membershipFeeBasis],
+      }
+    : null;
+  // Le prochain rendez-vous qui cherche encore des bras : une réunion, ou une
+  // fête complète, n'a pas sa place sur la carte du coup de main.
+  const aPourvoir = aVenir.find(
+    (event) =>
+      event.kind !== "meeting" &&
+      event.volunteerSlots.some(
+        (slot) => slot.capacity > slot.signups.length,
+      ),
+  );
+  const prochain = aPourvoir
+    ? {
+        titre: aPourvoir.title,
+        date: formatLongDateTime(aPourvoir.startAt),
+        href: `/inscription/${aPourvoir.shareToken}`,
+      }
+    : null;
+  // Sans adresse de contact, /rejoindre n'a pas de formulaire où atterrir :
+  // on y mène quand même, la page dit alors à qui s'adresser.
+  const adhererHref = settings.contactEmail?.trim()
+    ? "/rejoindre#adherer"
+    : "/rejoindre";
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -104,6 +140,9 @@ export default async function HomePage() {
                 donner un coup de main. Un créneau, une mission, un beau moment
                 partagé.
               </p>
+              {/* « Sans compte » colle aux événements qu'il qualifie : placé
+                  après « Adhérer », il laissait croire qu'on adhérait sans
+                  rien régler. */}
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <a
                   href="#evenements"
@@ -112,18 +151,25 @@ export default async function HomePage() {
                   Voir les événements
                   <ArrowRight className="h-4 w-4" />
                 </a>
+                <span className="inline-flex min-h-12 items-center gap-2 px-2 text-sm font-semibold text-brand-100">
+                  <CheckCircle2 className="h-5 w-5 text-sea-200" />
+                  Sans compte
+                </span>
                 <Link
                   href="/rejoindre"
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-white px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-white hover:text-brand-950 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/40"
                 >
                   <HeartHandshake className="h-4 w-4" />
-                  Rejoindre l&apos;association
+                  Adhérer
                 </Link>
-                <span className="inline-flex min-h-12 items-center gap-2 px-2 text-sm font-semibold text-brand-100">
-                  <CheckCircle2 className="h-5 w-5 text-sea-200" />
-                  Inscription sans compte
-                </span>
               </div>
+              <a
+                href="#participer"
+                className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-extrabold text-sea-300 underline underline-offset-4"
+              >
+                Adhérer, compte, coup de main : quelle différence ?
+                <ArrowDown className="h-4 w-4" aria-hidden="true" />
+              </a>
             </div>
 
             <div className="relative mx-auto w-full max-w-lg lg:mx-0">
@@ -191,6 +237,31 @@ export default async function HomePage() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* ————— Les trois démarches, juste sous le héros : c'est là que la
+            confusion se défait, avant qu'on clique sur quoi que ce soit ————— */}
+        <section
+          id="participer"
+          className="scroll-mt-20 border-b-2 border-slate-100 bg-white py-14 sm:py-16"
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+            <div className="mb-8 max-w-3xl">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
+                Trois démarches séparées
+              </p>
+              <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-brand-950 sm:text-5xl">
+                Comment participer ?
+              </h2>
+            </div>
+            <ParticipationPaths
+              membershipFeeNote={settings.membershipFeeNote}
+              cotisation={cotisation}
+              adherer={{ href: adhererHref }}
+              coupDeMain={{ href: "#evenements" }}
+              prochain={prochain}
+            />
           </div>
         </section>
 
@@ -391,7 +462,7 @@ export default async function HomePage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="max-w-2xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
-                Participer, c&apos;est simple
+                Un coup de main, c&apos;est simple
               </p>
               <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-brand-950 sm:text-5xl">
                 Trois étapes. Un vrai impact.

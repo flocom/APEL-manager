@@ -1,9 +1,10 @@
-import { MailWarning } from "lucide-react";
+import { BellRing, ListChecks, MailWarning } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth-shell";
 import { RegisterForm } from "@/components/auth-forms";
+import { AuthTabs } from "@/components/auth-tabs";
 import { buttonClasses } from "@/components/ui";
 import { safeNextPath, withNextPath } from "@/lib/auth/return-path";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -15,6 +16,57 @@ import { getOutboundMailRuntimeConfig } from "@/lib/services/mail-settings";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Ce que donne un compte, dit avant le formulaire, sur téléphone comme sur
+ * ordinateur (le panneau de gauche d'AuthShell ne s'affiche qu'en grand
+ * écran). Des parents qui avaient adhéré pensaient ne rien avoir à créer ;
+ * d'autres, venus adhérer, demandaient un compte : la dernière phrase remet
+ * chacun sur son chemin.
+ */
+function CeQuePermetUnCompte() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border-2 border-brand-100 bg-brand-50 px-4 py-3.5">
+        <p className="text-sm font-extrabold text-brand-950">
+          Avec un compte, vous pouvez&nbsp;:
+        </p>
+        <ul className="mt-2.5 space-y-2.5 text-sm leading-6 text-slate-700">
+          <li className="flex items-start gap-2.5">
+            <ListChecks
+              className="mt-1 h-4 w-4 shrink-0 text-brand-700"
+              aria-hidden="true"
+            />
+            <span>
+              voir les tâches de chaque événement et dire «&nbsp;Je m’en
+              charge&nbsp;» — par exemple réserver la chaise du Père
+              Noël&nbsp;;
+            </span>
+          </li>
+          <li className="flex items-start gap-2.5">
+            <BellRing
+              className="mt-1 h-4 w-4 shrink-0 text-brand-700"
+              aria-hidden="true"
+            />
+            <span>
+              retrouver vos tâches dans «&nbsp;Mes tâches&nbsp;» et recevoir
+              les rappels.
+            </span>
+          </li>
+        </ul>
+      </div>
+      <p className="text-sm leading-6 text-slate-600">
+        Adhérer ne crée pas de compte, et un compte n’est pas une adhésion.{" "}
+        <Link
+          href="/rejoindre"
+          className="font-semibold text-brand-700 underline underline-offset-2 hover:text-brand-900"
+        >
+          Vous veniez adhérer&nbsp;? C’est par ici.
+        </Link>
+      </p>
+    </div>
+  );
+}
 
 export default async function RegisterPage({
   searchParams,
@@ -43,8 +95,9 @@ export default async function RegisterPage({
   if (existe && (!messagerie || !adressePublique)) {
     return (
       <AuthShell
-        eyebrow="Compte de gestion"
-        title="Demander un compte"
+        eyebrow="Compte bénévole"
+        title="Créer un compte"
+        tabs={<AuthTabs active="register" next={destination} />}
         description={
           messagerie
             ? `Les demandes de compte se confirment par un lien envoyé par e-mail, et l’adresse publique de l’espace ${settings.associationName} n’est pas encore configurée.`
@@ -69,6 +122,7 @@ export default async function RegisterPage({
               .
             </p>
           </div>
+          <CeQuePermetUnCompte />
           <Link
             href={withNextPath("/login", destination)}
             className={cn(buttonClasses("outline"), "min-h-12 w-full")}
@@ -83,13 +137,16 @@ export default async function RegisterPage({
   // Deux situations, deux promesses : sur une installation neuve, le compte
   // créé ouvre l'espace ; ensuite, il n'est qu'une demande. Annoncer
   // l'administration à tout visiteur faisait croire qu'on entrait d'office.
+  // Le tout premier compte est celui de qui installe l'espace : l'explication
+  // destinée aux parents ne le concerne pas.
   return (
     <AuthShell
-      eyebrow="Compte de gestion"
-      title={existe ? "Demander un compte" : "Créer un compte"}
+      eyebrow={existe ? "Compte bénévole" : "Premier compte"}
+      title="Créer un compte"
+      tabs={<AuthTabs active="register" next={destination} />}
       description={
         existe
-          ? "Vous confirmerez votre adresse depuis le lien reçu par e-mail, puis un administrateur de l’association validera votre compte."
+          ? "Gratuit. C’est une demande : vous confirmerez votre adresse depuis le lien reçu par e-mail, puis le bureau validera votre compte."
           : `Le premier compte créé devient administrateur de l’espace ${settings.associationName}.`
       }
     >
@@ -99,6 +156,7 @@ export default async function RegisterPage({
         recaptchaSiteKey={
           settings.recaptchaReady ? settings.recaptchaSiteKey : null
         }
+        intro={existe ? <CeQuePermetUnCompte /> : null}
       />
     </AuthShell>
   );

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { Button, buttonClasses, Input, Label } from "@/components/ui";
 import {
@@ -30,9 +30,10 @@ function ErrorMessage({ message }: { message: string | null }) {
  * redirection vers /login, mais le serveur ne la voit jamais : elle ne peut
  * donc pas voyager dans `next`. On la reprend ici, dans l'adresse de la page
  * de connexion, pour que le lien d'un e-mail retombe sur l'élément visé et pas
- * seulement en haut de sa page.
+ * seulement en haut de sa page. Les onglets de la page compte (auth-tabs.tsx)
+ * s'en servent aussi.
  */
-function withHash(next: string) {
+export function withHash(next: string) {
   if (next.includes("#")) return next;
   return `${next}${window.location.hash}`;
 }
@@ -106,7 +107,7 @@ export function LoginForm({ next = DEFAULT_NEXT_PATH }: { next?: string }) {
 }
 
 /**
- * Formulaire d'inscription.
+ * Formulaire de création de compte.
  *
  * `demande` : l'installation a déjà des comptes. Le formulaire ne demande alors
  * ni mot de passe ni rien d'autre que le nom et l'adresse — le mot de passe se
@@ -121,11 +122,17 @@ export function RegisterForm({
   demande = true,
   recaptchaSiteKey = null,
   next = DEFAULT_NEXT_PATH,
+  intro,
 }: {
   demande?: boolean;
   recaptchaSiteKey?: string | null;
   /** La page à rejoindre une fois le tout premier compte créé. */
   next?: string;
+  /**
+   * Affiché au-dessus du formulaire, et retiré une fois la demande partie :
+   * le message « Vérifiez votre boîte e-mail » prend alors toute la place.
+   */
+  intro?: ReactNode;
 }) {
   const router = useRouter();
   const executerRecaptcha = useRecaptcha(recaptchaSiteKey);
@@ -209,57 +216,60 @@ export function RegisterForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <ErrorMessage message={error} />
-      <div>
-        <Label htmlFor="name">Nom complet</Label>
-        <Input id="name" name="name" type="text" required autoComplete="name" />
-      </div>
-      <div>
-        <Label htmlFor="email">Adresse e-mail</Label>
-        <Input id="email" name="email" type="email" required autoComplete="email" />
-        {demande && (
-          <p className="mt-1 text-xs text-slate-500">
-            Un lien de confirmation y sera envoyé&nbsp;: vous choisirez votre
-            mot de passe en l’ouvrant.
-          </p>
-        )}
-      </div>
-      {!demande && (
+    <>
+      {intro && <div className="mb-6">{intro}</div>}
+      <form onSubmit={onSubmit} className="space-y-4">
+        <ErrorMessage message={error} />
         <div>
-          <Label htmlFor="password">Mot de passe</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={PASSWORD_MIN_LENGTH}
-            autoComplete="new-password"
-          />
-          <p className="mt-1 text-xs text-slate-500">{PASSWORD_HINT}</p>
+          <Label htmlFor="name">Nom complet</Label>
+          <Input id="name" name="name" type="text" required autoComplete="name" />
         </div>
-      )}
-      {/* Piège à robots : invisible, doit rester vide. */}
-      <div aria-hidden="true" className="absolute left-[-9999px]">
-        <label>
-          Ne pas remplir
-          <input name="website" tabIndex={-1} autoComplete="off" />
-        </label>
-      </div>
-      <Button type="submit" disabled={loading} className="min-h-12 w-full">
-        {loading
-          ? "Envoi…"
-          : demande
-            ? "Envoyer ma demande"
-            : "Créer mon compte"}
-      </Button>
-      <p className="text-center text-sm text-slate-500">
-        Déjà inscrit ?{" "}
-        <Link href={withNextPath("/login", next)} className="font-medium text-brand-600 hover:underline">
-          Se connecter
-        </Link>
-      </p>
-    </form>
+        <div>
+          <Label htmlFor="email">Adresse e-mail</Label>
+          <Input id="email" name="email" type="email" required autoComplete="email" />
+          {demande && (
+            <p className="mt-1 text-xs text-slate-500">
+              Un lien de confirmation y sera envoyé&nbsp;: vous choisirez votre
+              mot de passe en l’ouvrant.
+            </p>
+          )}
+        </div>
+        {!demande && (
+          <div>
+            <Label htmlFor="password">Mot de passe</Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              required
+              minLength={PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
+            />
+            <p className="mt-1 text-xs text-slate-500">{PASSWORD_HINT}</p>
+          </div>
+        )}
+        {/* Piège à robots : invisible, doit rester vide. */}
+        <div aria-hidden="true" className="absolute left-[-9999px]">
+          <label>
+            Ne pas remplir
+            <input name="website" tabIndex={-1} autoComplete="off" />
+          </label>
+        </div>
+        <Button type="submit" disabled={loading} className="min-h-12 w-full">
+          {loading
+            ? "Envoi…"
+            : demande
+              ? "Envoyer ma demande"
+              : "Créer mon compte"}
+        </Button>
+        <p className="text-center text-sm text-slate-500">
+          Déjà un compte ?{" "}
+          <Link href={withNextPath("/login", next)} className="font-medium text-brand-600 hover:underline">
+            Se connecter
+          </Link>
+        </p>
+      </form>
+    </>
   );
 }
 
