@@ -299,16 +299,20 @@ Le lien est valable 48 heures. Si vous n'êtes pas à l'origine de cette demande
 }
 
 /**
- * L'avis envoyé au bureau quand quelqu'un s'inscrit depuis le site.
+ * L'avis envoyé au bureau quand quelqu'un prend un créneau depuis le site.
  *
  * Jusqu'ici seul le bénévole recevait un e-mail : l'association n'apprenait
- * l'inscription qu'en ouvrant le tableau de bord, donc parfois jamais avant le
- * jour J. Un créneau qui se remplit est pourtant une nouvelle qu'on veut
+ * le créneau pris qu'en ouvrant le tableau de bord, donc parfois jamais avant
+ * le jour J. Un créneau qui se remplit est pourtant une nouvelle qu'on veut
  * connaître le jour même — c'est elle qui dit s'il faut encore relancer.
  *
  * Les coordonnées sont dans le corps du message et le `Reply-To` porte celle du
  * bénévole : répondre à l'avis écrit à la bonne personne, sans passer par
  * l'écran. Le nombre de places restantes évite d'avoir à vérifier.
+ *
+ * Ni « inscription » ni « s'inscrit » : lus par le bureau, ces mots laissaient
+ * croire que la personne avait un compte sur le site. Prendre un créneau se
+ * fait sans compte ; le message dit le geste, rien de plus.
  */
 export function volunteerSignupNoticeEmail(ctx: {
   name: string;
@@ -318,7 +322,7 @@ export function volunteerSignupNoticeEmail(ctx: {
   eventDate: string;
   slotTitle: string;
   location?: string | null;
-  /** Places encore libres sur ce créneau après cette inscription. */
+  /** Places encore libres sur ce créneau après celui-ci. */
   restantes: number;
   capacite: number;
   eventUrl: string;
@@ -331,9 +335,9 @@ export function volunteerSignupNoticeEmail(ctx: {
   return {
     // Le nom d'abord : c'est ce qu'on lit dans la liste des objets, sur un
     // téléphone, sans ouvrir.
-    subject: `${ctx.name} s’inscrit — ${ctx.eventTitle}`,
+    subject: `${ctx.name} prend un créneau — ${ctx.eventTitle}`,
     html: layout(
-      "Une nouvelle inscription",
+      "Un nouveau coup de main",
       `${ctx.name} — ${ctx.slotTitle}. ${reste}`,
       `${p(`<strong>${esc(ctx.name)}</strong> vient de prendre un créneau depuis le site.`)}
        ${fiche([
@@ -358,7 +362,7 @@ export function volunteerSignupNoticeEmail(ctx: {
          },
        ])}
        ${encart(reste)}
-       ${bouton(ctx.eventUrl, "Voir les inscrits")}`,
+       ${bouton(ctx.eventUrl, "Voir les bénévoles")}`,
       ctx.identity,
     ),
     text: `${ctx.name} vient de prendre un créneau depuis le site.
@@ -369,7 +373,7 @@ export function volunteerSignupNoticeEmail(ctx: {
 
 ${reste}
 
-Voir les inscrits : ${ctx.eventUrl}`,
+Voir les bénévoles : ${ctx.eventUrl}`,
   };
 }
 
@@ -433,13 +437,13 @@ Voir les réponses : ${ctx.eventUrl}`,
  * seul message.
  *
  * Il remplace les avis à l'unité quand l'association choisit ce mode. La raison
- * n'est pas que le confort : chaque inscription coûte déjà une confirmation au
+ * n'est pas que le confort : chaque créneau pris coûte déjà une confirmation au
  * bénévole, et le palier gratuit de Resend plafonne à 100 e-mails par jour —
  * une grosse opération peut l'épuiser en une soirée, et ce sont alors les
  * confirmations qui sautent.
  *
  * Groupé par rendez-vous, parce que c'est ainsi qu'on le lit : « où en est la
- * kermesse » plutôt que « qui s'est inscrit à 08h12 ».
+ * kermesse » plutôt que « qui a pris un créneau à 08h12 ».
  */
 /** Une tâche d'événement telle qu'elle apparaît dans le récapitulatif. */
 type DigestTache = {
@@ -458,7 +462,7 @@ type DigestTache = {
  * Le récapitulatif quotidien adressé au bureau.
  *
  * Deux natures de contenu s'y croisent, et elles ne se comptent pas pareil :
- * les inscriptions sont un *flux* (ce qui est arrivé depuis le dernier envoi,
+ * les créneaux pris sont un *flux* (ce qui est arrivé depuis le dernier envoi,
  * annoncé une fois), les tâches sont un *état* (ce qui reste à traiter
  * aujourd'hui, redit chaque jour tant que ça traîne). C'est voulu : un retard
  * qu'on n'annonce qu'une fois est un retard qu'on oublie. Ne pas « corriger »
@@ -501,7 +505,7 @@ export function dailyDigestEmail(ctx: {
     titre: string;
     date: string;
     url: string;
-    /** Inscriptions de bénévoles arrivées dans la fenêtre. */
+    /** Créneaux pris par des bénévoles dans la fenêtre. */
     inscriptions: {
       nom: string;
       creneau: string;
@@ -519,10 +523,15 @@ export function dailyDigestEmail(ctx: {
   depuis: string;
   identity?: NotificationIdentity;
 }): EmailContent {
-  const total = ctx.rendezVous.reduce(
-    (n, r) => n + r.inscriptions.length + r.presences.length,
+  const nbCreneaux = ctx.rendezVous.reduce(
+    (n, r) => n + r.inscriptions.length,
     0,
   );
+  const nbPresences = ctx.rendezVous.reduce(
+    (n, r) => n + r.presences.length,
+    0,
+  );
+  const total = nbCreneaux + nbPresences;
   const nbRetard = ctx.taches.enRetard.length;
   const nbAVenir = ctx.taches.aVenir.length;
   const nbComptes = ctx.comptesEnAttente?.nombre ?? 0;
@@ -692,7 +701,14 @@ export function dailyDigestEmail(ctx: {
       nbIgnorees
         ? `${nbIgnorees} demande${s(nbIgnorees)} de compte écartée${s(nbIgnorees)}`
         : null,
-      total ? `${total} nouvelle${s(total)} inscription${s(total)}` : null,
+      // Le geste, pas « inscription » : le mot laissait croire au bureau que
+      // ces personnes avaient un compte, alors qu'un créneau se prend sans.
+      nbCreneaux
+        ? `${nbCreneaux} créneau${nbCreneaux > 1 ? "x" : ""} pris`
+        : null,
+      nbPresences
+        ? `${nbPresences} réponse${s(nbPresences)} de présence`
+        : null,
     ]
       .filter(Boolean)
       .join(" · ") || "Rien à signaler";
@@ -947,8 +963,8 @@ Vous n'êtes pas à l'origine de cette demande ? Ignorez ce message : aucun comp
 /**
  * La réponse à une demande de compte faite avec une adresse qui en a déjà un.
  *
- * L'écran d'inscription répond la même chose dans les deux cas, pour ne pas
- * apprendre à un inconnu quelles adresses ont un compte. C'est ce message,
+ * L'écran de demande de compte répond la même chose dans les deux cas, pour ne
+ * pas apprendre à un inconnu quelles adresses ont un compte. C'est ce message,
  * que seul le titulaire de l'adresse reçoit, qui lui dit la différence — et
  * comment rentrer s'il avait oublié son mot de passe.
  */
@@ -984,7 +1000,7 @@ Vous n'êtes pas à l'origine de cette demande ? Ignorez ce message : votre comp
 
 /**
  * L'avis au bureau qu'un compte attend sa validation, quand l'association a
- * choisi d'être prévenue à chaque inscription.
+ * choisi d'être prévenue à chaque demande (réglage « Avis d'inscription »).
  *
  * Il ne part qu'une fois l'adresse confirmée depuis sa boîte, et il le dit :
  * c'est l'adresse qu'il faut reconnaître, le nom n'étant que celui que la
@@ -1106,13 +1122,13 @@ export function accountApprovedEmail(ctx: {
       "Votre compte est validé",
       "Vous pouvez vous connecter à l’espace de gestion.",
       `${p(`Bonjour ${esc(ctx.name)},`)}
-       ${p(`Un administrateur de l’association <strong>${esc(associationName)}</strong> a validé votre compte. Connectez-vous avec l’adresse et le mot de passe choisis à l’inscription.`)}
+       ${p(`Un administrateur de l’association <strong>${esc(associationName)}</strong> a validé votre compte. Connectez-vous avec l’adresse et le mot de passe choisis à la création du compte.`)}
        ${bouton(ctx.loginUrl, "Me connecter")}`,
       ctx.identity,
     ),
     text: `Bonjour ${ctx.name},
 
-Un administrateur de l'association ${associationName} a validé votre compte. Connectez-vous avec l'adresse et le mot de passe choisis à l'inscription : ${ctx.loginUrl}`,
+Un administrateur de l'association ${associationName} a validé votre compte. Connectez-vous avec l'adresse et le mot de passe choisis à la création du compte : ${ctx.loginUrl}`,
   };
 }
 
@@ -1238,6 +1254,14 @@ ${ctx.message}`,
   };
 }
 
+/**
+ * Le message d'un parent depuis le formulaire « Adhérer », transmis au bureau.
+ *
+ * L'objet commence par « Message du site » et le corps dit qu'aucun compte
+ * n'a été créé : un avis titré « Une telle s'inscrit » avait déjà laissé
+ * croire au bureau qu'un parent avait un compte. Ce formulaire n'en crée pas
+ * non plus — il n'écrit rien en base.
+ */
 export function joinRequestEmail(ctx: {
   name: string;
   email: string;
@@ -1274,23 +1298,24 @@ export function joinRequestEmail(ctx: {
       ligne: `Cette personne veut devenir membre et propose aussi de l’aide. Indiquez-lui ${aRepondreSurLaCotisation}, et les créneaux où il manque des bras.`,
     },
     question: {
-      objet: "Question depuis le site",
+      objet: "Question",
       titre: "Quelqu’un vous écrit depuis le site",
       ligne: "",
     },
     inconnue: {
-      objet: "Message depuis le site",
+      objet: "Intention non précisée",
       titre: "Quelqu’un vous écrit depuis le site",
       ligne:
         "Intention non précisée : lisez le message avant de répondre, il peut s’agir d’une demande d’adhésion.",
     },
   } as const;
   const intention = intentions[ctx.intention ?? "inconnue"];
+  const pasDeCompte = "Ce message ne crée pas de compte sur le site.";
   return {
-    subject: `${intention.objet} — ${ctx.name}`,
+    subject: `Message du site : ${intention.objet} — ${ctx.name}`,
     html: layout(
       intention.titre,
-      `${ctx.name} — ${intention.objet.toLowerCase()}`,
+      `${ctx.name} — ${intention.objet.toLowerCase()}. ${pasDeCompte}`,
       `${fiche([
          { label: "Nom", valeur: esc(ctx.name) },
          {
@@ -1303,11 +1328,13 @@ export function joinRequestEmail(ctx: {
          },
        ])}
        ${intention.ligne ? encart(esc(intention.ligne)) : ""}
+       ${p(pasDeCompte)}
        ${citation(escLignes(ctx.message))}
        ${bouton(`mailto:${esc(ctx.email)}`, "Répondre")}`,
       ctx.identity,
     ),
-    text: `${intention.objet} sur le site de ${association}.
+    text: `Message reçu sur le site de ${association} : ${intention.objet.toLowerCase()}.
+${pasDeCompte}
 
 Nom : ${ctx.name}
 E-mail : ${ctx.email}${ctx.phone?.trim() ? `\nTéléphone : ${ctx.phone.trim()}` : ""}${intention.ligne ? `\n\n${intention.ligne}` : ""}
@@ -1327,6 +1354,10 @@ ${ctx.message}`,
  *
  * Aucun montant, aucun circuit de règlement : ces choses varient d'une
  * association à l'autre, et c'est le bureau qui les dira dans sa réponse.
+ *
+ * Il dit aussi que ce message n'a pas créé de compte, et à quoi en servirait
+ * un : des parents se croyaient « inscrits » après l'avoir envoyé, et ne
+ * voyaient jamais les tâches des événements.
  */
 export function joinRequestAckEmail(ctx: {
   name: string;
@@ -1335,10 +1366,18 @@ export function joinRequestAckEmail(ctx: {
   /** Le montant figure déjà sur la page publique : ne pas promettre de l'annoncer. */
   feePublished?: boolean;
   contactEmail: string;
+  /**
+   * Adresse absolue de la création de compte. Absente (pas d'APP_URL), la
+   * phrase reste, sans lien : un lien relatif ne mène nulle part depuis une
+   * boîte mail.
+   */
+  registerUrl?: string | null;
   identity?: NotificationIdentity;
 }): EmailContent {
   const association = ctx.identity?.associationName || APP_NAME;
   const adhesion = ctx.intention === "adherer" || ctx.intention === "les_deux";
+  const pasDeCompte =
+    "Ce message n’a pas créé de compte. Pour voir les tâches des événements et vous en charger, vous pouvez";
   const titre = adhesion
     ? "Votre demande d’adhésion est bien arrivée"
     : "Votre message est bien arrivé";
@@ -1355,6 +1394,11 @@ export function joinRequestAckEmail(ctx: {
       suite,
       `${p(`Bonjour ${esc(ctx.name)},`)}
        ${p(`Nous avons bien reçu ce que vous nous avez écrit sur le site de ${esc(association)}. ${esc(suite)} Comptez quelques jours ; sans nouvelles, écrivez-nous directement.`)}
+       ${p(
+         ctx.registerUrl
+           ? `${esc(pasDeCompte)} ${lien(esc(ctx.registerUrl), "créer un compte")} sur le site.`
+           : `${esc(pasDeCompte)} créer un compte sur le site, depuis « Mon compte ».`,
+       )}
        ${pDiscret("Votre message :")}
        ${citation(escLignes(ctx.message))}
        ${bouton(`mailto:${esc(ctx.contactEmail)}`, "Nous écrire")}`,
@@ -1363,6 +1407,8 @@ export function joinRequestAckEmail(ctx: {
     text: `Bonjour ${ctx.name},
 
 Nous avons bien reçu ce que vous nous avez écrit sur le site de ${association}. ${suite} Comptez quelques jours ; sans nouvelles, écrivez-nous à ${ctx.contactEmail}.
+
+${ctx.registerUrl ? `${pasDeCompte} créer un compte : ${ctx.registerUrl}` : `${pasDeCompte} créer un compte sur le site, depuis « Mon compte ».`}
 
 Votre message :
 ${ctx.message}`,

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth-shell";
 import { LoginForm } from "@/components/auth-forms";
+import { AuthTabs } from "@/components/auth-tabs";
 import { safeNextPath } from "@/lib/auth/return-path";
 import { getCurrentUser } from "@/lib/auth/session";
 
@@ -21,9 +22,10 @@ export default async function LoginPage({
 
   return (
     <AuthShell
-      eyebrow="Bon retour"
+      eyebrow="Mon compte"
       title="Connexion"
-      description="Retrouvez votre espace de gestion et les prochains rendez-vous de l’équipe."
+      description="Retrouvez vos tâches et les prochains rendez-vous de l’équipe."
+      tabs={<AuthTabs active="login" next={destination} />}
     >
       <LoginForm next={destination} />
     </AuthShell>

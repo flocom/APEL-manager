@@ -1,8 +1,12 @@
-import { HeartHandshake, LayoutDashboard, MessagesSquare } from "lucide-react";
+import {
+  CircleUserRound,
+  HeartHandshake,
+  LayoutDashboard,
+  MessagesSquare,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-import { SiteHeaderMenu } from "@/components/site-header-menu";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAssociationSettings } from "@/lib/services/association-settings";
 
@@ -64,38 +68,31 @@ export async function SiteHeader() {
             </Link>
           ) : (
             <>
-              {/* La porte des parents qui veulent adhérer ou donner un coup de
-                  main : elle reste sur la ligne à toutes les largeurs. Un
-                  membre connecté fait déjà partie de l'équipe, d'où son
-                  absence de ce côté-là. */}
+              {/* Deux portes, deux démarches distinctes, toujours sur la ligne,
+                  téléphone compris : un parent qui ne voyait que « Nous
+                  rejoindre » croyait, après avoir écrit au bureau, avoir créé
+                  son compte. « Adhérer » mène à la cotisation et au coup de
+                  main ; « Mon compte » à la connexion et à la création d'un
+                  compte, réunies sur une même page à deux onglets. Plus de
+                  menu : il ne restait rien à y ranger. Un membre connecté
+                  fait déjà partie de l'équipe, d'où l'absence de ces portes
+                  de ce côté-là. */}
               <Link
                 href="/rejoindre"
                 className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-sea-300 px-3 py-2 font-extrabold text-brand-950 transition-colors hover:bg-sea-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-sea-200 sm:px-4"
               >
                 <HeartHandshake className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
-                Nous rejoindre
+                Adhérer
               </Link>
-              <Link
-                href="/register"
-                className="hidden min-h-10 items-center justify-center whitespace-nowrap rounded-xl bg-brand-950 px-4 py-2 font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
-              >
-                {/* « Créer un compte » attirait les parents venus adhérer :
-                    ce bouton mène à l'espace de gestion, pas à l'adhésion. */}
-                Espace organisateurs
-              </Link>
-              {/* Connexion ferme toujours la ligne, à droite : c'est là qu'on
-                  la cherche sur n'importe quel site. Sous lg, c'est le bouton
-                  du menu qui prend cette place. */}
+              {/* Ferme la ligne, à droite : c'est là qu'on cherche son compte
+                  sur n'importe quel site. */}
               <Link
                 href="/login"
-                className="hidden min-h-10 items-center whitespace-nowrap rounded-lg px-3 py-2 font-bold text-brand-950 transition-colors hover:bg-brand-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 lg:inline-flex"
+                className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-brand-950 px-3 py-2 font-bold text-white transition-colors hover:bg-brand-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-200 sm:px-4"
               >
-                Connexion
+                <CircleUserRound className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden="true" />
+                Mon compte
               </Link>
-              {/* Sous lg, Connexion et Espace organisateurs passent dans un
-                  menu : quatre boutons ne tiennent pas sur une ligne de
-                  téléphone. */}
-              <SiteHeaderMenu />
             </>
           )}
         </nav>

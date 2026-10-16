@@ -79,11 +79,14 @@ export async function AuthShell({
   title,
   description,
   eyebrow = "Espace membre",
+  tabs,
   children,
 }: {
   title: string;
   description: ReactNode;
   eyebrow?: string;
+  /** Les onglets « Se connecter » | « Créer un compte », en tête de carte. */
+  tabs?: ReactNode;
   children: ReactNode;
 }) {
   const settings = await getAssociationSettings();
@@ -180,6 +183,7 @@ export async function AuthShell({
           </div>
 
           <section className="rounded-2xl border-2 border-slate-200 bg-white p-6 sm:p-8">
+            {tabs && <div className="mb-6">{tabs}</div>}
             <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-700">
               {eyebrow}
             </p>
