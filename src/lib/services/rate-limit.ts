@@ -175,6 +175,10 @@ export const PLAFONDS = {
    */
   adhesionIpHeure: { bucket: "adhesion:ip:h", limit: 30, windowSeconds: HEURE },
   adhesionJetonHeure: { bucket: "adhesion:jeton:h", limit: 10, windowSeconds: HEURE },
+  // Recherche d'adresse pendant la frappe (une requête par pause de saisie) :
+  // large pour une personne, assez serré pour que la route ne serve pas de
+  // relais gratuit vers le service de cartographie.
+  rechercheAdresse: { bucket: "adresses:ip", limit: 120, windowSeconds: 10 * MINUTE },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitVerdict =

@@ -70,6 +70,7 @@ réglages métier et de messagerie sont enregistrés depuis
 | `CRON_SECRET` | ✅ | Protège l'endpoint de rappels (qui refuse de s'exécuter sans). Vercel l'envoie automatiquement au Cron. `openssl rand -base64 32` |
 | `DATABASE_POOL_MAX` | ⛔ optionnel | Taille du pool par processus ; conserver une valeur faible en serverless |
 | `HELLOASSO_API_URL` | ⛔ optionnel | Adresse de l'API HelloAsso. Vide : la production (`https://api.helloasso.com`) ; `https://api.helloasso-sandbox.com` pour le bac à sable |
+| `ADDRESS_SEARCH_URL` | ⛔ optionnel | Service de recherche d'adresse (données OpenStreetMap) pour remplir les adresses des adhérents. Vide : Photon (`https://photon.komoot.io`) ; une autre instance Photon ; `off` pour la couper |
 
 `SETTINGS_ENCRYPTION_KEY` doit rester **strictement identique** entre les
 déploiements. La changer rendrait illisibles les clés et mots de passe déjà
