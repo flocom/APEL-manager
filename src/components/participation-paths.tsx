@@ -112,7 +112,7 @@ export function ParticipationPaths({
               >
                 <UserPlus className="h-5 w-5" strokeWidth={2.5} />
               </span>
-              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl">
+              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl lg:text-xl xl:text-2xl">
                 Adhérer à l’APEL
               </Titre>
             </div>
@@ -187,7 +187,7 @@ export function ParticipationPaths({
               >
                 <ListChecks className="h-5 w-5" strokeWidth={2.5} />
               </span>
-              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl">
+              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl lg:text-xl xl:text-2xl">
                 Créer un compte
               </Titre>
             </div>
@@ -239,7 +239,7 @@ export function ParticipationPaths({
               >
                 <Hand className="h-5 w-5" strokeWidth={2.5} />
               </span>
-              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl">
+              <Titre className="min-w-0 text-xl font-black leading-tight tracking-[-0.03em] sm:text-2xl lg:text-xl xl:text-2xl">
                 Donner un coup de main sur un événement
               </Titre>
             </div>
