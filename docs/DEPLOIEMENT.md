@@ -285,6 +285,14 @@ libellé, un montant et une date facultatifs qui aident à retrouver l'écriture
 - **Association** : un reçu s'associe à une écriture saisie à la main ou
   importée d'un relevé. Il devient son justificatif et quitte la boîte ; le
   dépôt, l'association et la suppression restent au journal d'audit.
+- **Justificatif commun** : un reçu peut justifier plusieurs écritures (un
+  ticket de 100 € réglé 60 € par carte et 40 € en espèces, une facture
+  répartie sur deux catégories). On coche toutes les écritures qu'il couvre ;
+  la fenêtre compare leur total au montant du reçu et dit si le compte y est.
+  Si le reçu a déjà quitté la boîte avec la première écriture, « Associer un
+  justificatif » sur la suivante propose de reprendre le sien. La liste des
+  écritures signale un justificatif commun, avec le nombre d'écritures et leur
+  total.
 - **Écriture validée** : elle peut recevoir le justificatif qui lui manque —
   seule modification qu'elle accepte, le justificatif ne changeant ni le
   montant, ni la date, ni le compte. Sa date de validation, reprise dans le
@@ -293,7 +301,8 @@ libellé, un montant et une date facultatifs qui aident à retrouver l'écriture
   l'import qui l'a créé ou le rattacher à une écriture déjà saisie ne perd
   pas son justificatif. Au rattachement, il suit l'opération vers l'écriture
   choisie si elle n'en a pas ; sinon, il revient dans la boîte, avec le
-  libellé, le montant et la date du brouillon.
+  libellé, le montant et la date du brouillon — sauf si une autre écriture
+  porte encore ce justificatif commun : il reste alors avec elle.
 - **Pas de remplacement** : une écriture qui a déjà un justificatif est
   refusée ; on ne remplace pas une pièce sans la voir.
 - **Fichiers** : les reçus restent dans les pièces privées de la comptabilité
