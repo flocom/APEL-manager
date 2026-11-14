@@ -59,7 +59,11 @@ import {
 } from "@/components/ui";
 import type { BankImportSummary } from "@/lib/banking/import-types";
 import { treasuryBalance } from "@/lib/accounting/balances";
-import type { ReceiptView } from "@/lib/accounting/receipts";
+import {
+  type JustificatifAssocie,
+  justificatifsAssocies,
+  type ReceiptView,
+} from "@/lib/accounting/receipts";
 import { api } from "@/lib/client";
 import { formatShortDate, toDateInput } from "@/lib/dates";
 import { formatEuros } from "@/lib/money";
@@ -198,10 +202,14 @@ export function AccountingManager({
     .filter((entry) => entry.type === "expense")
     .reduce((sum, entry) => sum + entry.amountCents, 0);
   const draftCount = entries.filter((entry) => entry.status === "draft").length;
-  // « Associer un reçu » n'a de sens que sur une écriture sans justificatif,
-  // et tant que la boîte en contient.
+  // Justificatifs communs : un même fichier porté par plusieurs écritures,
+  // dont la somme doit retrouver le montant du reçu.
+  const attachments = useMemo(() => justificatifsAssocies(entries), [entries]);
+  // « Associer un justificatif » n'a de sens que sur une écriture qui n'en a
+  // pas, et s'il y a quelque chose à proposer : un reçu dans la boîte, ou le
+  // justificatif d'une autre écriture.
   const canAttachReceipt = (entry: AccountingEntryView) =>
-    receipts.length > 0 && !entry.attachmentUrl;
+    !entry.attachmentUrl && (receipts.length > 0 || attachments.size > 0);
   const activeAccountCount = accounts.filter(
     (account) => account.isActive,
   ).length;
@@ -584,8 +592,8 @@ export function AccountingManager({
               </p>
               <p className="mt-0.5 text-sm text-slate-600">
                 {receipts.length === 1
-                  ? "Associez-le depuis la boîte, ou avec « Associer un reçu » sur l’écriture qu’il justifie."
-                  : "Associez-les depuis la boîte, ou avec « Associer un reçu » sur l’écriture qu’ils justifient."}
+                  ? "Associez-le depuis la boîte, ou avec « Associer un justificatif » sur l’écriture qu’il justifie."
+                  : "Associez-les depuis la boîte, ou avec « Associer un justificatif » sur l’écriture qu’ils justifient."}
               </p>
             </div>
           </div>
@@ -654,6 +662,11 @@ export function AccountingManager({
                   entry.categoryId
                     ? categoryNames.get(entry.categoryId) ?? null
                     : null
+                }
+                attachment={
+                  entry.attachmentUrl
+                    ? attachments.get(entry.attachmentUrl)
+                    : undefined
                 }
                 onEdit={() => setEditor(entry)}
                 onLink={() => setLinking(entry)}
@@ -731,22 +744,10 @@ export function AccountingManager({
                                 </p>
                               )}
                               {entry.attachmentUrl && (
-                                <a
-                                  href={entry.attachmentUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"
-                                >
-                                  <Paperclip
-                                    className="h-3 w-3"
-                                    aria-hidden="true"
-                                  />
-                                  Justificatif
-                                  <span className="sr-only">
-                                    {" "}
-                                    de « {entry.label} » (nouvel onglet)
-                                  </span>
-                                </a>
+                                <AttachmentLink
+                                  entry={entry}
+                                  shared={attachments.get(entry.attachmentUrl)}
+                                />
                               )}
                             </div>
                           )}
@@ -814,9 +815,9 @@ export function AccountingManager({
                               variant="ghost"
                               icon={Paperclip}
                               onClick={() => setAttaching(entry)}
-                              title="Choisir son justificatif dans la boîte à justificatifs"
+                              title="Choisir son justificatif dans la boîte, ou reprendre celui d’une autre écriture"
                             >
-                              Associer un reçu
+                              Associer un justificatif
                             </Button>
                           )}
                           <Button
@@ -842,9 +843,9 @@ export function AccountingManager({
                               variant="ghost"
                               icon={Paperclip}
                               onClick={() => setAttaching(entry)}
-                              title="Choisir son justificatif dans la boîte à justificatifs"
+                              title="Choisir son justificatif dans la boîte, ou reprendre celui d’une autre écriture"
                             >
-                              Associer un reçu
+                              Associer un justificatif
                             </Button>
                           )}
                           <Badge color="slate" icon={LockKeyhole}>
@@ -870,6 +871,7 @@ export function AccountingManager({
               mode="entry"
               entry={attaching}
               receipts={receipts}
+              entries={entries}
               onClose={() => setAttaching(null)}
               onAttached={() => {
                 setAttaching(null);
@@ -961,10 +963,55 @@ function AccountingWorkspaceTab({
   );
 }
 
+/**
+ * Lien vers le justificatif d'une écriture. Commun à plusieurs écritures, il
+ * le dit, avec leur total : c'est ce total qui doit retrouver le montant du
+ * reçu.
+ */
+function AttachmentLink({
+  entry,
+  shared,
+}: {
+  entry: AccountingEntryView;
+  shared?: JustificatifAssocie<AccountingEntryView>;
+}) {
+  const others = shared ? shared.ecritures.filter((e) => e.id !== entry.id) : [];
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <a
+        href={entry.attachmentUrl ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:underline"
+      >
+        <Paperclip className="h-3 w-3" aria-hidden="true" />
+        {others.length > 0 ? "Justificatif commun" : "Justificatif"}
+        <span className="sr-only"> de « {entry.label} » (nouvel onglet)</span>
+      </a>
+      {shared && others.length > 0 && (
+        <span
+          className="text-xs text-slate-500"
+          title={`Aussi le justificatif de : ${others
+            .map((e) => `${e.label} (${formatEuros(e.amountCents)})`)
+            .join(", ")}`}
+        >
+          {shared.ecritures.length} écritures · {formatEuros(shared.totalCents)}
+          <span className="sr-only">
+            {" "}
+            ; aussi le justificatif de{" "}
+            {others.map((e) => `« ${e.label} »`).join(", ")}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function AccountingMobileCard({
   entry,
   accountName,
   categoryName,
+  attachment,
   onEdit,
   onLink,
   onAttachReceipt,
@@ -973,9 +1020,11 @@ function AccountingMobileCard({
   entry: AccountingEntryView;
   accountName: string | null;
   categoryName: string | null;
+  /** Son justificatif, et les autres écritures qui le partagent. */
+  attachment?: JustificatifAssocie<AccountingEntryView>;
   onEdit: () => void;
   onLink: () => void;
-  /** Absent quand l'écriture a déjà un justificatif ou que la boîte est vide. */
+  /** Absent quand l'écriture a déjà un justificatif ou qu'il n'y a rien à proposer. */
   onAttachReceipt?: () => void;
   onDelete: () => void;
 }) {
@@ -1013,15 +1062,7 @@ function AccountingMobileCard({
         <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
           <span>{accountName || "Sans compte"}</span>
           {entry.attachmentUrl && (
-            <a
-              href={entry.attachmentUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline"
-            >
-              <Paperclip className="h-3 w-3" />
-              Justificatif
-            </a>
+            <AttachmentLink entry={entry} shared={attachment} />
           )}
         </div>
         {entry.status === "draft" ? (
@@ -1066,7 +1107,7 @@ function AccountingMobileCard({
                 onClick={onAttachReceipt}
                 className="col-span-2"
               >
-                Associer un reçu
+                Associer un justificatif
               </Button>
             )}
           </div>
@@ -1085,7 +1126,7 @@ function AccountingMobileCard({
                 onClick={onAttachReceipt}
                 className="w-full"
               >
-                Associer un reçu
+                Associer un justificatif
               </Button>
             )}
           </div>

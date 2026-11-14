@@ -38,8 +38,10 @@ import {
 } from "@/lib/services/accounting";
 import {
   attachReceipt,
+  ECRITURES_PAR_RECU_MAX,
   listReceipts,
   receiptView,
+  shareEntryAttachment,
 } from "@/lib/services/accounting-receipts";
 import { listBankStatementImports } from "@/lib/services/bank-imports";
 import {
@@ -858,23 +860,59 @@ export function registerAssociationTools(
   server.registerTool(
     "attach_accounting_receipt",
     {
-      title: "Associer un reçu à une écriture",
+      title: "Associer un reçu à une ou plusieurs écritures",
       description:
-        "Fait d’un reçu de la boîte à justificatifs (list_accounting_receipts) le justificatif d’une écriture, puis le retire de la boîte. L’écriture ne doit pas déjà avoir de justificatif : une pièce n’est jamais remplacée (refus sinon). Une écriture validée peut recevoir le justificatif qui lui manque — seule modification qu’elle accepte, le justificatif ne changeant ni le montant, ni la date, ni le compte. Rapprochez montant et date du reçu de ceux de l’écriture (list_accounting_entries) avant d’associer.",
+        "Fait d’un reçu de la boîte à justificatifs (list_accounting_receipts) le justificatif d’une écriture (entryId) ou de plusieurs (entryIds : un ticket réglé en deux fois, une facture répartie sur deux catégories), puis le retire de la boîte. Avec plusieurs écritures, la somme de leurs montants doit retrouver le montant du reçu : vérifiez-le avant d’associer. Aucune écriture ne doit déjà avoir de justificatif : une pièce n’est jamais remplacée (refus sinon, et rien n’est associé). Une écriture validée peut recevoir le justificatif qui lui manque — seule modification qu’elle accepte, le justificatif ne changeant ni le montant, ni la date, ni le compte. Rapprochez montant et date du reçu de ceux des écritures (list_accounting_entries) avant d’associer.",
       inputSchema: z.object({
         receiptId: z.string().uuid(),
-        entryId: z.string().uuid(),
+        entryId: z.string().uuid().optional(),
+        entryIds: z
+          .array(z.string().uuid())
+          .min(1)
+          .max(ECRITURES_PAR_RECU_MAX)
+          .optional(),
       }),
       annotations: writeTool,
     },
-    async ({ receiptId, entryId }) => {
+    async ({ receiptId, entryId, entryIds }) => {
       requireMcpAccess(principal, "mcp:write", "admin");
-      const entry = await attachReceipt(
+      if (Boolean(entryId) === Boolean(entryIds)) {
+        throw new Error("Indiquez soit entryId (une écriture), soit entryIds (plusieurs).");
+      }
+      const entries = await attachReceipt(
         receiptId,
-        entryId,
+        entryIds ?? [entryId!],
         mcpAuditActor(principal),
       );
-      return toolResult({ entry }, "Reçu associé à l’écriture.");
+      return toolResult(
+        entries.length === 1 ? { entry: entries[0] } : { entries },
+        entries.length === 1
+          ? "Reçu associé à l’écriture."
+          : `Reçu associé aux ${entries.length} écritures.`,
+      );
+    },
+  );
+
+  server.registerTool(
+    "share_accounting_attachment",
+    {
+      title: "Partager le justificatif d’une écriture",
+      description:
+        "Donne à une écriture sans justificatif (entryId) celui que porte déjà une autre écriture (sourceEntryId) : un justificatif commun, quand le reçu a déjà quitté la boîte avec la première partie de la dépense. La somme des écritures qui partagent le justificatif doit retrouver le montant du reçu. Refusé si l’écriture a déjà un justificatif. Une écriture validée peut recevoir celui qui lui manque.",
+      inputSchema: z.object({
+        entryId: z.string().uuid(),
+        sourceEntryId: z.string().uuid(),
+      }),
+      annotations: writeTool,
+    },
+    async ({ entryId, sourceEntryId }) => {
+      requireMcpAccess(principal, "mcp:write", "admin");
+      const entry = await shareEntryAttachment(
+        entryId,
+        sourceEntryId,
+        mcpAuditActor(principal),
+      );
+      return toolResult({ entry }, "Justificatif partagé avec l’écriture.");
     },
   );
 

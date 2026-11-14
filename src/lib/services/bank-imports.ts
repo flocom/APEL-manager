@@ -1834,8 +1834,17 @@ export async function undoBankImport(id: string, actor: AuditActor) {
     await tx.delete(bankStatementImports).where(eq(bankStatementImports.id, id));
     // Un justificatif associé depuis l'import revient dans la boîte au lieu de
     // partir avec son brouillon.
+    // Un justificatif commun à deux brouillons de l'import n'y revient qu'une
+    // fois, et pas du tout si une écriture qui reste le porte aussi.
+    const disparaissent = entries.map((entry) => entry.id);
     for (const entry of entries) {
-      await remettreJustificatifDansLaBoite(tx, entry, actor, "annulation_import");
+      await remettreJustificatifDansLaBoite(
+        tx,
+        entry,
+        actor,
+        "annulation_import",
+        disparaissent,
+      );
     }
     if (entries.length) {
       await tx.delete(accountingEntries).where(
@@ -2095,7 +2104,8 @@ export async function relinkImportedEntry(
       .where(eq(bankStatementLines.id, line.lineId));
     // Le justificatif associé au brouillon importé suit l'opération vers
     // l'écriture choisie, si elle n'en a pas — validée ou non, comme depuis la
-    // boîte (src/lib/accounting/receipts.ts) ; sinon il retourne dans la boîte.
+    // boîte (src/lib/accounting/receipts.ts) ; sinon il retourne dans la boîte,
+    // à moins qu'une autre écriture ne le porte aussi (justificatif commun).
     const justificatifSuit = Boolean(source.attachmentUrl) && !target.attachmentUrl;
     const compteSuit = target.status === "draft" && !target.accountId && Boolean(line.accountId);
     if (justificatifSuit || compteSuit) {
